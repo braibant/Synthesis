@@ -225,6 +225,10 @@ Record constant :=
     cst_val : eval_type0 cst_ty
   }. 
 
+Definition Cbool b : constant := Build_constant Tbool b. 
+Definition Cword {n} x : constant := Build_constant (Tint n) (Word.repr _ x). 
+
+
 Module BS. 
 
   Inductive type1 : Type :=
@@ -679,12 +683,21 @@ with
   Notation "x <= y" := ((x < y) || (x = y))%expr : expr_scope. 
   Notation "! x" := (Eget _ x) (at level  10) : expr_scope . 
   Notation "[| x |]"  :=  (Etuple _ (expr1_vector_cons _ _ x expr1_vector_nil )) (at level  0): expr_scope.  
-
+  Notation "{< x >}" := (Econstant x): expr_scope. 
+  
   Delimit Scope pattern_scope with pattern.    
   Notation "[| x , .. , z |]" := (Ptuple _ _ (pattern_vector_cons _ _ _ _ x .. (pattern_vector_cons _ _ _ _ z pattern_vector_nil ).. )) (at  level 0): pattern_scope.  
   
   Notation "X 'of' u :: q " := (type1_id_list_cons  X u q) (at level 60, u at next level,  right associativity). 
 
+  (* Notations for expr2 *)
+  Delimit Scope expr2_scope with expr2. 
+  Arguments Eset_regfile {E} size t n _%expr _%expr.  
+
+  Notation "[| x , .. , z |]"  :=  ((expr2_vector_cons _ _ _ x .. (expr2_vector_cons _ _ _ z (expr2_vector_nil _) ).. )) (at level  0): expr2_scope.
+  Notation "'[' key '<-' v ']' " := ( Eset_regfile _ _ _  key v )(at level 0, no associativity) : expr2_scope.
+  Notation "•" := (Enop _) : expr2_scope. 
+  
   Definition mk_rule' {mem} env pat cond expr : rule mem :=
     mk_rule mem env env pat (where_clause_nil _ ) cond expr. 
 
@@ -747,15 +760,58 @@ with
     Eval compute in run_unfair 10 TRS ((inl this_ENV, tt)). 
     
   End Mod. 
-    (*
-  Module PROC. 
-    Definition val := Tint 16.
-    Definition reg :=  enum "reg" [ "R0" ; "R1" ; "R2" ; "R3"]. 
-    Definition reg :=
-    Definition register_file := Tregfile reg val. 
-    
-    *)
 
+  Module PROC. 
+    Definition val := T01 (Tint 16).
+    
+    Definition reg :=  T01 (Tint 2).  (* todo : should define an enum type *)
+    Definition RF := Tregfile 4 (val). 
+    Definition instr : type1 := 
+      Tunion "instr" ("ILOAD"  of (Ttuple [reg ;val]) 
+                   :: "LOADPC" of (reg) 
+                   :: "ADD" of (Ttuple [reg;reg;reg]) 
+                   :: "BZ" of (Ttuple [reg;reg])
+                   :: "LOAD" of (Ttuple [reg;reg])
+                   :: "STORE" of (Ttuple [reg;reg])
+                   :: type1_id_list_nil ). 
+
+    Definition IMEM := Tregfile (two_power_nat 16) instr. 
+    Definition DMEM := Tregfile (two_power_nat 16) val. 
+    Definition PC := Treg val. 
+    Definition state := [PC; RF; IMEM; DMEM]. 
+    Definition loadi_rule : rule state. 
+    set (env1 := state). 
+    set (env2 := List.app state  [Treg reg; Treg val]). 
+    set (pc := var_0 : var env1 PC). 
+    set (rf := var_S var_0 : var env1 RF). 
+    set (imem := var_S (var_S var_0) : var env1 IMEM). 
+    set (dmem := var_S (var_S (var_S var_0)) : var env1 DMEM). 
+    set (rd := var_S (var_S (var_S (var_S var_0))) : var env2 (Treg reg)). 
+    set (const := var_S (var_S (var_S (var_S (var_S var_0)))) : var env2 (Treg val)). 
+    apply (mk_rule state env1 env2). 
+    Definition trivial_pattern2_vector l : pattern2_vector l l.
+    induction l. 
+    constructor. 
+    apply (pattern2_vector_cons [a] l a l). constructor.  
+    apply IHl. 
+    Defined. 
+    apply trivial_pattern2_vector. 
+    eapply where_clause_cons. 
+    apply Punion. apply pattern1_disjunct_hd. 
+    apply ([| Pvar1 reg, Pvar1 val  |])%pattern. 
+    eapply Eget_regfile. 
+    apply imem. 
+    apply (Eget _ pc). 
+    apply where_clause_nil. 
+
+    apply ({< Cbool true >})%expr. 
+    
+
+    
+    Definition var_lift : forall T E F, forall t, @var T E t -> @var T (E++F) t.  Admitted. 
+    refine ([| Eset _ (! (var_lift _ _ _ _ pc )+ {< Cword 1>})%expr , [!rd <- !const] , • , • |])%expr2. 
+    Defined. 
+  End PROC. 
 End BS. 
   
 Module ATS. 
@@ -817,6 +873,7 @@ Module ATS.
     (* do nothing *)
     | Enop : forall t, expr2 t.
  
+
     Variable ENV : eval_list_type Env. 
 
     Fixpoint  eval_expr t (e : expr t) : option (eval_type0 t) :=
