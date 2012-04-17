@@ -2,6 +2,7 @@ Require Import String.
 
 Notation "'do' X <- A ; B" := (match A with Some X => B | None => None end)
   (at level 200, X ident, A at level 100, B at level 200). 
+Axiom admit : forall {X} , X. 
 
 Definition ident := string. 
 
@@ -31,7 +32,6 @@ Section var.
       | cons t q => fun (X : eval_type t * eval_env q) Y => 
                      let (A,B) := X in (A, append_envs q F B Y)
     end. 
-
 End var. 
 
 Arguments var {T} _ _. 
@@ -62,13 +62,6 @@ Section dependent_lists.
             Some (x,y)
     end. 
 End dependent_lists. 
-
-(* Inductive alist T : Type := *)
-(*   | anil : alist T *)
-(*   | acons : ident -> T -> alist T -> alist T. *)
- 
-(* Arguments anil {T}.  *)
-(* Arguments acons {T _ _ _ }.  *)
 
 Module Abstract. 
   Record T :=
@@ -161,6 +154,10 @@ Module Regfile.
   End t. 
 End Regfile. 
 
+(* The base types, that exist in every language. These types should have:
+   - decidable equality; 
+   - default element (to initialize the arrays)
+ *)
 Inductive type0 : Type :=
 | Tunit : type0 
 | Tbool: type0 
@@ -202,7 +199,7 @@ Section type_ops.
       | _, _ => false
     end. 
   
-  Program Fixpoint type0_lt (bt : type0) : eval_type0 bt -> eval_type0 bt -> bool :=
+  Fixpoint type0_lt (bt : type0) : eval_type0 bt -> eval_type0 bt -> bool :=
     match bt with
       | Tunit => fun _ _  => true
                               
@@ -214,8 +211,6 @@ End type_ops.
 
 Require Import ZArith.
  
-Definition index := positive. 
-
 Record signature :=
   {
     args : list type0;
@@ -291,28 +286,10 @@ Module BS.
   | BI_plus  : forall n, builtin (W n :: W n :: nil) (W n)
   | BI_minus : forall n, builtin (W n :: W n :: nil) (W n). 
   
-  (*
-  Inductive primitive : list type -> type -> Type :=
-  (* External *)
-  | Pbuiltin : forall args res, builtin args res -> primitive (lift args) (Up res)
-
-  (* Regfile operations *)
-  | Parray_set : forall size width tgt, primitive (Tregfile size tgt :: Up' width :: Up' tgt :: nil)  (Tregfile size tgt)
-  | Parray_get : forall size width tgt, primitive (Tregfile size tgt :: Up' width :: nil)  (Up' tgt)
-                                             
-  (* Fifo operations *)
-  | Pfifo_first : forall t, primitive (Tfifo t:: nil) (Up' t)
-  | Pfifo_isfull : forall t, primitive (Tfifo t:: nil) (Tbool)
-  | Pfifo_isempty : forall t, primitive (Tfifo t :: nil) (Tbool)
-  | Pfifo_push :  forall t, primitive (Tfifo t:: nil) (Tfifo t)
-  | Pfifo_pop  : forall t, primitive (Tfifo t :: nil) (Tfifo t)
-  | Pfifo_pushpop : forall t, primitive (Tfifo t :: Up' t :: nil) (Tfifo t)
-  | Pfifo_clear : forall t, primitive (Tfifo t :: nil) (Tfifo t). 
-*)
   Section expr. 
     (* Environement is the same in the whole expr *)
     Context {E : list type2}.
-
+    
     Inductive expr1 : type1 -> Type :=
     | Eprim : forall args res (f : builtin args res), expr0_vector args -> expr1 (T01 res) 
     | Econstant : forall (c : constant), expr1 (T01 (cst_ty c))
@@ -353,17 +330,17 @@ Module BS.
 
     Definition eval_type_sum fl := eval_type1_id_list (sum) fl. 
     
+    (* applies a binary function to two arguments *)
     Definition bin_op {a b c} (f : eval_type0 a -> eval_type0 b -> eval_type0 c) 
                       : eval_type0_list (a :: b :: nil) -> eval_type0 c :=
-      fun X =>
-        match X with 
-            (x,(y, _)) => f x y 
-        end. 
+      fun X => match X with (x,(y, _)) => f x y end. 
 
+    (* applies a unary function to one arguments *)
     Definition un_op {a b} (f : eval_type0 a -> eval_type0 b) 
                      : eval_type0_list (a :: nil) -> eval_type0 b :=
       fun X => match X with (x,_) => f x end. 
 
+    (* denotation of the builtin functions *)
     Definition builtin_denotation (dom : list type0) ran (f : builtin dom ran) : 
       eval_type0_list dom -> eval_type0 ran :=
       match f with
@@ -395,7 +372,6 @@ Module BS.
                         (let (e, e0) := x in f (e, unlift q e0):eval_type0 r):eval_type0 r
       end. 
 
-    Axiom admit : forall {X} , X. 
 
     Variable ENV : eval_env (eval_type2) E.     
 
@@ -492,9 +468,8 @@ Module BS.
   End expr. 
 
   Section pattern.  
-    (* 
-    A pattern [p] of type [pattern E ty] has free variables in E.
-    *)
+
+    (* A pattern [p] of type [pattern E ty] has free variables in E and has type [ty].*)
     
     Inductive pattern1 : list type2 -> type1 -> Type  :=
     | Pvar1 : forall t, pattern1 (cons (Treg t) nil) t
@@ -511,9 +486,9 @@ Module BS.
     | pattern_vector_cons : forall E F t q, pattern1 E t -> pattern1_vector F q -> pattern1_vector (List.app E F)(t::q). 
 
     Inductive pattern2 : list type2 -> type2 -> Type :=
-    | Pvar2 : forall t, pattern2 (cons t nil) t
-    | Phole2 : forall t, pattern2 (nil) t
-    | Plift : forall E t, pattern1 E t -> pattern2 E (Treg t). 
+    | Pvar2 : forall t, pattern2 (cons t nil) t (* bind a fifo, a regfile or a register *)
+    | Phole2 : forall t, pattern2 (nil) t       (* bind nothing *)
+    | Plift : forall E t, pattern1 E t -> pattern2 E (Treg t) . (* actual binders *)
       
               
     Fixpoint pattern1_match E t (p : pattern1 E t) : eval_type1 t -> option (eval_env eval_type2  E) :=
@@ -524,16 +499,16 @@ Module BS.
         | Punion E id fl x => pattern1_match_disjunct E fl x
         | Ptuple E l x => pattern1_match_vector E l x
       end
-      with 
-     pattern1_match_vector (E: list type2) l (pv : pattern1_vector E l) : eval_type1_list l -> option (eval_env eval_type2 E) :=
-      match pv with 
-        | pattern_vector_nil => fun _ => (Some tt): option (eval_env eval_type2 nil)
-        | pattern_vector_cons  E F t q pEt pvFq => 
-            fun V =>
-              (do X <- (pattern1_match E t pEt (fst V));
-               do Y <- (pattern1_match_vector F q pvFq (snd V));
-               Some (append_envs _ _ X Y))
-      end
+with 
+    pattern1_match_vector (E: list type2) l (pv : pattern1_vector E l) : eval_type1_list l -> option (eval_env eval_type2 E) :=
+    match pv with 
+      | pattern_vector_nil => fun _ => (Some tt): option (eval_env eval_type2 nil)
+      | pattern_vector_cons  E F t q pEt pvFq => 
+          fun V =>
+            (do X <- (pattern1_match E t pEt (fst V));
+             do Y <- (pattern1_match_vector F q pvFq (snd V));
+             Some (append_envs _ _ X Y))
+    end
      with 
          pattern1_match_disjunct E fl (pl : pattern1_disjunct E fl) : 
          eval_type_sum fl -> option (eval_env  eval_type2  E) :=
@@ -543,7 +518,8 @@ Module BS.
            | pattern1_disjunct_tl E id t q pdEq =>  
                fun X => match X with inr X => pattern1_match_disjunct E q pdEq X | _ => None end
          end. 
-    Fixpoint pattern2_match E t (p : pattern2 E t) : eval_type2 t -> option (eval_env eval_type2 E) :=
+         
+         Fixpoint pattern2_match E t (p : pattern2 E t) : eval_type2 t -> option (eval_env eval_type2 E) :=
       match p with
         | Pvar2 t => fun x => Some (x,tt)
         | Phole2 t => fun _ => Some tt
@@ -552,26 +528,44 @@ Module BS.
             
   End pattern. 
 
+  (* [pattern2_vector E F] binds [F] in the memory [E]  *)
   Inductive pattern2_vector : list type2  -> list type2 -> Type :=
     | pattern2_vector_nil : pattern2_vector nil nil 
-    | pattern2_vector_cons : forall E F t q, pattern2 E t -> pattern2_vector F q -> pattern2_vector (List.app E F)(t::q). 
+    | pattern2_vector_cons : forall E F t q, 
+                               pattern2 E t -> pattern2_vector q F -> 
+                               pattern2_vector (t::q) (List.app E F). 
 
   Inductive expr2_vector (E : list type2) : list type2 -> Type :=
   | expr2_vector_nil : expr2_vector E nil
   | expr2_vector_cons : forall t q, @expr2 E t -> expr2_vector E q -> expr2_vector E (cons t q). 
-  Record rule t :=
+
+
+  (* [where_clause E F] : starting with bindings [E], produce bindings
+  [F] such that [E] ⊂ [F] *)
+
+  Inductive where_clause : list type2 ->  list type2  -> Type :=
+  | where_clause_nil : forall E, where_clause E E
+  | where_clause_cons : 
+    forall E F G t, pattern1 F t  -> @expr1 E t -> 
+               where_clause (List.app E F) G ->
+               where_clause E G. 
+                  
+  Record rule mem :=
     mk_rule 
       {
-        env : list type2; 
-        lhs : @pattern2_vector env t;
-        cond: @expr1 env (T01 Tbool);
-        rhs : @expr2_vector env t
+        env1 : list type2; 
+        env2 : list type2;
+        lhs : @pattern2_vector mem env1;
+        where_clauses : where_clause env1 env2;
+        cond: @expr1 env2 (T01 Tbool);
+        rhs : @expr2_vector env2 mem
       }.
   
-  Arguments env {t} r. 
-  Arguments lhs {t} r. 
-  Arguments cond {t} r. 
-  Arguments rhs {t} r. 
+  Arguments env1 {mem} r. 
+  Arguments env2 {mem} r. 
+  Arguments lhs {mem} r. 
+  Arguments cond {mem} r. 
+  Arguments rhs {mem} r. 
   
   Record TRS :=
     {
@@ -583,7 +577,7 @@ Module BS.
   Definition union {A} (R S : relation A) := fun x y => R x y \/ S x y. 
   
   Fixpoint pattern2_vector_match E F (P : pattern2_vector E F ) : 
-    eval_type2_list F -> option (eval_env eval_type2 E) :=
+    eval_type2_list E -> option (eval_env eval_type2 F) :=
     match P with 
       | pattern2_vector_nil => fun _ => Some tt
       | pattern2_vector_cons E F t q p2Et p2vFq =>
@@ -592,6 +586,17 @@ Module BS.
               do X <- pattern2_match E t p2Et A;
               do Y <- pattern2_vector_match _ _ p2vFq B;
               Some (append_envs _ _  X Y)
+    end. 
+  
+  Fixpoint where_clause_match {E F} (W : where_clause E F) {struct W}: 
+    eval_type2_list E -> option (eval_type2_list F) :=
+    match W with 
+      | where_clause_nil _ => fun X => Some X
+      | where_clause_cons E F G t pat exp w =>
+          fun x =>
+            do e <- eval_expr1 x t exp;
+            do B <- pattern1_match F t pat e;
+            where_clause_match w (append_envs _ _ x B  )
     end. 
 
   Definition eval_expr2_vector t env (v : @expr2_vector env t) : 
@@ -605,10 +610,11 @@ Module BS.
   Defined. 
 
   Definition eval_rule tyl (r : rule tyl) : relation (eval_type2_list (tyl)) :=
-    fun x y => 
-      exists z, (pattern2_vector_match _ _ (lhs r) x = Some z 
-                          /\ eval_expr1 z _ (cond r) = Some true
-                          /\ eval_expr2_vector _ _ (rhs r) z = Some y). 
+    fun M1 M2 => 
+      exists E, exists F,  (pattern2_vector_match _ _ (lhs r) M1 = Some E
+           /\ where_clause_match (where_clauses _ r) E = Some F
+           /\ eval_expr1 F _ (cond r) = Some true
+           /\ eval_expr2_vector _ _ (rhs r) F = Some M2). 
   
   Fixpoint eval_rules ty (l : list (rule ty)) : relation (eval_type2_list (ty)) :=
     match l with
@@ -619,10 +625,12 @@ Module BS.
   Definition eval_TRS T := eval_rules _ (trs_rules T). 
   
   Definition run_rule ty (r : rule ty) : eval_type2_list ty -> option (eval_type2_list ty) :=
-    fun x => 
-      do X <- pattern2_vector_match (env r) ty (lhs  r) x;
-      if (@eval_expr1 (env  r) X _ (cond  r))
-      then (@eval_expr2_vector _ _  (rhs  r) X)
+    fun M1 => 
+      do E <- pattern2_vector_match _ _ (lhs  r) M1;
+      do F <- where_clause_match (where_clauses _ r) E;
+
+      if (@eval_expr1 (env2  r) F _ (cond  r))
+      then (@eval_expr2_vector _ _  (rhs  r) F)
       else None . 
   
   
@@ -677,6 +685,9 @@ Module BS.
   
   Notation "X 'of' u :: q " := (type1_id_list_cons  X u q) (at level 60, u at next level,  right associativity). 
 
+  Definition mk_rule' {mem} env pat cond expr : rule mem :=
+    mk_rule mem env env pat (where_clause_nil _ ) cond expr. 
+
   Module Mod. 
   
     Definition Num : type1 := T01 (Tint 32). 
@@ -689,11 +700,8 @@ Module BS.
     set (env := [Treg Num; Treg Num]). 
     set (a := var_0 : var env (Treg Num)). 
     set (b := var_S var_0 : var env (Treg Num)). 
-    refine
-      {|
-        env := env 
-      |}.  
-    
+    apply (mk_rule' env). 
+
     Definition pattern2_vector_singleton E t x :=
       pattern2_vector_cons E _ t _ x pattern2_vector_nil. 
     apply (pattern2_vector_singleton env). 
@@ -713,10 +721,7 @@ Module BS.
     set (env := [Treg Num; Treg Num]). 
     set (a := var_0 : var env (Treg Num)). 
     set (b := var_S var_0 : var env (Treg Num)). 
-    refine
-      {|
-        env := env
-      |}.  
+    apply (mk_rule' env). 
     
     apply (pattern2_vector_singleton env). 
     apply Plift. eapply Punion. apply pattern1_disjunct_hd. 
@@ -993,17 +998,7 @@ Module RTL.
   | Enop : forall t, expr2 t. 
               
   
-  Definition eval_list_type := eval_env type eval_type. 
-  
-  Record RTL :=
-    {
-      memory : list type;
-      updates : dlist type (expr2 memory) memory
-    }.
-  alpha : dlist type (expr2 Env) Env}.
-                                     
-
-
+End RTL. 
 
 (*     (global-set-key '[(f5)]          'proof-assert-next-command-interactive) 
  *) 
