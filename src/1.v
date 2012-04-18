@@ -32,6 +32,12 @@ Section var.
       | cons t q => fun (X : eval_type t * eval_env q) Y => 
                      let (A,B) := X in (A, append_envs q F B Y)
     end. 
+  
+  Fixpoint var_lift E F t (v : var E t) : var (E++F) t :=
+    match v with 
+        var_0 E' t'=> var_0 (E' ++ F) t'
+      | var_S E' s' s'' v' => var_S (E' ++ F ) s' s'' (var_lift E' F s'' v') 
+    end. 
 End var. 
 
 Arguments var {T} _ _. 
@@ -40,6 +46,7 @@ Arguments var_S {T} {E} {t} {t'} _.
 Arguments get {T eval_type} E t _ _. 
 Arguments append_envs {T eval_type} E F _ _. 
 Arguments eval_env {T} _ _ .  
+Arguments var_lift {T E F t} v. 
 
 Section dependent_lists. 
   Variable T : Type. 
@@ -675,12 +682,16 @@ with
 
   Notation "{< f ; x ; y >}" := (Eprim _ _ (f) (expr0_vector_cons _ _ x (expr0_vector_cons _ _ y expr0_vector_nil))).
 
+  Notation "{< f ; x >}" := (Eprim _ _ (f) (expr0_vector_cons _ _ x expr0_vector_nil)).
+
+  Notation "~ x" :=  ({< BI_negb ; x >}) : expr_scope. 
   Notation "a || b" := ({< BI_orb ; a ; b >}) : expr_scope. 
   Notation "a - b" := ({< BI_minus _ ; a ; b >}) : expr_scope. 
   Notation "a + b" := ({< BI_plus _ ; a ; b >}) : expr_scope. 
   Notation "a = b" := ({< BI_eq _ ; a ; b >}) : expr_scope. 
   Notation "a < b" := ({< BI_lt _ ; a ; b >}) : expr_scope. 
   Notation "x <= y" := ((x < y) || (x = y))%expr : expr_scope. 
+  Notation "x <> y" := (~(x = y))%expr : expr_scope. 
   Notation "! x" := (Eget _ x) (at level  10) : expr_scope . 
   Notation "[| x |]"  :=  (Etuple _ (expr1_vector_cons _ _ x expr1_vector_nil )) (at level  0): expr_scope.  
   Notation "{< x >}" := (Econstant x): expr_scope. 
@@ -779,41 +790,232 @@ with
     Definition DMEM := Tregfile (two_power_nat 16) val. 
     Definition PC := Treg val. 
     Definition state := [PC; RF; IMEM; DMEM]. 
-    Definition loadi_rule : rule state. 
-    set (env1 := state). 
-    set (env2 := List.app state  [Treg reg; Treg val]). 
-    set (pc := var_0 : var env1 PC). 
-    set (rf := var_S var_0 : var env1 RF). 
-    set (imem := var_S (var_S var_0) : var env1 IMEM). 
-    set (dmem := var_S (var_S (var_S var_0)) : var env1 DMEM). 
-    set (rd := var_S (var_S (var_S (var_S var_0))) : var env2 (Treg reg)). 
-    set (const := var_S (var_S (var_S (var_S (var_S var_0)))) : var env2 (Treg val)). 
-    apply (mk_rule state env1 env2). 
+
     Definition trivial_pattern2_vector l : pattern2_vector l l.
     induction l. 
     constructor. 
     apply (pattern2_vector_cons [a] l a l). constructor.  
     apply IHl. 
     Defined. 
-    apply trivial_pattern2_vector. 
+
+    Definition WHERE E F t (p : pattern1 F t) (e : @expr1 E t) : where_clause E (E++F). 
     eapply where_clause_cons. 
-    apply Punion. apply pattern1_disjunct_hd. 
-    apply ([| Pvar1 reg, Pvar1 val  |])%pattern. 
-    eapply Eget_regfile. 
-    apply imem. 
-    apply (Eget _ pc). 
-    apply where_clause_nil. 
-
-    apply ({< Cbool true >})%expr. 
-    
-
-    
-    Definition var_lift : forall T E F, forall t, @var T E t -> @var T (E++F) t.  Admitted. 
-    refine ([| Eset _ (! (var_lift _ _ _ _ pc )+ {< Cword 1>})%expr , [!rd <- !const] , • , • |])%expr2. 
+    3: apply where_clause_nil. 
+    apply p. 
+    apply e. 
     Defined. 
+    Arguments WHERE {E F t} p%pattern e%expr.
+
+    Notation "M  '[' ? key ']' " :=
+    (Eget_regfile _ _ M _ key)(at level 0, no associativity) : expr_scope. 
+
+    Definition IS_LOADI : pattern1 ([Treg reg ; Treg val]) instr.  
+    apply Punion. apply pattern1_disjunct_hd. apply ( [| Pvar1 reg , Pvar1 val|])%pattern. 
+    Defined. 
+
+    Definition IS_LOADPC : pattern1 ([Treg reg]) instr.  
+    apply Punion. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_hd. apply Pvar1. 
+    Defined. 
+
+    Definition IS_ADD : pattern1 ([Treg reg; Treg reg; Treg reg]) instr.  
+    apply Punion. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_hd. apply ([| Pvar1 _ , Pvar1 _, Pvar1 _ |])%pattern. 
+    Defined. 
+
+    Definition IS_BZ : pattern1 ([Treg reg; Treg reg]) instr.  
+    apply Punion. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_hd. apply ([| Pvar1 _ , Pvar1 _ |])%pattern. 
+    Defined. 
+
+    Definition IS_LOAD : pattern1 ([Treg reg; Treg reg]) instr.  
+    apply Punion. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_hd. apply ([| Pvar1 _ , Pvar1 _ |])%pattern. 
+    Defined. 
+
+    Definition IS_STORE : pattern1 ([Treg reg; Treg reg]) instr.  
+    apply Punion. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_tl. 
+    apply pattern1_disjunct_hd. apply ([| Pvar1 _ , Pvar1 _ |])%pattern. 
+    Defined. 
+
+    (* (pc,rf,imem,dmem) where LOADI(rd,const) = imem[pc]
+     –> (pc+1, rf[rd <- const], imem, dmem) *)
+    Definition loadi_rule : rule state. 
+    set (env1 := state). 
+    set (env2 := List.app state  [Treg reg ; Treg val]). 
+    set (pc := var_0 : var env1 PC). 
+    set (rf := var_S var_0 : var env1 RF). 
+    set (imem := var_S (var_S var_0) : var env1 IMEM). 
+    set (dmem := var_S (var_S (var_S var_0)) : var env1 DMEM). 
+    set (rd := var_S (var_S (var_S (var_S var_0))) : var env2 (Treg reg)). 
+    set (const := var_S (var_S (var_S (var_S (var_S var_0)))) : var env2 (Treg val)). 
+
+    apply (mk_rule state env1 env2). 
+    apply trivial_pattern2_vector. 
+    refine (WHERE IS_LOADI (imem[? !pc])%expr) . 
+      
+    apply ({< Cbool true >})%expr. 
+        
+    refine ([| Eset _ (! (var_lift  pc )+ {< Cword 1>})%expr , [!rd <- !const] , • , • |])%expr2. 
+    Defined. 
+
+
+    (* (pc,rf,imem,dmem) where LOADPC(rd) = imem[pc]
+     –> (pc+1, rf[rd <- pc], imem, dmem) *)
+
+    Definition loadpc_rule : rule state. 
+    set (env1 := state). 
+    set (env2 := List.app state  [Treg reg]). 
+    set (pc := var_0 : var env1 PC). 
+    set (rf := var_S var_0 : var env1 RF). 
+    set (imem := var_S (var_S var_0) : var env1 IMEM). 
+    set (dmem := var_S (var_S (var_S var_0)) : var env1 DMEM). 
+    set (rd := var_S (var_S (var_S (var_S var_0))) : var env2 (Treg reg)). 
+
+    apply (mk_rule state env1 env2). 
+    apply trivial_pattern2_vector. 
+    refine (WHERE IS_LOADPC (imem[? !pc])%expr) . 
+      
+    apply ({< Cbool true >})%expr. 
+        
+    refine ([| Eset _ (! (var_lift  pc )+ {< Cword 1>})%expr , [!rd <- ! (var_lift pc)] , • , • |])%expr2. 
+    Defined. 
+
+    (* (pc,rf,imem,dmem) where ADD(rd,r1,r2) = imem[pc]
+     –> (pc+1, rf[rd <- rf[r1] + rf[r2]], imem, dmem) *)
+    Definition add_rule : rule state. 
+    set (env1 := state). 
+    set (env2 := List.app state  [Treg reg; Treg reg; Treg reg]). 
+    set (pc := var_0 : var env1 PC). 
+    set (rf := var_S var_0 : var env1 RF). 
+    set (imem := var_S (var_S var_0) : var env1 IMEM). 
+    set (dmem := var_S (var_S (var_S var_0)) : var env1 DMEM). 
+    set (rd := var_S (var_S (var_S (var_S var_0))) : var env2 (Treg reg)). 
+    set (r1 := var_S (var_S (var_S (var_S (var_S var_0)))) : var env2 (Treg reg)). 
+    set (r2 := var_S (var_S (var_S (var_S (var_S (var_S var_0))))) : var env2 (Treg reg)). 
+
+    apply (mk_rule state env1 env2). 
+    apply trivial_pattern2_vector. 
+    refine (WHERE IS_ADD (imem[? !pc])%expr) . 
+      
+    apply ({< Cbool true >})%expr. 
+
+    refine ([| Eset _ (! (var_lift  pc )+ {< Cword 1>})%expr , 
+               ([!rd <- (var_lift rf)[? !r1]  + (var_lift rf)[? !r2] ])%expr 
+               , • , • |])%expr2. 
+    Defined. 
+
+
+    (* (pc,rf,imem,dmem) where BZ(rc,ra) = imem[pc] 
+     –> (rf[ra], rf , imem, dmem) when rf[rc] = 0 *)
+    Definition bztaken_rule : rule state. 
+    set (env1 := state). 
+    set (env2 := List.app state  [Treg reg; Treg reg]). 
+    set (pc := var_0 : var env1 PC). 
+    set (rf := var_S var_0 : var env1 RF). 
+    set (imem := var_S (var_S var_0) : var env1 IMEM). 
+    set (dmem := var_S (var_S (var_S var_0)) : var env1 DMEM). 
+    set (rc := var_S (var_S (var_S (var_S var_0))) : var env2 (Treg reg)). 
+    set (ra := var_S (var_S (var_S (var_S (var_S var_0)))) : var env2 (Treg reg)). 
+
+    apply (mk_rule state env1 env2). 
+    apply trivial_pattern2_vector. 
+    refine (WHERE IS_BZ (imem[? !pc])%expr) . 
+      
+    apply ( (var_lift rf) [? !rc] =  {< Cword 0 >})%expr. 
+
+    refine ([| Eset _ ((var_lift rf)[? !ra])%expr, 
+               •
+               , • , • |])%expr2. 
+    Defined. 
+
+    (* (pc,rf,imem,dmem) where BZ(rc,ra) = imem[pc] 
+     –> (pc+1, rf, imem, dmem) when rf[rc] <> 0 *)
+    Definition bznottaken_rule : rule state. 
+    set (env1 := state). 
+    set (env2 := List.app state  [Treg reg; Treg reg]). 
+    set (pc := var_0 : var env1 PC). 
+    set (rf := var_S var_0 : var env1 RF). 
+    set (imem := var_S (var_S var_0) : var env1 IMEM). 
+    set (dmem := var_S (var_S (var_S var_0)) : var env1 DMEM). 
+    set (rc := var_S (var_S (var_S (var_S var_0))) : var env2 (Treg reg)). 
+    set (ra := var_S (var_S (var_S (var_S (var_S var_0)))) : var env2 (Treg reg)). 
+
+    apply (mk_rule state env1 env2). 
+    apply trivial_pattern2_vector. 
+    refine (WHERE IS_BZ (imem[? !pc])%expr) . 
+      
+    apply ( (var_lift rf) [? !rc] <>  {< Cword 0 >})%expr. 
+
+    refine ([| Eset _ (! (var_lift  pc )+ {< Cword 1>})%expr , 
+               •
+               , • , • |])%expr2. 
+    Defined. 
+
+    (* (pc,rf,imem,dmem) where LOAD(rd,ra) = imem[pc] 
+     –> (pc+1, rf[rd := dmem[rf [ra ]]], imem, dmem) *)
+    Definition load_rule : rule state. 
+    set (env1 := state). 
+    set (env2 := List.app state  [Treg reg; Treg reg]). 
+    set (pc := var_0 : var env1 PC). 
+    set (rf := var_S var_0 : var env1 RF). 
+    set (imem := var_S (var_S var_0) : var env1 IMEM). 
+    set (dmem := var_S (var_S (var_S var_0)) : var env1 DMEM). 
+    set (rd := var_S (var_S (var_S (var_S var_0))) : var env2 (Treg reg)). 
+    set (ra := var_S (var_S (var_S (var_S (var_S var_0)))) : var env2 (Treg reg)). 
+
+    apply (mk_rule state env1 env2). 
+    apply trivial_pattern2_vector. 
+    refine (WHERE IS_LOAD (imem[? !pc])%expr) . 
+      
+    apply ({< Cbool true >})%expr. 
+
+    refine ([|Eset _ (! (var_lift  pc )+ {< Cword 1>})%expr ,
+            [ !rd <- (var_lift dmem)[? (!ra)%expr] ]
+               , • , • |])%expr2. 
+    Defined. 
+
+    (* (pc,rf,imem,dmem) where STORE(ra,r) = imem[pc] 
+     –> (pc+1, rf, imem, dmem[rf[ra] := rf[r]]) *)
+    Definition store_rule : rule state. 
+    set (env1 := state). 
+    set (env2 := List.app state  [Treg reg; Treg reg]). 
+    set (pc := var_0 : var env1 PC). 
+    set (rf := var_S var_0 : var env1 RF). 
+    set (imem := var_S (var_S var_0) : var env1 IMEM). 
+    set (dmem := var_S (var_S (var_S var_0)) : var env1 DMEM). 
+    set (ra := var_S (var_S (var_S (var_S var_0))) : var env2 (Treg reg)). 
+    set (r := var_S (var_S (var_S (var_S (var_S var_0)))) : var env2 (Treg reg)). 
+
+    apply (mk_rule state env1 env2). 
+    apply trivial_pattern2_vector. 
+    refine (WHERE IS_STORE (imem[? !pc])%expr) . 
+      
+    apply ({< Cbool true >})%expr. 
+
+    refine ([|Eset _ (! (var_lift  pc )+ {< Cword 1>})%expr ,
+            •,
+            • , [(var_lift rf)[? (!ra)%expr] <- (var_lift rf) [?(!r)%expr]] |])%expr2. 
+    Defined. 
+        
   End PROC. 
-End BS. 
-  
+End BS.
+
 Module ATS. 
   Inductive type :=
   | Tregfile : forall (size : Z) (base : type0) , type
