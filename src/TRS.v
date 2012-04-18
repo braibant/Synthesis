@@ -1,396 +1,94 @@
-Require Import String. 
+Require Import Common. 
 
-Notation "'do' X <- A ; B" := (match A with Some X => B | None => None end)
-  (at level 200, X ident, A at level 100, B at level 200). 
-Axiom admit : forall {X} , X. 
+Inductive type1 : Type :=
+  | T01 : type0 -> type1
+  | Tunion : forall (idx : ident), type1_id_list -> type1
+  | Ttuple : list type1 -> type1
+                            with type1_id_list :=
+  | type1_id_list_nil : type1_id_list 
+  | type1_id_list_cons : ident -> type1 -> type1_id_list ->  type1_id_list. 
 
-Definition ident := string. 
+Inductive type2 :=
+  | Treg : type1 -> type2
+  | Tregfile  : Z -> type1 -> type2
+  | Tfifo : nat -> type1 -> type2. 
 
-Section var.   
-  Variable T : Type. 
-  Inductive var : list T -> T -> Type :=
-  | var_0 : forall E t , var (cons t E) t
-  | var_S : forall E t t' , var E t' -> var (cons t E) t'. 
-
-  Variable eval_type : T -> Type. 
-
-  Fixpoint eval_env E : Type :=
-    match E with 
-        nil => unit
-      | cons t q => (eval_type t * eval_env q)%type
-    end. 
-
-  Fixpoint get E t (v: var E t): eval_env E -> eval_type t :=
-    match v with 
-      | var_0  _ _ => fun e => (fst e)
-      | var_S _ _ _ v => fun e => get _ _ v (snd e)
-    end. 
-
-  Fixpoint append_envs E F : eval_env E -> eval_env F -> eval_env (List.app E F) :=
-    match E with 
-      | nil => fun _ (x : eval_env F) => x 
-      | cons t q => fun (X : eval_type t * eval_env q) Y => 
-                     let (A,B) := X in (A, append_envs q F B Y)
-    end. 
-  
-  Fixpoint var_lift E F t (v : var E t) : var (E++F) t :=
-    match v with 
-        var_0 E' t'=> var_0 (E' ++ F) t'
-      | var_S E' s' s'' v' => var_S (E' ++ F ) s' s'' (var_lift E' F s'' v') 
-    end. 
-End var. 
-
-Arguments var {T} _ _. 
-Arguments var_0 {T} {E} {t}. 
-Arguments var_S {T} {E} {t} {t'} _. 
-Arguments get {T eval_type} E t _ _. 
-Arguments append_envs {T eval_type} E F _ _. 
-Arguments eval_env {T} _ _ .  
-Arguments var_lift {T E F t} v. 
-
-Section dependent_lists. 
-  Variable T : Type. 
-  Variable P : T -> Type. 
-  Inductive dlist  : list T -> Type := 
-      | dlist_nil : dlist  nil
-      | dlist_cons : forall (t : T) q, P t -> dlist q -> dlist (cons t q).  
-  
-  Variable E : T -> Type.
-
-  Definition EVAL l := eval_env E l. 
-  Variable F : forall (t : T), P t -> E t -> option (E t). 
-  Fixpoint dlist_fold (l : list T) (d : dlist l) : EVAL l -> option (EVAL l):=
-    match d with
-        dlist_nil => fun v => Some v
-      | dlist_cons t q pt dlq => 
-          fun v => 
-            do x <- F t pt (fst v);
-            do y <- dlist_fold q dlq (snd v);
-            Some (x,y)
-    end. 
-End dependent_lists. 
-
-Module Abstract. 
-  Record T :=
-    {
-      carrier :> Type;
-      eqb : carrier -> carrier -> bool;
-      lt  : carrier -> carrier -> bool
-    }. 
-End Abstract. 
-
-Require Import ZArith. 
-
-(** Implementation of parametric size machine words.  *)
-Module Word. 
-  
-  Record T n := mk { val :> Z ; 
-                     range : (0 <= val < two_power_nat n)%Z}. 
-  Arguments val {n} _. 
-  Arguments range {n} _. 
-  
-  Notation "[2^ n ]" := (two_power_nat n). 
-  
-  Open Scope Z_scope. 
-  
-  Lemma mod_in_range n:
-    forall x, 0 <= Zmod x [2^ n] < [2^ n] .
-  Proof.
-    intro.
-    apply (Z_mod_lt x).
-    reflexivity. 
-  Qed.
-  
-  Definition repr n (x: Z)  : T n := 
-    mk n (Zmod x [2^ n]) (mod_in_range n x ).
-  
-
-  Definition add {n} : T n -> T n -> T n := fun x y => repr n (x + y ). 
-  Definition minus {n} : T n -> T n -> T n := fun x y => repr n (x - y). 
-  Definition mult {n} : T n -> T n -> T n := fun x y => repr n (x * y).  
-  Definition eq {n} : T n -> T n -> bool := 
-    fun x y => 
-      (match val x ?= val y with Eq => true | _ => false end) .
-
-  Definition lt {n} : T n -> T n -> bool :=
-    fun x y => 
-      (match val x ?= val y with Lt => true | _ => false end) .
-
-End Word. 
- 
-Module FIFO. 
-  Section t. 
-    Definition T (n : nat) X:= list X. 
-
-    Context {X : Type}. 
-    Definition push {n} x (q : T n X) : T n X:=           
-      List.app q (cons x nil). 
-        
-    Definition first {n} (q : T n X) : option X := 
-      match  q with 
-        | nil => None
-        | cons t q => Some t
-      end. 
-    
-    Definition pop {n} (q : T n X) := 
-      match q with 
-          | nil => None
-          | cons t q => Some q
-      end.
-
-    Definition isempty {n} (q : T n X) :=
-      match q with 
-          | nil => true
-          | _ => false
-      end. 
-
-    Fixpoint lt_nat_bool n m : bool :=
-      match n,m with 
-          | 0, S _ => true
-          | S n, S m => lt_nat_bool n m 
-          | _, _ => false
-      end. 
-
-    Definition isfull {n} (q : T n X) := 
-      negb (lt_nat_bool (List.length q) n). 
-    
-    Definition clear {n} (q : T n X) : T n X:= nil. 
-  End t. 
-End FIFO. 
-
-Module Regfile. 
-    
-    (* the ATBR solution: only meaningful inside between 0 and the
-    size. Loose leibniz equality. *)
-
-    Definition T (size : Z) (X : Type) := Z -> option X. 
-    Definition empty size X (el : X ): T size X := fun _ => Some el. 
-    Definition get {size X} (v : T size X) : Z -> option X := v.
-    Definition Zeqb (x y : Z) := (match x ?= y with | Eq => true | _ => false end)%Z. 
-    Definition set {size X} (v : T size X) (addr : Z) (el : X) :=
-      Some 
-        (fun addr' => 
-        if Zeqb addr  addr' 
-        then Some el 
-        else v addr').     
-
-    Fixpoint of_list' {X : Type} (l : list X) (n : Z) :=
-      match l with 
-        | nil => fun _ => None
-        | cons t q => fun x => if Zeqb x n then Some t else (of_list' q (n+1)%Z) x
-      end. 
-
-    Definition of_list {X} n (l : list X) : T n X := of_list' l 0%Z. 
-
-End Regfile. 
-
-(* The base types, that exist in every language. These types should have:
-   - decidable equality; 
-   - default element (to initialize the arrays)
- *)
-Inductive type0 : Type :=
-| Tunit : type0 
-| Tbool: type0 
-| Tint: nat -> type0
-| Tabstract : ident -> Abstract.T -> type0. 
-
-Fixpoint eval_type0 st : Type := 
-  match st with 
-    | Tunit => unit
-    | Tbool => bool
-    | Tint n => Word.T n
-    | Tabstract _ t => Abstract.carrier t
+(** [eval_type t] computes the coq denotation of the [type] [t] *)
+Fixpoint eval_type1  (t : type1 ) : Type :=
+  match t with
+    | T01 st => eval_type0 st 
+    | Tunion  _ cases => eval_type1_id_list (sum)%type  cases
+    | Ttuple  x => 
+        eval_env eval_type1 x
+  end
+with 
+eval_type1_id_list (op : Type -> Type -> Type)  (l : type1_id_list ) : Type :=
+  match l with 
+    | type1_id_list_nil => unit
+    | type1_id_list_cons  name t q => op (eval_type1  t) (eval_type1_id_list op  q)%type
   end. 
 
-Definition eval_type0_list l : Type := eval_env eval_type0 l. 
+Definition eval_type2 (t : type2) : Type :=
+  match t with 
+      Treg t => eval_type1 t
+    | Tregfile n b => Regfile.T n (eval_type1 b)
+    | Tfifo n st => FIFO.T n (eval_type1 st)
+  end. 
 
-(** Operations on types *)
-Section type_ops. 
+Definition eval_type2_list  l := eval_env  eval_type2 l. 
+
+Notation "x :: q" := (cons  x q). 
+Definition T02 x := Treg (T01 x). 
+
+Definition lift := List.map T02. 
+
+Section expr. 
+  (* Environement is the same in the whole expr *)
+  Context {E : list type2}.
   
-  Definition eqb_bool (b1 b2: bool)  :=
-    match b1,b2 with 
-      | true, true => true
-      | false, false => true
-      | _,_ => false
-    end. 
-  
-  Fixpoint type0_eq(t : type0) : eval_type0 t -> eval_type0 t -> bool :=
-    match t with 
-      | Tunit => fun _ _  => true
-      | Tint n => @Word.eq n
-      | Tbool  => eqb_bool 
-      | Tabstract _ t => Abstract.eqb t
-    end. 
-  
-  
-  Definition ltb_bool a b :=
-    match a, b with
-      | false, true => true
-      | _, _ => false
-    end. 
-  
-  Fixpoint type0_lt (bt : type0) : eval_type0 bt -> eval_type0 bt -> bool :=
-    match bt with
-      | Tunit => fun _ _  => true
-                              
-      | Tbool => ltb_bool 
-      | Tint n => @Word.lt n
-      | Tabstract _ t => Abstract.lt t
-    end. 
-End type_ops. 
+  Inductive expr1 : type1 -> Type :=
+  | Eprim : forall args res (f : builtin args res), expr0_vector args -> expr1 (T01 res) 
+  | Econstant : forall (c : constant), expr1 (T01 (cst_ty c))
+  (* get a register of level 1 *)
+  | Eget : forall t (v : var E (Treg t)), expr1 (t)
+  (* TODO: Use Tenum instead of Tint *)
+  | Eget_regfile : forall size t (v : var E  (Tregfile size t)) n, expr1 (T01 (Tint n)) -> expr1 t
+  | Efirst : forall n t (v : var E (Tfifo n t)), expr1 t
+  | Eisfull : forall n t (v : var E (Tfifo n t)), expr1 (T01 Tbool)
+  | Eisempty : forall n t (v : var E (Tfifo n t)), expr1 (T01 Tbool)
+                                                    
+  | Eunion : forall {id fl} (case : expr1_disjunct fl), expr1 (Tunion id fl)
+  | Etuple : forall l (v : expr1_vector l), expr1 (Ttuple l)
+  with expr1_disjunct : type1_id_list -> Type :=
+  | expr1_disjunct_hd:forall id t q, expr1 t -> expr1_disjunct (type1_id_list_cons id t q) 
+  | expr1_disjunct_tl:forall id t q, expr1_disjunct q -> expr1_disjunct (type1_id_list_cons id t q) 
+  with expr1_vector : list type1 -> Type :=
+  | expr1_vector_nil: expr1_vector nil
+  | expr1_vector_cons: forall t q, expr1 t -> expr1_vector q -> expr1_vector (t::q)
 
-Require Import ZArith.
- 
-Record signature :=
-  {
-    args : list type0;
-    res : type0; 
-    value : eval_type0_list args -> eval_type0 res
-  }. 
+  with expr0_vector : list type0 -> Type :=
+  | expr0_vector_nil: expr0_vector nil
+  | expr0_vector_cons: forall t q, expr1 (T01 t) -> expr0_vector q -> expr0_vector (t::q). 
 
-(* could it be a primitive with an empty set of arguments ? *)
-Record constant :=
-  {
-    cst_ty :> type0;
-    cst_val : eval_type0 cst_ty
-  }. 
-
-Definition Cbool b : constant := Build_constant Tbool b. 
-Definition Cword {n} x : constant := Build_constant (Tint n) (Word.repr _ x). 
-
-
-Module BS. 
-
-  Inductive type1 : Type :=
-    | T01 : type0 -> type1
-    | Tunion : forall (idx : ident), type1_id_list -> type1
-    | Ttuple : list type1 -> type1
-                             with type1_id_list :=
-    | type1_id_list_nil : type1_id_list 
-    | type1_id_list_cons : ident -> type1 -> type1_id_list ->  type1_id_list. 
-                       
-  Inductive type2 :=
-    | Treg : type1 -> type2
-    | Tregfile  : Z -> type1 -> type2
-    | Tfifo : nat -> type1 -> type2. 
-
-  (** [eval_type t] computes the coq denotation of the [type] [t] *)
-  Fixpoint eval_type1  (t : type1 ) : Type :=
-    match t with
-      | T01 st => eval_type0 st 
-      | Tunion  _ cases => eval_type1_id_list (sum)%type  cases
-      | Ttuple  x => 
-          eval_env eval_type1 x
-    end
-      with 
-      eval_type1_id_list (op : Type -> Type -> Type)  (l : type1_id_list ) : Type :=
-    match l with 
-      | type1_id_list_nil => unit
-      | type1_id_list_cons  name t q => op (eval_type1  t) (eval_type1_id_list op  q)%type
-    end. 
-  
-  Definition eval_type2 (t : type2) : Type :=
-    match t with 
-        Treg t => eval_type1 t
-      | Tregfile n b => Regfile.T n (eval_type1 b)
-      | Tfifo n st => FIFO.T n (eval_type1 st)
-    end. 
-
-  Definition eval_type2_list  l := eval_env  eval_type2 l. 
-    
-  Notation "x :: q" := (cons  x q). 
-  Definition T02 x := Treg (T01 x). 
-  
-  Definition lift := List.map T02. 
-  Notation B := Tbool. 
-  Notation W n := (Tint n).
-
-  Inductive builtin : list type0 -> type0 -> Type :=
-  | BI_external :  forall (s : signature), builtin (args s) (res s)
-  | BI_andb : builtin (B :: B :: nil)  B
-  | BI_orb  : builtin (B :: B :: nil)  B
-  | BI_xorb : builtin (B :: B :: nil)  B
-  | BI_negb : builtin (B  :: nil)  B
-
-  (* "type-classes" *)
-  | BI_eq   : forall t, builtin (t :: t :: nil) B
-  | BI_lt   : forall t, builtin (t :: t :: nil) B
-
-  (* integer operations *)
-  | BI_plus  : forall n, builtin (W n :: W n :: nil) (W n)
-  | BI_minus : forall n, builtin (W n :: W n :: nil) (W n). 
-  
-  Section expr. 
-    (* Environement is the same in the whole expr *)
-    Context {E : list type2}.
-    
-    Inductive expr1 : type1 -> Type :=
-    | Eprim : forall args res (f : builtin args res), expr0_vector args -> expr1 (T01 res) 
-    | Econstant : forall (c : constant), expr1 (T01 (cst_ty c))
-    (* get a register of level 1 *)
-    | Eget : forall t (v : var E (Treg t)), expr1 (t)
-    (* TODO: Use Tenum instead of Tint *)
-    | Eget_regfile : forall size t (v : var E  (Tregfile size t)) n, expr1 (T01 (Tint n)) -> expr1 t
-    | Efirst : forall n t (v : var E (Tfifo n t)), expr1 t
-    | Eisfull : forall n t (v : var E (Tfifo n t)), expr1 (T01 Tbool)
-    | Eisempty : forall n t (v : var E (Tfifo n t)), expr1 (T01 Tbool)
-
-    | Eunion : forall {id fl} (case : expr1_disjunct fl), expr1 (Tunion id fl)
-    | Etuple : forall l (v : expr1_vector l), expr1 (Ttuple l)
-     with expr1_disjunct : type1_id_list -> Type :=
-    | expr1_disjunct_hd:forall id t q, expr1 t -> expr1_disjunct (type1_id_list_cons id t q) 
-    | expr1_disjunct_tl:forall id t q, expr1_disjunct q -> expr1_disjunct (type1_id_list_cons id t q) 
-
-     with expr1_vector : list type1 -> Type :=
-    | expr1_vector_nil: expr1_vector nil
-    | expr1_vector_cons: forall t q, expr1 t -> expr1_vector q -> expr1_vector (t::q)
-
-     with expr0_vector : list type0 -> Type :=
-    | expr0_vector_nil: expr0_vector nil
-    | expr0_vector_cons: forall t q, expr1 (T01 t) -> expr0_vector q -> expr0_vector (t::q). 
-
-    Inductive expr2 : type2 -> Type :=
-    | Eset : forall t , expr1 t ->  expr2 (Treg t)
-    | Eset_regfile : forall size t n,
+  Inductive expr2 : type2 -> Type :=
+  | Eset : forall t , expr1 t ->  expr2 (Treg t)
+  | Eset_regfile : forall size t n,
                      expr1 (T01 (Tint n)) -> expr1 t -> expr2 (Tregfile size t) 
-    (* operations on fifos *)
-    | Epush : forall n t, expr1 t -> expr2 (Tfifo n t)
-    | Epop  : forall n t, expr2 (Tfifo n t) (* forgets the first element *)
-    | Epushpop : forall n t, expr1 t -> expr2 (Tfifo n t)
-    | Eclear : forall n t, expr2 (Tfifo n t)
-    
-    (* do nothing *)
-    | Enop : forall t, expr2 t.
+  (* operations on fifos *)
+  | Epush : forall n t, expr1 t -> expr2 (Tfifo n t)
+  | Epop  : forall n t, expr2 (Tfifo n t) (* forgets the first element *)
+  | Epushpop : forall n t, expr1 t -> expr2 (Tfifo n t)
+  | Eclear : forall n t, expr2 (Tfifo n t)
+                          
+  (* do nothing *)
+  | Enop : forall t, expr2 t.
 
-    Definition eval_type_sum fl := eval_type1_id_list (sum) fl. 
-    
-    (* applies a binary function to two arguments *)
-    Definition bin_op {a b c} (f : eval_type0 a -> eval_type0 b -> eval_type0 c) 
-                      : eval_type0_list (a :: b :: nil) -> eval_type0 c :=
-      fun X => match X with (x,(y, _)) => f x y end. 
+  Definition eval_type_sum fl := eval_type1_id_list (sum) fl. 
+  
 
-    (* applies a unary function to one arguments *)
-    Definition un_op {a b} (f : eval_type0 a -> eval_type0 b) 
-                     : eval_type0_list (a :: nil) -> eval_type0 b :=
-      fun X => match X with (x,_) => f x end. 
-
-    (* denotation of the builtin functions *)
-    Definition builtin_denotation (dom : list type0) ran (f : builtin dom ran) : 
-      eval_type0_list dom -> eval_type0 ran :=
-      match f with
-        | BI_external s => value s
-        | BI_andb => @bin_op B B B andb
-        | BI_orb =>  @bin_op B B B orb
-        | BI_xorb => @bin_op B B B xorb
-        | BI_negb =>  @un_op B B negb
-        | BI_eq t => @bin_op t t B (type0_eq t)
-        | BI_lt t => @bin_op t t B (type0_lt t)
-        | BI_plus n => @bin_op (W n) (W n) (W n) (@Word.add n)
-        | BI_minus n => @bin_op (W n) (W n) (W n) (@Word.minus n)
-      end. 
-    
-    Fixpoint unlift (l : list type0) {struct l} : eval_type2_list (lift l) -> eval_type0_list l :=
-      match l with 
+  
+  Fixpoint unlift (l : list type0) {struct l} : eval_type2_list (lift l) -> eval_type0_list l :=
+    match l with 
           nil => fun X : eval_type2_list (lift nil) => X
         | cons t q =>  
             fun X : eval_type2_list (lift (t :: q)) => 
@@ -606,10 +304,7 @@ with
       trs_type : list type2;
       trs_rules : list (rule trs_type) 
     }. 
-  
-  Definition relation A := A -> A -> Prop. 
-  Definition union {A} (R S : relation A) := fun x y => R x y \/ S x y. 
-  
+    
   Fixpoint pattern2_vector_match E F (P : pattern2_vector E F ) : 
     eval_type2_list E -> option (eval_env eval_type2 F) :=
     match P with 
@@ -1052,260 +747,5 @@ with
     split. simpl. apply (Word.repr _ 0). 
     split. simpl. apply Regfile.empty. apply (Word.repr _ 0).
     split. simpl eval_env. compute. 
-    Definition AA : Word.T 32 := Word.repr 32 31. 
-    Definition BB : Word.T 32 := Word.repr 32 3. 
-    
-    Definition this_ENV : eval_env eval_type2 [Treg Num; Treg Num] := (AA, (BB, tt)). 
-    
-    Eval compute in run_unfair 10 TRS ((inl this_ENV, tt)). 
-
-    Defi
-        
+    Admitted. 
   End PROC. 
-End BS.
-
-Module ATS. 
-  Inductive type :=
-  | Tregfile : forall (size : Z) (base : type0) , type
-  | Tfifo : nat -> type0 -> type
-  | Tbase : type0 -> type
-  | Tinput  : type0 -> type
-  | Toutput : type0 -> type. 
-         
-                  
-  Fixpoint eval_type (t : type) : Type :=
-    match t with
-      | Tregfile size bt => Regfile.T size (eval_type0 bt)
-      | Tfifo n bt => FIFO.T n (eval_type0 bt)
-      | Tbase bt => eval_type0 bt
-      | Tinput bt => eval_type0 bt
-      | Toutput bt => eval_type0 bt
-    end. 
-
-  Definition eval_list_type := eval_env eval_type. 
-  
-  
-  Section expr. 
-    Variable Env : list type. 
-    
-    Inductive expr : type0 -> Type :=
-    | Eprim : forall f (args: expr_vector (args (f))), expr ( (res (f)))
-    | Eget : forall t (v : var Env (Tbase t)), expr t
-    (* operations on arrays *)
-    | Eget_array : forall size  n t (v : var Env (Tregfile size t)), expr (Tint n) -> expr t
-    (* operations on fifo *)
-    | Efirst : forall n t (v : var Env (Tfifo n t)), expr t
-    | Eisfull : forall n t (v : var Env (Tfifo n t)), expr (Tbool)
-    | Eisempty : forall n t (v : var Env (Tfifo n t)), expr (Tbool)
-    (* operations on Inputs *)
-    | Eget_input : forall t (v : var Env (Tinput t)), expr t
-    (* operations on Outputs *)
-    | Eget_output : forall t (v : var Env (Toutput t)), expr t
-
-    with expr_vector : list type0 -> Type :=
-    | expr_vector_nil : expr_vector nil
-    | expr_vector_cons : forall t q, expr  (t) -> expr_vector q -> expr_vector (t::q). 
-
-    (* top level expressions *)
-    Inductive expr2 : type -> Type :=
-    | Eset : forall t , expr t ->  expr2 (Tbase t)
-    | Eset_array : forall size n t,
-                     expr (Tint n) -> expr t -> expr2 (Tregfile size t)
-    (* operations on fifos *)
-    | Epush : forall n t, expr t -> expr2 (Tfifo n t)
-    | Epop  : forall n t, expr2 (Tfifo n t) (* forgets the first element *)
-    | Epushpop : forall n t, expr t -> expr2 (Tfifo n t)
-    | Eclear : forall n t, expr2 (Tfifo n t)
-                          
-    (* set an output *)
-    | Eset_output : forall t,  expr t -> expr2 (Toutput t)
-    
-    (* do nothing *)
-    | Enop : forall t, expr2 t.
- 
-
-    Variable ENV : eval_list_type Env. 
-
-    Fixpoint  eval_expr t (e : expr t) : option (eval_type0 t) :=
-      match e with
-        | Eprim f args => 
-            let eval_expr_vector :=
-                fix eval_expr_vector l (v : expr_vector l) {struct v} :  option (eval_type0_list l) :=
-                match v with
-                  | expr_vector_nil => Some tt
-                  | expr_vector_cons hd q e vq => 
-                      do hd <- eval_expr hd e; 
-                      do tl <- eval_expr_vector q vq;
-                      Some (hd,tl)
-                end
-            in 
-              do args <-  (eval_expr_vector _ args);
-            Some (value (f) args)
-        | Eget t v => Some (get Env (Tbase t) v ENV)
-        | Efirst n bt fifo => 
-            let fifo := (get Env (Tfifo n bt) fifo ENV ) in
-              @FIFO.first (eval_type0 bt) n  fifo 
-        | Eisfull n bt fifo => 
-            let fifo := (get Env (Tfifo n bt) fifo ENV ) in 
-              Some (@FIFO.isfull _ n fifo)
-        | Eisempty n bt fifo => 
-            let fifo := (get  Env (Tfifo n bt) fifo ENV ) in 
-              Some  (@FIFO.isempty _ n fifo)
-        | Eget_input bt x => 
-            let x := get  Env (Tinput bt) x ENV in 
-              Some x
-        | Eget_output bt x => 
-            let x := get  Env (Toutput bt) x ENV in 
-              Some x
-        | Eget_array size n bt v idx  => 
-            let v := get  Env (Tregfile size bt) v ENV in 
-              do idx <- eval_expr _ idx;
-              @Regfile.get size _ v (Word.val idx)
-        end. 
-  Definition admit {t} : t .  Admitted. 
-  Fixpoint eval_expr2 t (e : expr2 t) : eval_type t ->  option (eval_type t) :=
-    match e with
-      | Eset t e => 
-          fun r => eval_expr t e
-      | Eset_array size n t eid e =>
-      fun v => 
-        do eid <- eval_expr _ eid;
-        do e <- eval_expr _ e;
-        @Regfile.set size (eval_type0 t) v (Word.val eid) e
-      | Epush n t e => 
-          fun f =>
-            do e <- eval_expr t e;
-          Some (FIFO.push e f)
-  
-      | Epop n t => 
-      fun f => 
-        @FIFO.pop _ n f 
-      | Epushpop n t e => 
-          fun f => 
-            do f <- @FIFO.pop _ n  f;    (* UNDEFINED *)
-            do e <- eval_expr t e;
-            Some (FIFO.push  e f)
-      | Eclear n t =>
-          fun f => Some (FIFO.clear  f)
-      | Eset_output t e => 
-          fun _ => eval_expr t e
-      | Enop t => fun x => Some x
-    end. 
-End expr. 
-
-
-
-(* A transition is parametrized by a memory environment. 
-   It contains a guard (a boolean expression), and a dependtly-typed list, which ensure that every memory location is updated.  *)
-
-Record transition Env :=
-  { pi : expr Env Tbool;
-    alpha : dlist type (expr2 Env) Env}.
-                    
-Definition eval_alpha E (alpha : dlist type (expr2 E) E) :
-  eval_list_type E -> option (eval_list_type E) :=
-  fun  (X : eval_list_type E) =>
-    dlist_fold type (expr2 E) eval_type (eval_expr2 E X) E alpha X.
-
-Record ATS :=
-  {
-    memory : list type;
-    transitions : list (transition (memory))
-  }. 
-
-Definition eval_transition (mem: list type) (tr : transition mem) : 
-  eval_list_type mem -> option (eval_list_type mem) :=
-  fun (E : eval_list_type mem) =>
-    let guard := eval_expr mem E Tbool (pi mem tr) in
-      match guard with
-        | Some true => eval_alpha mem (alpha mem tr) E
-        | Some false => None
-        | None => None
-      end.
-
-Fixpoint eval_transitions mem (l : list (transition mem))  :=
-  match l with 
-    | nil => fun _ _  => True
-    | cons t q => BS.union (fun x y => eval_transition mem t x = Some y) 
-                       (eval_transitions mem q)
-  end. 
-  
-Definition eval (X : ATS) :=
-  eval_transitions (memory X) (transitions X). 
-
-End ATS. 
-
-
-Module RTL. 
-  Inductive type :=
-  | Tregfile : forall (size : Z) (base : type0) , type
-  | Tfifo : nat -> type0 -> type
-  | Tbase : type0 -> type
-  | Tinput  : type0 -> type
-  | Toutput : type0 -> type. 
-
-  Fixpoint eval_type (t : type) : Type :=
-    match t with
-      | Tregfile size bt =>Regfile.T size (eval_type0 bt) 
-      | Tfifo n bt => FIFO.T n (eval_type0 bt)
-      | Tbase bt => eval_type0 bt
-      | Tinput bt => eval_type0 bt
-      | Toutput bt => eval_type0 bt
-    end. 
-
-  Variable Env : list type. 
-    
-  Inductive expr : type0 -> Type :=
-  | Eprim : forall f (args: expr_vector (args (f))), expr ( (res ( f)))
-  | Eget : forall t (v : var Env (Tbase t)), expr t
-  (* operations on arrays *)
-  | Eget_array : forall size  n t (v : var Env (Tregfile size t)), expr (Tint n) -> expr t
-  (* operations on fifo *)
-  | Efirst : forall n t (v : var Env (Tfifo n t)), expr t
-  | Eisfull : forall n t (v : var Env (Tfifo n t)), expr (Tbool)
-  | Eisempty : forall n t (v : var Env (Tfifo n t)), expr (Tbool)
-  (* operations on Inputs *)
-  | Eget_input : forall t (v : var Env (Tinput t)), expr t
-  (* operations on Outputs *)
-  | Eget_output : forall t (v : var Env (Toutput t)), expr t
-   with expr_vector : list type0 -> Type :=
-  | expr_vector_nil : expr_vector nil
-  | expr_vector_cons : forall t q, expr  (t) -> expr_vector q -> expr_vector (t::q). 
-
-
-  Record reg_update (t : type0): Type :=
-    {
-      latch_enable : expr Tbool;
-      data : expr t
-    }. 
-  
-  Record array_update (size : Z) (width : nat) (t : type0) :=
-    {
-      write_addr : expr (Tint width);
-      write_data : expr t;
-      write_enable : expr Tbool
-    }.
-
-  Record fifo_update (t : type0) :=
-    {
-      enqueue_data : expr t;
-      enqueue_enable : expr Tbool;
-      dequeue_enable : expr Tbool;
-      clear_enable : expr Tbool
-    }. 
-  
-  Inductive expr2 : type -> Type :=
-  (* expression to affect and latch enable  *)
-  | Eregister : forall t, reg_update t -> expr2 (Tbase t)
-  (* array operations *)
-  | Earray :  forall size width t, array_update size width t -> 
-                   expr2 (Tregfile size t)
-  (* fifo operations *)
-  | Efifo : forall n t, fifo_update t ->  expr2 (Tfifo n t) 
-  | Enop : forall t, expr2 t. 
-              
-  
-End RTL. 
-
-(*     (global-set-key '[(f5)]          'proof-assert-next-command-interactive) 
- *) 
