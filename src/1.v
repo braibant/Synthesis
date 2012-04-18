@@ -164,7 +164,7 @@ Module Regfile.
     size. Loose leibniz equality. *)
 
     Definition T (size : Z) (X : Type) := Z -> option X. 
-    Definition empty size X : T size X := fun _ => None. 
+    Definition empty size X (el : X ): T size X := fun _ => Some el. 
     Definition get {size X} (v : T size X) : Z -> option X := v.
     Definition Zeqb (x y : Z) := (match x ?= y with | Eq => true | _ => false end)%Z. 
     Definition set {size X} (v : T size X) (addr : Z) (el : X) :=
@@ -173,6 +173,14 @@ Module Regfile.
         if Zeqb addr  addr' 
         then Some el 
         else v addr').     
+
+    Fixpoint of_list' {X : Type} (l : list X) (n : Z) :=
+      match l with 
+        | nil => fun _ => None
+        | cons t q => fun x => if Zeqb x n then Some t else (of_list' q (n+1)%Z) x
+      end. 
+
+    Definition of_list {X} n (l : list X) : T n X := of_list' l 0%Z. 
 
 End Regfile. 
 
@@ -463,34 +471,34 @@ Module BS.
             Some (@FIFO.isempty _  n f) 
       end. 
         
-    Fixpoint eval_expr2 t (e : expr2 t) {struct e} : option (eval_type2 t) :=
+    Require Import JMeq. 
+    Fixpoint eval_expr2 t (e : expr2 t) {struct e} : eval_type2 t -> option (eval_type2 t) :=
       match e with
-        | Eset t x => eval_expr1 t x 
-        | Eset_regfile size t n x x0 => admit
-        | Epush n t x => admit
-        | Epop n t => admit
-        | Epushpop n t x => admit
-        | Eclear n t => admit
-        | Enop t => admit        (* should be a var *)
+        | Eset t x => fun _ => eval_expr1 t x 
+        | Eset_regfile size t n adr val => 
+            fun old => 
+              do adr <- eval_expr1 _ adr; 
+              do val <- eval_expr1 t val;
+              @Regfile.set size (eval_type1 t) old (Word.val adr) val
+        | Epush n t x => 
+            fun q => 
+              do x <- eval_expr1 t x;
+              Some (FIFO.push x q)
+        | Epop n t => 
+            fun q => 
+              @FIFO.pop (eval_type1 t) n q
+        | Epushpop n t x => 
+          fun q => 
+            do f <- @FIFO.pop _ n q;    (* UNDEFINED *)
+            do e <- eval_expr1 t x;
+            Some (FIFO.push  e f)
+        | Eclear n t => 
+            fun q => 
+            Some (@FIFO.clear (eval_type1 t) n q)
+        | Enop t => 
+            fun x => Some x
       end. 
 
-    (* Fixpoint eval_tuple fl (v : expr_vector fl) : eval_type2_list fl := *)
-    (*   match v with  *)
-    (*     | expr_vector_nil => tt *)
-    (*     | expr_vector_cons t q e vq => (eval_expr t e, eval_tuple q vq) *)
-    (*   end.  *)
-    
-    (* Fixpoint eval_expr_vector l (v : expr_vector l) {struct v} :  eval_type2_list l := *)
-    (*   match v with *)
-    (*     | expr_vector_nil => tt *)
-    (*     | expr_vector_cons t q e vq => (eval_expr t e, eval_expr_vector q vq) *)
-    (*   end.  *)
-    
-    (* Fixpoint eval_union fl (e : expr_disjunct fl) : eval_type_sum fl := *)
-    (*   match e with *)
-    (*     | expr_disjunct_hd id t q ex => inl (eval_expr  t ex) *)
-    (*     | expr_disjunct_tl id t q exd => inr (eval_union q exd) *)
-    (*   end.  *)
   End expr. 
 
   Section pattern.  
@@ -561,11 +569,11 @@ with
                                pattern2 E t -> pattern2_vector q F -> 
                                pattern2_vector (t::q) (List.app E F). 
 
-  Inductive expr2_vector (E : list type2) : list type2 -> Type :=
-  | expr2_vector_nil : expr2_vector E nil
-  | expr2_vector_cons : forall t q, @expr2 E t -> expr2_vector E q -> expr2_vector E (cons t q). 
+  (* Inductive expr2_vector (E : list type2) : list type2 -> Type := *)
+  (* | expr2_vector_nil : expr2_vector E nil *)
+  (* | expr2_vector_cons : forall t q, @expr2 E t -> expr2_vector E q -> expr2_vector E (cons t q).  *)
 
-
+  Definition expr2_vector (E : list type2) := dlist type2 (@expr2 E). 
   (* [where_clause E F] : starting with bindings [E], produce bindings
   [F] such that [E] ⊂ [F] *)
 
@@ -625,22 +633,16 @@ with
             where_clause_match w (append_envs _ _ x B  )
     end. 
 
-  Definition eval_expr2_vector t env (v : @expr2_vector env t) : 
-    eval_type2_list env -> option (eval_type2_list t) . 
-  induction v. 
-  simpl. intros; auto.  constructor. auto. apply tt. 
-  simpl. intros . 
-  refine (do a <- eval_expr2 X _ e; _). 
-  refine (do b <- IHv X; _).
-  refine (Some (a,b)). 
-  Defined. 
+  Definition eval_expr2_vector mem env (v : @expr2_vector env mem) : 
+    eval_type2_list env -> eval_type2_list mem -> option (eval_type2_list mem) := 
+    (fun ENV MEM =>  (dlist_fold _ _ _ (eval_expr2 ENV) mem v MEM)). 
 
-  Definition eval_rule tyl (r : rule tyl) : relation (eval_type2_list (tyl)) :=
+  Definition eval_rule mem (r : rule mem) : relation (eval_type2_list mem) :=
     fun M1 M2 => 
       exists E, exists F,  (pattern2_vector_match _ _ (lhs r) M1 = Some E
            /\ where_clause_match (where_clauses _ r) E = Some F
            /\ eval_expr1 F _ (cond r) = Some true
-           /\ eval_expr2_vector _ _ (rhs r) F = Some M2). 
+           /\ eval_expr2_vector _ _ (rhs r) F M1 = Some M2). 
   
   Fixpoint eval_rules ty (l : list (rule ty)) : relation (eval_type2_list (ty)) :=
     match l with
@@ -656,7 +658,7 @@ with
       do F <- where_clause_match (where_clauses _ r) E;
 
       if (@eval_expr1 (env2  r) F _ (cond  r))
-      then (@eval_expr2_vector _ _  (rhs  r) F)
+      then (@eval_expr2_vector _ _  (rhs  r) F M1)
       else None . 
   
   
@@ -720,7 +722,9 @@ with
   Delimit Scope expr2_scope with expr2. 
   Arguments Eset_regfile {E} size t n _%expr _%expr.  
 
-  Notation "[| x , .. , z |]"  :=  ((expr2_vector_cons _ _ _ x .. (expr2_vector_cons _ _ _ z (expr2_vector_nil _) ).. )) (at level  0): expr2_scope.
+  Arguments dlist_cons {T P} t q _ _ . 
+  Arguments dlist_nil {T P}. 
+  Notation "[| x , .. , z |]"  :=  ((dlist_cons  _ _ x .. (dlist_cons  _ _ z (dlist_nil ) ).. )) (at level  0): expr2_scope.
   Notation "'[' key '<-' v ']' " := ( Eset_regfile _ _ _  key v )(at level 0, no associativity) : expr2_scope.
   Notation "•" := (Enop _) : expr2_scope. 
   
@@ -750,8 +754,10 @@ with
     
     apply (! b <= ! a)%expr. 
 
-    Definition expr2_vector_singleton E t x :=
-      expr2_vector_cons E t _ x (expr2_vector_nil _). 
+      
+    Definition expr2_vector_singleton E t (x : @expr2 E t) : expr2_vector E [t] :=
+      dlist_cons t [] x (@dlist_nil type2 expr2). 
+
     apply expr2_vector_singleton. 
     eapply Eset. eapply Eunion. eapply expr1_disjunct_hd.  apply ([| !a - !b, !b|])%expr. 
     Defined. 
@@ -1027,6 +1033,33 @@ with
             •,
             • , [(var_lift rf)[? (!ra)%expr] <- (var_lift rf) [?(!r)%expr]] |])%expr2. 
     Defined. 
+
+    
+    Definition TRS : TRS :=
+      {| trs_type := state; 
+         trs_rules := [ 
+                       loadi_rule;
+                       loadpc_rule;
+                       add_rule;
+                       bztaken_rule;
+                       bznottaken_rule;
+                       load_rule;
+                       store_rule
+                      ]|}. 
+    
+    Definition init : eval_env eval_type2 state.
+    unfold eval_env. red. 
+    split. simpl. apply (Word.repr _ 0). 
+    split. simpl. apply Regfile.empty. apply (Word.repr _ 0).
+    split. simpl eval_env. compute. 
+    Definition AA : Word.T 32 := Word.repr 32 31. 
+    Definition BB : Word.T 32 := Word.repr 32 3. 
+    
+    Definition this_ENV : eval_env eval_type2 [Treg Num; Treg Num] := (AA, (BB, tt)). 
+    
+    Eval compute in run_unfair 10 TRS ((inl this_ENV, tt)). 
+
+    Defi
         
   End PROC. 
 End BS.
