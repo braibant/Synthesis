@@ -1,7 +1,7 @@
 Require Import Common. 
 
 Inductive type :=
-| Tregfile : forall (size : Z) (base : type0) , type
+| Tregfile : forall (size : nat) (base : type0) , type
 | Tfifo : nat -> type0 -> type
 | Tbase : type0 -> type
 | Tinput  : type0 -> type
@@ -43,7 +43,7 @@ Section expr.
       data : expr t
     }. 
   
-  Record array_update (size : Z) (width : nat) (t : type0) :=
+  Record array_update (size : nat) (width : nat) (t : type0) :=
     {
       write_addr : expr (Tint width);
       write_data : expr t;

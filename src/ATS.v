@@ -1,7 +1,7 @@
 
 Require Import Common. 
 Inductive type :=
-| Tregfile : forall (size : Z) (base : type0) , type
+| Tregfile : forall (size : nat) (base : type0) , type
 | Tfifo : nat -> type0 -> type
 | Tbase : type0 -> type
 | Tinput  : type0 -> type
@@ -95,22 +95,26 @@ Section expr.
       | Eget_array size n bt v idx  => 
           let v := get  Env (Tregfile size bt) v ENV in 
             do idx <- eval_expr _ idx;
-          @Regfile.get size _ v (Word.val idx)
+          @Regfile.get size _ v (Word.unsigned idx)
     end. 
+
   Fixpoint eval_expr2 t (e : expr2 t) : eval_type t ->  option (eval_type t) :=
     match e with
       | Eset t e => 
           fun r => eval_expr t e
-      | Eset_array size n t eid e =>
+      | Eset_array size n t adr e =>
           fun v => 
-            do eid <- eval_expr _ eid;
-          do e <- eval_expr _ e;
-          @Regfile.set size (eval_type0 t) v (Word.val eid) e
+            do adr <- eval_expr _ adr;
+            do e <- eval_expr _ e;
+            let adr := Word.unsigned adr in 
+            (* Since Regfile.set silently erases out of bounds
+            accesses, we add an extra check here *)
+            check (lt_nat_bool adr size);
+            Some (@Regfile.set size (eval_type0 t) v adr e) 
       | Epush n t e => 
           fun f =>
             do e <- eval_expr t e;
-          Some (FIFO.push e f)
-               
+            Some (FIFO.push e f)               
       | Epop n t => 
           fun f => 
             @FIFO.pop _ n f 

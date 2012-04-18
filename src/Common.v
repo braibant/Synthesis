@@ -1,8 +1,9 @@
 Require Export String. 
-
+Require Vector. 
 Notation "'do' X <- A ; B" := (match A with Some X => B | None => None end)
   (at level 200, X ident, A at level 100, B at level 200). 
-
+Notation " 'check' A ; B" := (if A then B else None)
+  (at level 200, A at level 100, B at level 200). 
 Axiom admit : forall {X} , X. 
 
 Definition ident := string. 
@@ -90,6 +91,8 @@ Module Word.
   Arguments val {n} _. 
   Arguments range {n} _. 
   
+  Definition unsigned {n} (x : T n) : nat := Zabs_nat (val x).
+
   Notation "[2^ n ]" := (two_power_nat n). 
   
   Open Scope Z_scope. 
@@ -118,7 +121,15 @@ Module Word.
       (match val x ?= val y with Lt => true | _ => false end) .
 
 End Word. 
- 
+
+Fixpoint lt_nat_bool n m : bool :=
+  match n,m with 
+    | 0, S _ => true
+    | S n, S m => lt_nat_bool n m 
+    | _, _ => false
+  end. 
+
+
 Module FIFO. 
   Section t. 
     Definition T (n : nat) X:= list X. 
@@ -145,13 +156,6 @@ Module FIFO.
           | _ => false
       end. 
 
-    Fixpoint lt_nat_bool n m : bool :=
-      match n,m with 
-          | 0, S _ => true
-          | S n, S m => lt_nat_bool n m 
-          | _, _ => false
-      end. 
-
     Definition isfull {n} (q : T n X) := 
       negb (lt_nat_bool (List.length q) n). 
     
@@ -161,27 +165,21 @@ End FIFO.
 
 Module Regfile. 
     
-    (* the ATBR solution: only meaningful inside between 0 and the
-    size. Loose leibniz equality. *)
+  
+  Definition T (size : nat) (X : Type) := Vector.vector X size.  
+    
+  Definition empty size X (el : X ): T size X := Vector.empty X size el.  
+  Definition get {size X} (v : T size X) (n : nat) := 
+    Vector.get _ _ v n. 
+  
+  Definition set  {size X} (v : T size X) (addr : nat) (el : X) : T size X :=
+    Vector.set _ _ v (addr)%nat el. 
+  
+  Definition of_list {X : Type} (l : list X) : T (List.length l) X :=
+    Vector.of_list _ l. 
 
-    Definition T (size : Z) (X : Type) := Z -> option X. 
-    Definition empty size X (el : X ): T size X := fun _ => Some el. 
-    Definition get {size X} (v : T size X) : Z -> option X := v.
-    Definition Zeqb (x y : Z) := (match x ?= y with | Eq => true | _ => false end)%Z. 
-    Definition set {size X} (v : T size X) (addr : Z) (el : X) :=
-      Some 
-        (fun addr' => 
-        if Zeqb addr  addr' 
-        then Some el 
-        else v addr').     
-
-    Fixpoint of_list' {X : Type} (l : list X) (n : Z) :=
-      match l with 
-        | nil => fun _ => None
-        | cons t q => fun x => if Zeqb x n then Some t else (of_list' q (n+1)%Z) x
-      end. 
-
-    Definition of_list {X} n (l : list X) : T n X := of_list' l 0%Z. 
+  Definition of_list_pad {X} n (default : X) (l : list X) : T n X := 
+    Vector.of_list_pad _ n default l.  
 
 End Regfile. 
 
