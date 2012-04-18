@@ -120,45 +120,60 @@ End Word.
  
 Module FIFO. 
   Section t. 
-    Variable X : Type. 
-    Definition T := list X. 
-    
-    Definition push x (q : T) : T := 
+    Definition T (n : nat) X:= list X. 
+
+    Context {X : Type}. 
+    Definition push {n} x (q : T n X) : T n X:=           
       List.app q (cons x nil). 
         
-    Definition first (q : T) : option X := 
-      match q with 
+    Definition first {n} (q : T n X) : option X := 
+      match  q with 
         | nil => None
         | cons t q => Some t
       end. 
     
-    Definition pop (q : T) := 
+    Definition pop {n} (q : T n X) := 
       match q with 
           | nil => None
           | cons t q => Some q
       end.
 
-    Definition isempty (q : T) :=
+    Definition isempty {n} (q : T n X) :=
       match q with 
           | nil => true
           | _ => false
       end. 
 
-    Definition isfull (q : T) := false. 
+    Fixpoint lt_nat_bool n m : bool :=
+      match n,m with 
+          | 0, S _ => true
+          | S n, S m => lt_nat_bool n m 
+          | _, _ => false
+      end. 
+
+    Definition isfull {n} (q : T n X) := 
+      negb (lt_nat_bool (List.length q) n). 
     
-    Definition clear (q : T) : T := nil. 
+    Definition clear {n} (q : T n X) : T n X:= nil. 
   End t. 
 End FIFO. 
 
 Module Regfile. 
-  Section t. 
-    Axiom T : Z -> Type -> Type. 
-    Axiom empty : forall size D, T size D.
-    Axiom get : forall size D, T size D -> Z -> option D.
-    Axiom set : forall size D, T size D -> Z -> D -> option (T size D).
     
-    
-  End t. 
+    (* the ATBR solution: only meaningful inside between 0 and the
+    size. Loose leibniz equality. *)
+
+    Definition T (size : Z) (X : Type) := Z -> option X. 
+    Definition empty size X : T size X := fun _ => None. 
+    Definition get {size X} (v : T size X) : Z -> option X := v.
+    Definition Zeqb (x y : Z) := (match x ?= y with | Eq => true | _ => false end)%Z. 
+    Definition set {size X} (v : T size X) (addr : Z) (el : X) :=
+      Some 
+        (fun addr' => 
+        if Zeqb addr  addr' 
+        then Some el 
+        else v addr').     
+
 End Regfile. 
 
 (* The base types, that exist in every language. These types should have:
@@ -249,7 +264,7 @@ Module BS.
   Inductive type2 :=
     | Treg : type1 -> type2
     | Tregfile  : Z -> type1 -> type2
-    | Tfifo : type1 -> type2. 
+    | Tfifo : nat -> type1 -> type2. 
 
   (** [eval_type t] computes the coq denotation of the [type] [t] *)
   Fixpoint eval_type1  (t : type1 ) : Type :=
@@ -270,7 +285,7 @@ Module BS.
     match t with 
         Treg t => eval_type1 t
       | Tregfile n b => Regfile.T n (eval_type1 b)
-      | Tfifo st => FIFO.T (eval_type1 st)
+      | Tfifo n st => FIFO.T n (eval_type1 st)
     end. 
 
   Definition eval_type2_list  l := eval_env  eval_type2 l. 
@@ -308,9 +323,9 @@ Module BS.
     | Eget : forall t (v : var E (Treg t)), expr1 (t)
     (* TODO: Use Tenum instead of Tint *)
     | Eget_regfile : forall size t (v : var E  (Tregfile size t)) n, expr1 (T01 (Tint n)) -> expr1 t
-    | Efirst : forall t (v : var E (Tfifo t)), expr1 t
-    | Eisfull : forall t (v : var E (Tfifo t)), expr1 (T01 Tbool)
-    | Eisempty : forall t (v : var E (Tfifo t)), expr1 (T01 Tbool)
+    | Efirst : forall n t (v : var E (Tfifo n t)), expr1 t
+    | Eisfull : forall n t (v : var E (Tfifo n t)), expr1 (T01 Tbool)
+    | Eisempty : forall n t (v : var E (Tfifo n t)), expr1 (T01 Tbool)
 
     | Eunion : forall {id fl} (case : expr1_disjunct fl), expr1 (Tunion id fl)
     | Etuple : forall l (v : expr1_vector l), expr1 (Ttuple l)
@@ -331,10 +346,10 @@ Module BS.
     | Eset_regfile : forall size t n,
                      expr1 (T01 (Tint n)) -> expr1 t -> expr2 (Tregfile size t) 
     (* operations on fifos *)
-    | Epush : forall t, expr1 t -> expr2 (Tfifo t)
-    | Epop  : forall t, expr2 (Tfifo t) (* forgets the first element *)
-    | Epushpop : forall t, expr1 t -> expr2 (Tfifo t)
-    | Eclear : forall t, expr2 (Tfifo t)
+    | Epush : forall n t, expr1 t -> expr2 (Tfifo n t)
+    | Epop  : forall n t, expr2 (Tfifo n t) (* forgets the first element *)
+    | Epushpop : forall n t, expr1 t -> expr2 (Tfifo n t)
+    | Eclear : forall n t, expr2 (Tfifo n t)
     
     (* do nothing *)
     | Enop : forall t, expr2 t.
@@ -435,27 +450,27 @@ Module BS.
         | Eget_regfile size t v n adr => 
             let rf := get E (Tregfile size t) v ENV in 
             do adr <- eval_expr1 _ adr; 
-              Regfile.get size _ rf  (Word.val adr)
-        | Efirst t v => 
-            let f := get E (Tfifo t) v ENV in
-            FIFO.first _ f 
-        | Eisfull t v => 
-            let f := get E (Tfifo t) v ENV in
-            Some (FIFO.isfull _ f) 
+              @Regfile.get size _ rf  (Word.val adr)
+        | Efirst n t v => 
+            let f := get E (Tfifo n t) v ENV in
+            @FIFO.first _ n f 
+        | Eisfull n t v => 
+            let f := get E (Tfifo n t) v ENV in
+            Some (@FIFO.isfull _ n f) 
 
-        | Eisempty t v => 
-            let f := get E (Tfifo t) v ENV in
-            Some (FIFO.isempty _ f) 
+        | Eisempty n t v => 
+            let f := get E (Tfifo n t) v ENV in
+            Some (@FIFO.isempty _  n f) 
       end. 
         
     Fixpoint eval_expr2 t (e : expr2 t) {struct e} : option (eval_type2 t) :=
       match e with
         | Eset t x => eval_expr1 t x 
         | Eset_regfile size t n x x0 => admit
-        | Epush t x => admit
-        | Epop t => admit
-        | Epushpop t x => admit
-        | Eclear t => admit
+        | Epush n t x => admit
+        | Epop n t => admit
+        | Epushpop n t x => admit
+        | Eclear n t => admit
         | Enop t => admit        (* should be a var *)
       end. 
 
@@ -1019,7 +1034,7 @@ End BS.
 Module ATS. 
   Inductive type :=
   | Tregfile : forall (size : Z) (base : type0) , type
-  | Tfifo : type0 -> type
+  | Tfifo : nat -> type0 -> type
   | Tbase : type0 -> type
   | Tinput  : type0 -> type
   | Toutput : type0 -> type. 
@@ -1028,7 +1043,7 @@ Module ATS.
   Fixpoint eval_type (t : type) : Type :=
     match t with
       | Tregfile size bt => Regfile.T size (eval_type0 bt)
-      | Tfifo bt => FIFO.T (eval_type0 bt)
+      | Tfifo n bt => FIFO.T n (eval_type0 bt)
       | Tbase bt => eval_type0 bt
       | Tinput bt => eval_type0 bt
       | Toutput bt => eval_type0 bt
@@ -1046,9 +1061,9 @@ Module ATS.
     (* operations on arrays *)
     | Eget_array : forall size  n t (v : var Env (Tregfile size t)), expr (Tint n) -> expr t
     (* operations on fifo *)
-    | Efirst : forall t (v : var Env (Tfifo t)), expr t
-    | Eisfull : forall t (v : var Env (Tfifo t)), expr (Tbool)
-    | Eisempty : forall t (v : var Env (Tfifo t)), expr (Tbool)
+    | Efirst : forall n t (v : var Env (Tfifo n t)), expr t
+    | Eisfull : forall n t (v : var Env (Tfifo n t)), expr (Tbool)
+    | Eisempty : forall n t (v : var Env (Tfifo n t)), expr (Tbool)
     (* operations on Inputs *)
     | Eget_input : forall t (v : var Env (Tinput t)), expr t
     (* operations on Outputs *)
@@ -1064,10 +1079,10 @@ Module ATS.
     | Eset_array : forall size n t,
                      expr (Tint n) -> expr t -> expr2 (Tregfile size t)
     (* operations on fifos *)
-    | Epush : forall t, expr t -> expr2 (Tfifo t)
-    | Epop  : forall t, expr2 (Tfifo t) (* forgets the first element *)
-    | Epushpop : forall t, expr t -> expr2 (Tfifo t)
-    | Eclear : forall t, expr2 (Tfifo t)
+    | Epush : forall n t, expr t -> expr2 (Tfifo n t)
+    | Epop  : forall n t, expr2 (Tfifo n t) (* forgets the first element *)
+    | Epushpop : forall n t, expr t -> expr2 (Tfifo n t)
+    | Eclear : forall n t, expr2 (Tfifo n t)
                           
     (* set an output *)
     | Eset_output : forall t,  expr t -> expr2 (Toutput t)
@@ -1094,15 +1109,15 @@ Module ATS.
               do args <-  (eval_expr_vector _ args);
             Some (value (f) args)
         | Eget t v => Some (get Env (Tbase t) v ENV)
-        | Efirst bt fifo => 
-            let fifo := (get Env (Tfifo bt) fifo ENV ) in
-              FIFO.first (eval_type0 bt)  fifo 
-        | Eisfull bt fifo => 
-            let fifo := (get Env (Tfifo bt) fifo ENV ) in 
-              Some (FIFO.isfull _ fifo)
-        | Eisempty bt fifo => 
-            let fifo := (get  Env (Tfifo bt) fifo ENV ) in 
-              Some  (FIFO.isempty _ fifo)
+        | Efirst n bt fifo => 
+            let fifo := (get Env (Tfifo n bt) fifo ENV ) in
+              @FIFO.first (eval_type0 bt) n  fifo 
+        | Eisfull n bt fifo => 
+            let fifo := (get Env (Tfifo n bt) fifo ENV ) in 
+              Some (@FIFO.isfull _ n fifo)
+        | Eisempty n bt fifo => 
+            let fifo := (get  Env (Tfifo n bt) fifo ENV ) in 
+              Some  (@FIFO.isempty _ n fifo)
         | Eget_input bt x => 
             let x := get  Env (Tinput bt) x ENV in 
               Some x
@@ -1112,7 +1127,7 @@ Module ATS.
         | Eget_array size n bt v idx  => 
             let v := get  Env (Tregfile size bt) v ENV in 
               do idx <- eval_expr _ idx;
-              Regfile.get size _ v (Word.val idx)
+              @Regfile.get size _ v (Word.val idx)
         end. 
   Definition admit {t} : t .  Admitted. 
   Fixpoint eval_expr2 t (e : expr2 t) : eval_type t ->  option (eval_type t) :=
@@ -1124,21 +1139,21 @@ Module ATS.
         do eid <- eval_expr _ eid;
         do e <- eval_expr _ e;
         @Regfile.set size (eval_type0 t) v (Word.val eid) e
-      | Epush t e => 
+      | Epush n t e => 
           fun f =>
             do e <- eval_expr t e;
-          Some (FIFO.push _ e f)
+          Some (FIFO.push e f)
   
-      | Epop t => 
+      | Epop n t => 
       fun f => 
-        FIFO.pop _ f 
-      | Epushpop t e => 
+        @FIFO.pop _ n f 
+      | Epushpop n t e => 
           fun f => 
-            do f <- FIFO.pop _ f;    (* UNDEFINED *)
+            do f <- @FIFO.pop _ n  f;    (* UNDEFINED *)
             do e <- eval_expr t e;
-            Some (FIFO.push _ e f)
-      | Eclear t =>
-          fun f => Some (FIFO.clear _ f)
+            Some (FIFO.push  e f)
+      | Eclear n t =>
+          fun f => Some (FIFO.clear  f)
       | Eset_output t e => 
           fun _ => eval_expr t e
       | Enop t => fun x => Some x
@@ -1191,7 +1206,7 @@ End ATS.
 Module RTL. 
   Inductive type :=
   | Tregfile : forall (size : Z) (base : type0) , type
-  | Tfifo : type0 -> type
+  | Tfifo : nat -> type0 -> type
   | Tbase : type0 -> type
   | Tinput  : type0 -> type
   | Toutput : type0 -> type. 
@@ -1199,7 +1214,7 @@ Module RTL.
   Fixpoint eval_type (t : type) : Type :=
     match t with
       | Tregfile size bt =>Regfile.T size (eval_type0 bt) 
-      | Tfifo bt => FIFO.T (eval_type0 bt)
+      | Tfifo n bt => FIFO.T n (eval_type0 bt)
       | Tbase bt => eval_type0 bt
       | Tinput bt => eval_type0 bt
       | Toutput bt => eval_type0 bt
@@ -1213,9 +1228,9 @@ Module RTL.
   (* operations on arrays *)
   | Eget_array : forall size  n t (v : var Env (Tregfile size t)), expr (Tint n) -> expr t
   (* operations on fifo *)
-  | Efirst : forall t (v : var Env (Tfifo t)), expr t
-  | Eisfull : forall t (v : var Env (Tfifo t)), expr (Tbool)
-  | Eisempty : forall t (v : var Env (Tfifo t)), expr (Tbool)
+  | Efirst : forall n t (v : var Env (Tfifo n t)), expr t
+  | Eisfull : forall n t (v : var Env (Tfifo n t)), expr (Tbool)
+  | Eisempty : forall n t (v : var Env (Tfifo n t)), expr (Tbool)
   (* operations on Inputs *)
   | Eget_input : forall t (v : var Env (Tinput t)), expr t
   (* operations on Outputs *)
@@ -1253,7 +1268,7 @@ Module RTL.
   | Earray :  forall size width t, array_update size width t -> 
                    expr2 (Tregfile size t)
   (* fifo operations *)
-  | Efifo : forall t, fifo_update t ->  expr2 (Tfifo t) 
+  | Efifo : forall n t, fifo_update t ->  expr2 (Tfifo n t) 
   | Enop : forall t, expr2 t. 
               
   
