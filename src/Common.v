@@ -59,18 +59,24 @@ Section dependent_lists.
   
   Variable E : T -> Type.
 
-  Definition EVAL l := eval_env E l. 
-  Variable F : forall (t : T), P t -> E t -> option (E t). 
-  Fixpoint dlist_fold (l : list T) (d : dlist l) : EVAL l -> option (EVAL l):=
-    match d with
-        dlist_nil => fun v => Some v
-      | dlist_cons t q pt dlq => 
-          fun v => 
-            do x <- F t pt (fst v);
+  Section s1. 
+    Variable F : forall (t : T), P t -> E t -> option (E t). 
+    Fixpoint dlist_fold (l : list T) (d : dlist l) : eval_env E l -> option (eval_env E l):=
+      match d with
+          dlist_nil => fun v => Some v
+        | dlist_cons t q pt dlq => 
+            fun v => 
+              do x <- F t pt (fst v);
             do y <- dlist_fold q dlq (snd v);
             Some (x,y)
-    end. 
+      end. 
+  End s1. 
+  
 End dependent_lists. 
+
+Arguments dlist {T} P _. 
+Arguments dlist_nil {T P}. 
+Arguments dlist_cons {T P} {t q} _ _.  
 
 Module Abstract. 
   Record T :=

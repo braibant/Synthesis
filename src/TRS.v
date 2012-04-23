@@ -2,30 +2,22 @@ Require Import Common.
 
 Inductive type1 : Type :=
   | T01 : type0 -> type1
-  | Tunion : forall (idx : ident), type1_id_list -> type1
-  | Ttuple : list type1 -> type1
-                            with type1_id_list :=
-  | type1_id_list_nil : type1_id_list 
-  | type1_id_list_cons : ident -> type1 -> type1_id_list ->  type1_id_list. 
+  | Tunion : forall (idx : ident), list (ident * type1) -> type1
+  | Ttuple : list type1 -> type1.
 
 Inductive type2 :=
   | Treg : type1 -> type2
   | Tregfile  : nat -> type1 -> type2
-  | Tfifo : nat -> type1 -> type2. 
+  | Tfifo : nat -> type1 -> type2
+  | Tinput : type1 -> type2
+  | Toutput : type1 -> type2. 
 
 (** [eval_type t] computes the coq denotation of the [type] [t] *)
 Fixpoint eval_type1  (t : type1 ) : Type :=
   match t with
     | T01 st => eval_type0 st 
-    | Tunion  _ cases => eval_type1_id_list (sum)%type  cases
-    | Ttuple  x => 
-        eval_env eval_type1 x
-  end
-with 
-eval_type1_id_list (op : Type -> Type -> Type)  (l : type1_id_list ) : Type :=
-  match l with 
-    | type1_id_list_nil => unit
-    | type1_id_list_cons  name t q => op (eval_type1  t) (eval_type1_id_list op  q)%type
+    | Tunion  _ cases => List.fold_right (fun x acc => eval_type1 (snd x) + acc)%type unit cases
+    | Ttuple  x =>  eval_env eval_type1 x
   end. 
 
 Definition eval_type2 (t : type2) : Type :=
@@ -33,6 +25,8 @@ Definition eval_type2 (t : type2) : Type :=
       Treg t => eval_type1 t
     | Tregfile n b => Regfile.T n (eval_type1 b)
     | Tfifo n st => FIFO.T n (eval_type1 st)
+    | Tinput t => eval_type1 t
+    | Toutput t => eval_type1 t
   end. 
 
 Definition eval_type2_list  l := eval_env  eval_type2 l. 
@@ -44,13 +38,17 @@ Definition lift := List.map T02.
 
 Section expr. 
   (* Environement is the same in the whole expr *)
-  Context {E : list type2}.
+  Variable (E : list type2).
   
   Inductive expr1 : type1 -> Type :=
-  | Eprim : forall args res (f : builtin args res), expr0_vector args -> expr1 (T01 res) 
+  | Eprim : forall args res (f : builtin args res), dlist  (fun t => expr1 (T01 t)) args -> expr1 (T01 res) 
   | Econstant : forall (c : constant), expr1 (T01 (cst_ty c))
   (* get a register of level 1 *)
   | Eget : forall t (v : var E (Treg t)), expr1 (t)
+  (* get for input/output  *)
+  | Eget_input  : forall t (v : var E (Tinput t)), expr1 (t)
+  | Eget_output : forall t (v : var E (Toutput t)), expr1 (t)
+                                                     
   (* TODO: Use Tenum instead of Tint *)
   | Eget_regfile : forall size t (v : var E  (Tregfile size t)) n, expr1 (T01 (Tint n)) -> expr1 t
   | Efirst : forall n t (v : var E (Tfifo n t)), expr1 t
@@ -58,17 +56,13 @@ Section expr.
   | Eisempty : forall n t (v : var E (Tfifo n t)), expr1 (T01 Tbool)
                                                     
   | Eunion : forall {id fl} (case : expr1_disjunct fl), expr1 (Tunion id fl)
-  | Etuple : forall l (v : expr1_vector l), expr1 (Ttuple l)
-  with expr1_disjunct : type1_id_list -> Type :=
-  | expr1_disjunct_hd:forall id t q, expr1 t -> expr1_disjunct (type1_id_list_cons id t q) 
-  | expr1_disjunct_tl:forall id t q, expr1_disjunct q -> expr1_disjunct (type1_id_list_cons id t q) 
-  with expr1_vector : list type1 -> Type :=
+  | Etuple : forall l (v : dlist expr1 l), expr1 (Ttuple l)
+                                            with expr1_disjunct : list (ident * type1) -> Type :=
+  | expr1_disjunct_hd:forall id t q, expr1 t -> expr1_disjunct ((id,t) :: q) 
+  | expr1_disjunct_tl:forall id t q, expr1_disjunct q -> expr1_disjunct ((id,t)::q) 
+                                            with expr1_vector : list type1 -> Type :=
   | expr1_vector_nil: expr1_vector nil
-  | expr1_vector_cons: forall t q, expr1 t -> expr1_vector q -> expr1_vector (t::q)
-
-  with expr0_vector : list type0 -> Type :=
-  | expr0_vector_nil: expr0_vector nil
-  | expr0_vector_cons: forall t q, expr1 (T01 t) -> expr0_vector q -> expr0_vector (t::q). 
+  | expr1_vector_cons: forall t q, expr1 t -> expr1_vector q -> expr1_vector (t::q). 
 
   Inductive expr2 : type2 -> Type :=
   | Eset : forall t , expr1 t ->  expr2 (Treg t)
@@ -79,30 +73,32 @@ Section expr.
   | Epop  : forall n t, expr2 (Tfifo n t) (* forgets the first element *)
   | Epushpop : forall n t, expr1 t -> expr2 (Tfifo n t)
   | Eclear : forall n t, expr2 (Tfifo n t)
-                          
+
+  (* set an output *)
+  | Eset_output : forall t, expr1 t -> expr2 (Toutput t)
   (* do nothing *)
   | Enop : forall t, expr2 t.
-
-  Definition eval_type_sum fl := eval_type1_id_list (sum) fl. 
   
-
+  Definition eval_type_sum (fl : list (ident * type1)) := 
+    List.fold_right (fun x acc => eval_type1 (snd x) + acc)%type unit fl. 
   
-  Fixpoint unlift (l : list type0) {struct l} : eval_type2_list (lift l) -> eval_type0_list l :=
-    match l with 
-          nil => fun X : eval_type2_list (lift nil) => X
-        | cons t q =>  
-            fun X : eval_type2_list (lift (t :: q)) => 
-              (let (a, b) := X in (a, unlift q b)):eval_type0_list (t :: q)
-      end.              
+  
+  (* Fixpoint unlift (l : list type0) {struct l} : eval_type2_list (lift l) -> eval_type0_list l := *)
+  (*   match l with  *)
+  (*         nil => fun X : eval_type2_list (lift nil) => X *)
+  (*       | cons t q =>   *)
+  (*           fun X : eval_type2_list (lift (t :: q)) =>  *)
+  (*             (let (a, b) := X in (a, unlift q b)):eval_type0_list (t :: q) *)
+  (*     end.               *)
 
-    Fixpoint lifter (l : list type0) r  : 
-                      (eval_type0_list l -> eval_type0 r) ->
-                      eval_type2_list (lift l) -> eval_type2 (Treg (T01 r)) :=
-      match l with 
-        | nil => fun f x => f x 
-        | cons t q =>  fun f x => 
-                        (let (e, e0) := x in f (e, unlift q e0):eval_type0 r):eval_type0 r
-      end. 
+  (*   Fixpoint lifter (l : list type0) r  :  *)
+  (*                     (eval_type0_list l -> eval_type0 r) -> *)
+  (*                     eval_type2_list (lift l) -> eval_type2 (Treg (T01 r)) := *)
+  (*     match l with  *)
+  (*       | nil => fun f x => f x  *)
+  (*       | cons t q =>  fun f x =>  *)
+  (*                       (let (e, e0) := x in f (e, unlift q e0):eval_type0 r):eval_type0 r *)
+  (*     end.  *)
 
 
     Variable ENV : eval_env (eval_type2) E.     
@@ -110,14 +106,15 @@ Section expr.
 
     Definition eval_type0_list := eval_env  eval_type0. 
     Definition eval_type1_list := eval_env  eval_type1. 
+    Notation expr0 := (fun t => expr1 (T01 t)). 
     Fixpoint eval_expr1 t (e : expr1 t) {struct e} : option (eval_type1 t) :=
       match  e with
         | Eprim domain range f args => 
             let eval_sexpr_vector :=
-                fix eval_sexpr_vector l (v :expr0_vector l) {struct v} :  option (eval_type0_list l) :=
+                fix eval_sexpr_vector l (v :dlist  expr0 l) {struct v} :  option (eval_type0_list l) :=
                 match v with
-                  | expr0_vector_nil => Some tt
-                  | expr0_vector_cons t q e vq => 
+                  | dlist_nil => Some tt
+                  | dlist_cons t q e vq => 
                       do l <- eval_expr1 (T01 t) e;
                       do r <- eval_sexpr_vector q vq;
                       Some (l,r)
@@ -142,10 +139,10 @@ Section expr.
             eval_union fl x 
         | Etuple l v => 
             let eval_tuple := 
-                fix eval_tuple fl (v : expr1_vector fl) : option(eval_type1_list fl) :=
+                fix eval_tuple l (v : dlist expr1 l) : option(eval_type1_list l) :=
                 match v with 
-                  | expr1_vector_nil => Some tt
-                  | expr1_vector_cons t q e vq => 
+                  | dlist_nil => Some tt
+                  | dlist_cons t q e vq => 
                       do l <- eval_expr1 t e;
                       do r <- eval_tuple q vq;
                       Some (l,r)
@@ -153,6 +150,8 @@ Section expr.
           in 
             eval_tuple l v
         | Eget t v => Some (get E (Treg t) v ENV)
+        | Eget_input t v => Some (get E (Tinput t) v ENV)
+        | Eget_output t v => Some (get E (Toutput t) v ENV)
         | Eget_regfile size t v n adr => 
             let rf := get E (Tregfile size t) v ENV in 
             do adr <- eval_expr1 _ adr; 
@@ -196,6 +195,9 @@ Section expr.
             Some (@FIFO.clear (eval_type1 t) n q)
         | Enop t => 
             fun x => Some x
+        | Eset_output t e => 
+            fun _ => 
+              eval_expr1 t e
       end. 
 
   End expr. 
@@ -210,10 +212,10 @@ Section expr.
     | Pconstant : forall (c : constant), pattern1 nil (T01 (cst_ty c))
     | Punion : forall E id fl (x : pattern1_disjunct E fl), pattern1 E (Tunion id fl)
     | Ptuple : forall E l, pattern1_vector E l -> pattern1 E (Ttuple l)
-    with pattern1_disjunct : list type2  -> type1_id_list -> Type :=
+    with pattern1_disjunct : list type2  -> list (ident * type1) -> Type :=
 (* | pattern_disjunct_nil :  pattern_disjunct anil  *)
-    | pattern1_disjunct_hd  : forall E id t q, pattern1 E t -> pattern1_disjunct E (type1_id_list_cons id t q) 
-    | pattern1_disjunct_tl  : forall E id t q, pattern1_disjunct E q -> pattern1_disjunct E (type1_id_list_cons id t q)
+    | pattern1_disjunct_hd  : forall E id t q, pattern1 E t -> pattern1_disjunct E ((id,t)::q) 
+    | pattern1_disjunct_tl  : forall E id t q, pattern1_disjunct E q -> pattern1_disjunct E ( (id,t)::q)
     with pattern1_vector : list type2  -> list type1 -> Type :=
     | pattern_vector_nil : pattern1_vector nil nil 
     | pattern_vector_cons : forall E F t q, pattern1 E t -> pattern1_vector F q -> pattern1_vector (List.app E F)(t::q). 
@@ -272,7 +274,7 @@ with
   (* | expr2_vector_nil : expr2_vector E nil *)
   (* | expr2_vector_cons : forall t q, @expr2 E t -> expr2_vector E q -> expr2_vector E (cons t q).  *)
 
-  Definition expr2_vector (E : list type2) := dlist type2 (@expr2 E). 
+  Definition expr2_vector (E : list type2) := dlist (@expr2 E). 
   (* [where_clause E F] : starting with bindings [E], produce bindings
   [F] such that [E] ⊂ [F] *)
 
@@ -324,20 +326,20 @@ with
       | where_clause_nil _ => fun X => Some X
       | where_clause_cons E F G t pat exp w =>
           fun x =>
-            do e <- eval_expr1 x t exp;
+            do e <- eval_expr1 _ x t exp;
             do B <- pattern1_match F t pat e;
             where_clause_match w (append_envs _ _ x B  )
     end. 
 
   Definition eval_expr2_vector mem env (v : @expr2_vector env mem) : 
     eval_type2_list env -> eval_type2_list mem -> option (eval_type2_list mem) := 
-    (fun ENV MEM =>  (dlist_fold _ _ _ (eval_expr2 ENV) mem v MEM)). 
+    (fun ENV MEM =>  (dlist_fold _ _ _ (eval_expr2 _ ENV) mem v MEM)). 
 
   Definition eval_rule mem (r : rule mem) : relation (eval_type2_list mem) :=
     fun M1 M2 => 
       exists E, exists F,  (pattern2_vector_match _ _ (lhs r) M1 = Some E
            /\ where_clause_match (where_clauses _ r) E = Some F
-           /\ eval_expr1 F _ (cond r) = Some true
+           /\ eval_expr1 _ F _ (cond r) = Some true
            /\ eval_expr2_vector _ _ (rhs r) F M1 = Some M2). 
   
   Fixpoint eval_rules ty (l : list (rule ty)) : relation (eval_type2_list (ty)) :=
@@ -392,10 +394,10 @@ with
   Delimit Scope expr_scope with expr. 
   Notation "[| x , .. , z |]"  :=  (Etuple _ (expr1_vector_cons _ _ x .. (expr1_vector_cons _ _ z expr1_vector_nil ).. )) (at level  0): expr_scope.
 
+  
+  Notation "{< f ; x ; y >}" := (Eprim _ _ (f) (dlist_cons  x (dlist_cons y dlist_nil))).
 
-  Notation "{< f ; x ; y >}" := (Eprim _ _ (f) (expr0_vector_cons _ _ x (expr0_vector_cons _ _ y expr0_vector_nil))).
-
-  Notation "{< f ; x >}" := (Eprim _ _ (f) (expr0_vector_cons _ _ x expr0_vector_nil)).
+  Notation "{< f ; x >}" := (Eprim _ _ (f) (dlist_cons x dlist_nil)).
 
   Notation "~ x" :=  ({< BI_negb ; x >}) : expr_scope. 
   Notation "a || b" := ({< BI_orb ; a ; b >}) : expr_scope. 
@@ -412,7 +414,7 @@ with
   Delimit Scope pattern_scope with pattern.    
   Notation "[| x , .. , z |]" := (Ptuple _ _ (pattern_vector_cons _ _ _ _ x .. (pattern_vector_cons _ _ _ _ z pattern_vector_nil ).. )) (at  level 0): pattern_scope.  
   
-  Notation "X 'of' u :: q " := (type1_id_list_cons  X u q) (at level 60, u at next level,  right associativity). 
+  Notation "X 'of' u :: q " := ((X,u)::q) (at level 60, u at next level,  right associativity). 
 
   (* Notations for expr2 *)
   Delimit Scope expr2_scope with expr2. 

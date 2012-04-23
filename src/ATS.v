@@ -21,9 +21,9 @@ Definition eval_list_type := eval_env eval_type.
 
 
 Section expr. 
-  Variable Env : list type. 
   
-  Inductive expr : type0 -> Type :=
+  Inductive expr : list type ->  type0 -> Type :=
+  | Elet : 
   | Eprim : forall f (args: expr_vector (args (f))), expr ( (res (f)))
   | Eget : forall t (v : var Env (Tbase t)), expr t
   (* operations on arrays *)
@@ -138,9 +138,9 @@ End expr.
 
 Record transition Env :=
   { pi : expr Env Tbool;
-    alpha : dlist type (expr2 Env) Env}.
+    alpha : dlist (expr2 Env) Env}.
                     
-Definition eval_alpha E (alpha : dlist type (expr2 E) E) :
+Definition eval_alpha E (alpha : dlist  (expr2 E) E) :
   eval_list_type E -> option (eval_list_type E) :=
   fun  (X : eval_list_type E) =>
     dlist_fold type (expr2 E) eval_type (eval_expr2 E X) E alpha X.
