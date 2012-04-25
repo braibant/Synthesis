@@ -1,5 +1,5 @@
 Require Import Common. 
-
+Require Moore. 
 Definition map A B := A -> option B. 
 
 Section expr. 
@@ -99,19 +99,19 @@ Section semantics.
 
   Let sigma := state (mems R) (regs R). 
 
-  Definition M : Moore.T I O sigma.
-  constructor. 
-  Fixpoint zob E F (l : dlist  (var E) F) : 
-    eval_env eval_type0 E -> eval_env eval_type0 F :=
-  match l with
-    | dlist_nil => fun _ => tt
-    | dlist_cons t q T Q => fun X => (get E t T X, zob _ _ Q X)
-  end. 
+  (* Definition M : Moore.T I O sigma. *)
+  (* constructor.  *)
+  (* Fixpoint zob E F (l : dlist  (var E) F) :  *)
+  (*   eval_env eval_type0 E -> eval_env eval_type0 F := *)
+  (* match l with *)
+  (*   | dlist_nil => fun _ => tt *)
+  (*   | dlist_cons t q T Q => fun X => (get E t T X, zob _ _ Q X) *)
+  (* end.  *)
   
-  intros. eapply zob. apply outputs. apply (st_regs _ _ X). 
-  intros. apply com_denote. apply (code  R). 
-  apply X. 
-  Defined. 
+  (* intros. eapply zob. apply outputs. apply (st_regs _ _ X).  *)
+  (* intros. apply com_denote. apply (code  R).  *)
+  (* apply X.  *)
+  (* Defined.  *)
 
 End semantics. 
  (*

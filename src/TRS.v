@@ -59,10 +59,7 @@ Section expr.
   | Etuple : forall l (v : dlist expr1 l), expr1 (Ttuple l)
                                             with expr1_disjunct : list (ident * type1) -> Type :=
   | expr1_disjunct_hd:forall id t q, expr1 t -> expr1_disjunct ((id,t) :: q) 
-  | expr1_disjunct_tl:forall id t q, expr1_disjunct q -> expr1_disjunct ((id,t)::q) 
-                                            with expr1_vector : list type1 -> Type :=
-  | expr1_vector_nil: expr1_vector nil
-  | expr1_vector_cons: forall t q, expr1 t -> expr1_vector q -> expr1_vector (t::q). 
+  | expr1_disjunct_tl:forall id t q, expr1_disjunct q -> expr1_disjunct ((id,t)::q) . 
 
   Inductive expr2 : type2 -> Type :=
   | Eset : forall t , expr1 t ->  expr2 (Treg t)
@@ -392,12 +389,12 @@ with
   Open Scope string_scope.
   
   Delimit Scope expr_scope with expr. 
-  Notation "[| x , .. , z |]"  :=  (Etuple _ (expr1_vector_cons _ _ x .. (expr1_vector_cons _ _ z expr1_vector_nil ).. )) (at level  0): expr_scope.
+  Notation "[| x , .. , z |]"  :=  (Etuple _ _ (dlist_cons x .. (dlist_cons z dlist_nil ).. )) (at level  0): expr_scope.
 
   
-  Notation "{< f ; x ; y >}" := (Eprim _ _ (f) (dlist_cons  x (dlist_cons y dlist_nil))).
+  Notation "{< f ; x ; y >}" := (Eprim _ _ _ (f) (dlist_cons  x (dlist_cons y dlist_nil))).
 
-  Notation "{< f ; x >}" := (Eprim _ _ (f) (dlist_cons x dlist_nil)).
+  Notation "{< f ; x >}" := (Eprim _ _ _ (f) (dlist_cons x dlist_nil)).
 
   Notation "~ x" :=  ({< BI_negb ; x >}) : expr_scope. 
   Notation "a || b" := ({< BI_orb ; a ; b >}) : expr_scope. 
@@ -407,9 +404,9 @@ with
   Notation "a < b" := ({< BI_lt _ ; a ; b >}) : expr_scope. 
   Notation "x <= y" := ((x < y) || (x = y))%expr : expr_scope. 
   Notation "x <> y" := (~(x = y))%expr : expr_scope. 
-  Notation "! x" := (Eget _ x) (at level  10) : expr_scope . 
-  Notation "[| x |]"  :=  (Etuple _ (expr1_vector_cons _ _ x expr1_vector_nil )) (at level  0): expr_scope.  
-  Notation "{< x >}" := (Econstant x): expr_scope. 
+  Notation "! x" := (Eget _ _ x) (at level  10) : expr_scope . 
+  Notation "[| x |]"  :=  (Etuple _ _ (dlist_cons x dlist_nil )) (at level  0): expr_scope.  
+  Notation "{< x >}" := (Econstant _ x): expr_scope. 
   
   Delimit Scope pattern_scope with pattern.    
   Notation "[| x , .. , z |]" := (Ptuple _ _ (pattern_vector_cons _ _ _ _ x .. (pattern_vector_cons _ _ _ _ z pattern_vector_nil ).. )) (at  level 0): pattern_scope.  
@@ -420,11 +417,11 @@ with
   Delimit Scope expr2_scope with expr2. 
   Arguments Eset_regfile {E} size t n _%expr _%expr.  
 
-  Arguments dlist_cons {T P} t q _ _ . 
-  Arguments dlist_nil {T P}. 
-  Notation "[| x , .. , z |]"  :=  ((dlist_cons  _ _ x .. (dlist_cons  _ _ z (dlist_nil ) ).. )) (at level  0): expr2_scope.
-  Notation "'[' key '<-' v ']' " := ( Eset_regfile _ _ _  key v )(at level 0, no associativity) : expr2_scope.
-  Notation "•" := (Enop _) : expr2_scope. 
+  (* Arguments dlist_cons {T P} t q _ _ .  *)
+  (* Arguments dlist_nil {T P}.  *)
+  Notation "[| x , .. , z |]"  :=  ((dlist_cons x .. (dlist_cons  z (dlist_nil ) ).. )) (at level  0): expr2_scope.
+  Notation "'[' key '<-' v ']' " := ( Eset_regfile  _ _ _  key v )(at level 0, no associativity) : expr2_scope.
+  Notation "•" := (Enop _ _) : expr2_scope. 
   
   Definition mk_rule' {mem} env pat cond expr : rule mem :=
     mk_rule mem env env pat (where_clause_nil _ ) cond expr. 

@@ -21,9 +21,9 @@ Definition eval_list_type := eval_env eval_type.
 
 
 Section expr. 
+  Variable Env : list type. 
   
-  Inductive expr : list type ->  type0 -> Type :=
-  | Elet : 
+  Inductive expr : type0 -> Type :=
   | Eprim : forall f (args: expr_vector (args (f))), expr ( (res (f)))
   | Eget : forall t (v : var Env (Tbase t)), expr t
   (* operations on arrays *)

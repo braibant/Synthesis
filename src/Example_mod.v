@@ -5,7 +5,7 @@ Definition Num : type1 := T01 (Tint 32).
 Definition Val : type1 :=
   Tunion "Val" ("MOD" of (Ttuple [Num; Num]) 
                :: "VAL" of (Ttuple [Num]) 
-               :: type1_id_list_nil ). 
+               :: nil ). 
 
 Definition mod_iterate_rule : rule [Treg Val]. 
 set (env := [Treg Num; Treg Num]). 
@@ -24,7 +24,7 @@ apply (! b <= ! a)%expr.
 
 
 Definition expr2_vector_singleton E t (x : @expr2 E t) : expr2_vector E [t] :=
-  dlist_cons t [] x (@dlist_nil type2 expr2). 
+  dlist_cons x (@dlist_nil type2 (expr2 E)). 
 
 apply expr2_vector_singleton. 
 eapply Eset. eapply Eunion. eapply expr1_disjunct_hd.  apply ([| !a - !b, !b|])%expr. 

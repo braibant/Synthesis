@@ -73,10 +73,23 @@ Section dependent_lists.
   End s1. 
   
 End dependent_lists. 
-
 Arguments dlist {T} P _. 
 Arguments dlist_nil {T P}. 
 Arguments dlist_cons {T P} {t q} _ _.  
+
+Definition dlist_map  {T P Q} :
+  forall (f : forall (x : T), P x -> Q x), 
+  forall l, 
+    @dlist T P l -> 
+    @dlist T Q l. 
+intros f. 
+refine (fix F l (hl : dlist P l) : dlist Q l := 
+        match hl with 
+          | dlist_nil => dlist_nil
+          | dlist_cons t q T Q => dlist_cons (f _ T) (F _ Q)
+        end). 
+Defined. 
+
 
 Module Abstract. 
   Record T :=

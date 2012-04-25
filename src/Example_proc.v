@@ -12,7 +12,7 @@ Definition INSTR : type1 :=
                  :: "BZ" of (Ttuple [reg;reg])
                  :: "LOAD" of (Ttuple [reg;reg])
                  :: "STORE" of (Ttuple [reg;reg])
-                 :: type1_id_list_nil ). 
+                 :: nil ). 
 
 Definition IMEM := Tregfile (128) INSTR. 
 Definition DMEM := Tregfile (128) val. 
@@ -35,12 +35,12 @@ Defined.
 Arguments WHERE {E F t} p%pattern e%expr.
 
 Notation "M  '[' ? key ']' " :=
-(Eget_regfile _ _ M _ key)(at level 0, no associativity) : expr_scope. 
+(Eget_regfile _ _ _ M _ key)(at level 0, no associativity) : expr_scope. 
 
 Ltac case_match s :=
 let rec tac :=
     match goal with 
-        |- pattern1_disjunct _ (type1_id_list_cons ?id ?t ?q) => 
+        |- pattern1_disjunct _ (cons (?id,?t) ?q) => 
           first [(constr_eq s id; apply pattern1_disjunct_hd) 
                 | apply pattern1_disjunct_tl; tac]
                 
@@ -92,8 +92,8 @@ apply trivial_pattern2_vector.
 refine (WHERE IS_LOADI (imem[? !pc])%expr) . 
 
 apply ({< Cbool true >})%expr. 
-        
-refine ([| Eset _ (! (var_lift  pc )+ {< Cword 1>})%expr , [!rd <- !const] , • , • |])%expr2. 
+Check (Eset _ _ (! (var_lift  pc )+ {< Cword 1>})%expr). 
+apply ([|Eset _ _ (! (var_lift  pc )+ {< Cword 1>})%expr, [(!rd) <- (!const)%expr] ,  • , • |])%expr2.  
 Defined. 
 
 
@@ -110,7 +110,7 @@ refine (WHERE IS_LOADPC (imem[? !pc])%expr) .
 
 apply ({< Cbool true >})%expr. 
 
-refine ([| Eset _ (! (var_lift  pc )+ {< Cword 1>})%expr , [!rd <- ! (var_lift pc)] , • , • |])%expr2. 
+refine ([| Eset _ _ (! (var_lift  pc )+ {< Cword 1>})%expr , [!rd <- ! (var_lift pc)] , • , • |])%expr2. 
 Defined. 
 
 (* (pc,rf,imem,dmem) where ADD(rd,r1,r2) = imem[pc]
@@ -127,7 +127,7 @@ refine (WHERE IS_ADD (imem[? !pc])%expr) .
 
 apply ({< Cbool true >})%expr. 
 
-refine ([| Eset _ (! (var_lift  pc )+ {< Cword 1>})%expr , 
+refine ([| Eset _ _ (! (var_lift  pc )+ {< Cword 1>})%expr , 
            ([!rd <- (var_lift rf)[? !r1]  + (var_lift rf)[? !r2] ])%expr 
                , • , • |])%expr2. 
 Defined. 
@@ -146,7 +146,7 @@ refine (WHERE IS_BZ (imem[? !pc])%expr) .
 
 apply ( (var_lift rf) [? !rc] =  {< Cword 0 >})%expr. 
 
-refine ([| Eset _ ((var_lift rf)[? !ra])%expr, 
+refine ([| Eset _ _ ((var_lift rf)[? !ra])%expr, 
            •
            , • , • |])%expr2. 
 Defined. 
@@ -164,7 +164,7 @@ refine (WHERE IS_BZ (imem[? !pc])%expr) .
 
 apply ( (var_lift rf) [? !rc] <>  {< Cword 0 >})%expr. 
 
-refine ([| Eset _ (! (var_lift  pc )+ {< Cword 1>})%expr , 
+refine ([| Eset _ _ (! (var_lift  pc )+ {< Cword 1>})%expr , 
                •
                , • , • |])%expr2. 
 Defined. 
@@ -182,7 +182,7 @@ refine (WHERE IS_LOAD (imem[? !pc])%expr) .
 
 apply ({< Cbool true >})%expr. 
 
-refine ([|Eset _ (! (var_lift  pc )+ {< Cword 1>})%expr ,
+refine ([|Eset _ _ (! (var_lift  pc )+ {< Cword 1>})%expr ,
           [ !rd <- (var_lift dmem)[? (!ra)%expr] ]
           , • , • |])%expr2. 
 Defined. 
@@ -200,7 +200,7 @@ refine (WHERE IS_STORE (imem[? !pc])%expr) .
 
 apply ({< Cbool true >})%expr. 
 
-refine ([|Eset _ (! (var_lift  pc )+ {< Cword 1>})%expr ,
+refine ([|Eset _ _  (! (var_lift  pc )+ {< Cword 1>})%expr ,
           •,
           • , [(var_lift rf)[? (!ra)%expr] <- (var_lift rf) [?(!r)%expr]] |])%expr2. 
 Defined. 
