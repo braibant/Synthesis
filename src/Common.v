@@ -59,6 +59,28 @@ Section dependent_lists.
   
   Variable E : T -> Type.
 
+  Definition dlist_hd t q (x : dlist (t::q)): P t :=
+    match x as y in dlist l return
+       (match l return (dlist l -> Type) with 
+         | nil => fun _ : dlist nil => ID
+         | cons a b => fun _ : dlist (cons a b) => P a
+        end y)
+    with 
+      | dlist_nil => @id
+      | dlist_cons _ _ t q => t
+    end.
+
+  Definition dlist_tl t q (x : dlist (t::q)): dlist q :=
+    match x as y in dlist l return
+       (match l return (dlist l -> Type) with 
+         | nil => fun _ : dlist nil => ID
+         | cons a b => fun _ : dlist (cons a b) => dlist b
+        end y)
+    with 
+      | dlist_nil => @id
+      | dlist_cons _ _ t q => q
+    end.
+
   Section s1. 
     Variable F : forall (t : T), P t -> E t -> option (E t). 
     Fixpoint dlist_fold (l : list T) (d : dlist l) : eval_env E l -> option (eval_env E l):=
@@ -71,8 +93,18 @@ Section dependent_lists.
             Some (x,y)
       end. 
   End s1. 
-  
+
+  Section s2. 
+    Variable F : forall (t : T), P t -> E t. 
+
+    Fixpoint dlist_fold' (l : list T) (dl : dlist l) : eval_env E l :=
+      match dl with 
+        | dlist_nil => tt
+        | dlist_cons _ _ t q => (F _ t,  dlist_fold' _ q)
+      end. 
+  End s2. 
 End dependent_lists. 
+
 Arguments dlist {T} P _. 
 Arguments dlist_nil {T P}. 
 Arguments dlist_cons {T P} {t q} _ _.  
@@ -89,6 +121,29 @@ refine (fix F l (hl : dlist P l) : dlist Q l :=
           | dlist_cons t q T Q => dlist_cons (f _ T) (F _ Q)
         end). 
 Defined. 
+
+
+Definition dlist_hmap :
+  forall (S T : Type) (P : T -> Type) (Q : S -> Type)
+    (F : S -> T), 
+    (forall x : S, P (F x) -> Q x) -> forall l : list S, dlist P (List.map F l) -> dlist Q l. 
+induction l. simpl. constructor. 
+simpl. intros. inversion X0.   subst. constructor. auto. auto. 
+Defined. 
+
+Definition dlist_fold2 :
+  forall (S T : Type) (P : T -> Type) (E : S -> Type)
+    (F : S -> T),
+    (forall t : S, P (F t) -> E t) -> forall l : list S, dlist P (List.map F l) -> eval_env E l. intros S T P E F f.
+refine (let fix fold (l : list S) (dl : dlist P (List.map F l)) : eval_env E l :=
+              match l return dlist P (List.map F l) -> eval_env E l with 
+                | nil =>  fun _ => tt
+                | cons t q => fun x : dlist P (F t :: List.map F q) =>
+                    (f  _ (dlist_hd _ _ _ _ x),  fold _ (dlist_tl _ _ _ _ x)) 
+              end dl
+          in fold). 
+Defined. 
+
 
 
 Module Abstract. 
