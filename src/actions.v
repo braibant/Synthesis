@@ -7,6 +7,7 @@ Inductive type : Type :=
 
 Variable state : Type. 
 Variable element : state -> Type. 
+Variable eval_state : state -> Type. 
 
 Notation Int := (Tlift (Tint 16)).
 Notation Bool := (Tlift (Tbool)).
@@ -22,7 +23,7 @@ Section s.
     Inductive expr :  type -> Type :=
     | Evar : forall t (v : Var t), expr t
     | Ebuiltin : forall args res (f : builtin args res), 
-                   dlist  expr (List.map Tlift args) -> 
+                   dlist  (fun j => expr (Tlift j)) (args) -> 
                    expr  (Tlift res)
     | Econstant : forall  (c : constant), expr (Tlift (cst_ty c))
     | Etuple : forall l (exprs : dlist (expr) l), expr (Ttuple l)
@@ -34,22 +35,22 @@ Section s.
                  expr t'.
     
     Inductive action : type -> Type :=
-    | Return : forall t, expr t -> action t
+    | Return : forall t (exp : expr t), action t
     | Bind :
-      forall t u, 
-        action  t -> 
-        (Var t -> action u) -> 
+      forall t u 
+        (a : action  t) 
+        (f : Var t -> action u),  
         action u
-    | When : forall t,  expr Bool -> action t -> action t
+    | When : forall t (e : expr Bool) (a : action t), action t
     | Primitive : 
-      forall A args res (p : primitive A args res), 
-        dlist (expr) args -> 
+      forall A args res (p : primitive A args res)
+        (exprs : dlist (expr) args),
         action res 
     | Case : 
-      forall l t t', 
-        var l t -> 
-        expr (Tsum l) -> 
-        (Var t -> action t') -> 
+      forall l t t'
+        (which : var l t)
+        (arg : expr (Tsum l))
+        (f :Var t -> action t'),
         action t'. 
     
   End t. 
@@ -64,7 +65,7 @@ Section s.
     end.    
 
   Notation eval_type_list := (List.fold_right (fun x acc => eval_type x * acc)%type Datatypes.unit). 
-  Arguments dlist_fold' {T P E} _ _ _. 
+
   
   Definition eval_expr (t : type) (e : expr eval_type t) : eval_type t. 
   refine ( 
@@ -79,31 +80,32 @@ Section s.
             | Econstant c => cst_val c
             | Etuple l exprs => 
                 dlist_fold' eval_expr l exprs 
-            | Econstructor l t cn arg => 
+            | Econstructor l t cn arg =>
                 _
-            | Ematch l t' arg cases default => 
-                _ 
+            | Ematch l t' arg cases default =>
+                _
           end 
       in eval_expr t e). 
-  unfold eval_type0_list. 
-  refine (
-      let f := fix fold l : dlist (expr eval_type) (List.map Tlift l) -> eval_env eval_type0 l :=
-      match l with 
-          | nil => fun _ => tt
-          | cons t q => fun args => (eval_expr _ (dlist_hd _ _ _ _ args),fold q (dlist_tl _ _ _ _  args))
-      end in f args x). 
-  refine (let fix fold l t (v : var l t):  eval_type t -> eval_type (Tsum  l) :=  
-              match v in var l t return eval_type t -> eval_type (Tsum l) with 
+
+  refine (let fix fold l (dl : dlist (fun j => expr eval_type (Tlift j)) l) : eval_env eval_type0 l :=
+      match dl with 
+          | dlist_nil => tt
+          | dlist_cons _ _ t q => (eval_expr _ t,fold _ q)
+      end in fold args x). 
+
+  refine (let fix fold l t (v : var l t):  eval_type t -> eval_type (Tsum  l) :=
+              match v in var l t return eval_type t -> eval_type (Tsum l) with
                 | var_0 l b => fun x => inl x
                 | var_S l _ _ v'  => fun x => inr (fold _ _ v' x)
               end in fold l t1 cn (eval_expr _ arg)).
+
   refine (let fix fold l (cases : dlist (fun t => eval_type t -> expr eval_type t') l) :
-              eval_type (Tsum l) -> 
+              eval_type (Tsum l) ->
               eval_type t' :=
-              match cases with 
+              match cases with
                 | dlist_nil => fun  _ => eval_expr _ default
-                | dlist_cons a b t q => fun (arg : eval_type (Tsum (a::b))) => 
-                           match arg with 
+                | dlist_cons a b t q => fun (arg : eval_type (Tsum (a::b))) =>
+                           match arg with
                                | inl x => eval_expr _ (t x)
                                | inr x =>  fold _ q x
                            end
@@ -112,6 +114,63 @@ Section s.
          ).
 
   Defined. 
+  
+  (** dynamic semantics: 
+    - all guard failures are represented by None. 
+    - continuation passing style: the current diff is threaded through the execution 
+  *)
+
+  Variable diff : Type. 
+  Definition T t := eval_state Phi -> diff -> option (t * diff). 
+  Definition ret {t} (e : t) : T t  := fun st d => Some (e, d).
+  Definition bind {s t} : T s -> (s -> T t) -> T t :=
+    fun (x : T s) (f : s -> T t) (st : eval_state Phi) (d : diff) => 
+      match x st d with 
+          Some (e, d') =>  f e st d' 
+        | None => None
+      end. 
+  Definition fail {t} : T t := fun _ _ => None. 
+          
+  Definition eval_action (t : type) (a : action eval_type t) : 
+    (T (eval_type t)). 
+  refine (
+      let fix eval_action (t : type) (a : action eval_type t) :
+          T ( eval_type t) :=
+          match a with
+            | Return t exp => ret (eval_expr _ exp)
+            | Bind t u a f => 
+                let act := eval_action _ a in 
+                let f' := (fun e => eval_action u (f e)) in 
+                  bind act f'              
+            | When t e a => 
+                let g1 := eval_expr _ e in 
+                let a' := eval_action t a in 
+                match g1 with 
+                  | true => a' 
+                  | false => fail 
+                end
+            | Primitive A args res p exprs => _
+            | Case l t t' which arg f => 
+                _
+          end                
+      in  eval_action t a). 
+  clear. admit. 
+  refine (let fix fold t l (v : var l t) : eval_type (Tsum l) -> option (eval_type t) :=
+          match v with 
+            | var_0 a b => fun X => match X with inl X => Some X | _ => None end
+            | var_S E t1 t2 v' =>     
+                     fun X : eval_type (Tsum (t1 :: E)) =>
+                       match X with
+                         | inl _ => None
+                         | inr X0 => fold t2 E v' X0
+                       end
+          end 
+          in 
+            match fold _ _ which (eval_expr _ arg) with 
+              | None => fail 
+              | Some r => eval_action _ (f r)             end
+         ). 
+  Defined.
   Definition Action t := forall Var, action Var t.
   Definition Expr t := forall Var, expr Var t. 
 End s. 

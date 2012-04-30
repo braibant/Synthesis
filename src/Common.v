@@ -108,6 +108,7 @@ End dependent_lists.
 Arguments dlist {T} P _. 
 Arguments dlist_nil {T P}. 
 Arguments dlist_cons {T P} {t q} _ _.  
+Arguments dlist_fold' {T P E} _ _ _. 
 
 Definition dlist_map  {T P Q} :
   forall (f : forall (x : T), P x -> Q x), 
@@ -121,7 +122,6 @@ refine (fix F l (hl : dlist P l) : dlist Q l :=
           | dlist_cons t q T Q => dlist_cons (f _ T) (F _ Q)
         end). 
 Defined. 
-
 
 Definition dlist_hmap :
   forall (S T : Type) (P : T -> Type) (Q : S -> Type)
