@@ -313,29 +313,41 @@ Section type_ops.
 End type_ops. 
 
  
-Record signature :=
+Record signature T (E : T -> Type) := mk_signature
   {
-    args : list type0;
-    res : type0; 
-    value : eval_type0_list args -> eval_type0 res
+    args : list T;
+    res : T; 
+    value :> eval_env E args -> E res
   }. 
+
+Arguments mk_signature {T E} args res value. 
+Arguments args {T E} s. 
+Arguments res {T E} s. 
+Arguments value {T E} s _. 
 
 (* could it be a primitive with an empty set of arguments ? *)
-Record constant :=
+Record constant T (E : T -> Type) := mk_constant
   {
-    cst_ty :> type0;
-    cst_val : eval_type0 cst_ty
+    cst_ty :  T;
+    cst_val : E cst_ty
   }. 
 
-Definition Cbool b : constant := Build_constant Tbool b. 
-Definition Cword {n} x : constant := Build_constant (Tint n) (Word.repr _ x). 
+Arguments mk_constant {T E} cst_ty cst_val. 
+Arguments cst_ty {T E} c. 
+Arguments cst_val {T E} c. 
+
+Notation signature0 := (signature type0 eval_type0). 
+Notation constant0 := (constant type0 eval_type0). 
+
+Definition Cbool b : constant0 := mk_constant Tbool b. 
+Definition Cword {n} x : constant0 := mk_constant (Tint n) (Word.repr _ x). 
 
 Notation B := Tbool. 
 Notation W n := (Tint n).
 Notation "t :: q" := (cons t q). 
 
 Inductive builtin : list type0 -> type0 -> Type :=
-| BI_external :  forall (s : signature), builtin (args s) (res s)
+| BI_external :  forall (s : signature0), builtin (args s) (res s)
 | BI_andb : builtin (B :: B :: nil)  B
 | BI_orb  : builtin (B :: B :: nil)  B
 | BI_xorb : builtin (B :: B :: nil)  B

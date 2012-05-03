@@ -5,15 +5,60 @@ Inductive type : Type :=
 | Tsum : list type -> type
 | Ttuple : list type -> type. 
 
-Variable state : Type. 
-Variable element : state -> Type. 
-Variable eval_state : state -> Type. 
+Fixpoint eval_type (t : type) :=
+  match t with 
+    | Tlift t => eval_type0 t
+    | Tsum l =>
+        List.fold_right (fun x acc => eval_type x + acc)%type Datatypes.unit l
+    | Ttuple l =>
+        List.fold_right (fun x acc => eval_type x * acc)%type Datatypes.unit l
+  end.    
+
+Inductive sync : Type :=
+  | Treg : forall (t : type), sync. 
+
+Definition state := list sync. 
+Definition eval_sync (s : sync) := match s with Treg t => eval_type t end. 
+Definition eval_state := eval_env eval_sync. 
 
 Notation Int := (Tlift (Tint 16)).
 Notation Bool := (Tlift (Tbool)).
 Notation Unit := (Tlift (Tunit)). 
 
-Section s. 
+
+
+Inductive member {T} : list T -> Type :=
+| member_0 : forall l t, member (t::l)
+| member_S : forall l t, member l -> member (t :: l). 
+
+Record sync_signature Phi T (E : T -> Type) :=
+  {
+    sy_args : list T; 
+    sy_res : T;
+    sy_value : Phi -> eval_env E sy_args -> E sy_res * Phi
+  }. 
+
+ 
+Record module (T : Type) :=
+  {
+    methods : list (sync_signature T type eval_type); 
+    accs : member methods
+  }.
+ 
+Arguments methods {T} m. 
+Section t. 
+  Variable A B : Type. 
+  Variable ma : module A. 
+  Variable mb : module B. 
+  
+  Definition mab : module (A * B)%type :=
+    {|
+      methods := List.app (methods ma) (methods mb)
+    |}. 
+  
+  apply
+Section s.
+  
   Variable Phi : state.
   Variable primitive : element Phi -> list type -> type -> Type. 
 
@@ -55,14 +100,6 @@ Section s.
     
   End t. 
   
-  Fixpoint eval_type (t : type) :=
-    match t with 
-    | Tlift t => eval_type0 t
-    | Tsum l =>
-        List.fold_right (fun x acc => eval_type x + acc)%type Datatypes.unit l
-    | Ttuple l =>
-        List.fold_right (fun x acc => eval_type x * acc)%type Datatypes.unit l
-    end.    
 
   Notation eval_type_list := (List.fold_right (fun x acc => eval_type x * acc)%type Datatypes.unit). 
 
@@ -79,7 +116,7 @@ Section s.
                 builtin_denotation args res f exprs                            
             | Econstant c => cst_val c
             | Etuple l exprs => 
-                dlist_fold' eval_expr l exprs 
+                dlist_fold'  _ _ _ eval_expr l exprs 
             | Econstructor l t cn arg =>
                 _
             | Ematch l t' arg cases default =>

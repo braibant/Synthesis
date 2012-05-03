@@ -1,3 +1,9 @@
+05/02/2012
+
+The user has to specify a schedule between the rules. A scheduler
+cannot make a fair schedule between two rules that both apply. Or a
+round robin ? 
+
 04/19/2012 Meeting
 
 - Investigate the use of PHOAS for the definition of the embedding of TRS. 
