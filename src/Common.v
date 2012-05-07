@@ -34,7 +34,12 @@ Section var.
       | cons t q => fun (X : eval_type t * eval_env q) Y => 
                      let (A,B) := X in (A, append_envs q F B Y)
     end. 
-  
+  Fixpoint set E t (v : var E t) : eval_type t ->  eval_env E -> eval_env E :=
+    match v  with 
+      | var_0 _ _ => fun x e => (x, snd e)
+      | var_S _ _ _ v => fun x e => (fst e, set _ _ v x (snd e))
+    end. 
+
   Fixpoint var_lift E F t (v : var E t) : var (E++F) t :=
     match v with 
         var_0 E' t'=> var_0 (E' ++ F) t'
