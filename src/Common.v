@@ -8,6 +8,11 @@ Axiom admit : forall {X} , X.
 
 Definition ident := string. 
 
+
+Notation "[ ]" := nil : list_scope.
+Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)%list : list_scope.
+
+
 Section var.   
   Variable T : Type. 
   Inductive var : list T -> T -> Type :=

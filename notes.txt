@@ -1,3 +1,8 @@
+
+05/07/2012
+Provided core GAA with a formal 'monadic' semantics, with a mixture of
+PHOAS, and dependent de Bruijn indices. 
+
 05/02/2012
 
 The user has to specify a schedule between the rules. A scheduler
@@ -7,5 +12,7 @@ round robin ?
 04/19/2012 Meeting
 
 - Investigate the use of PHOAS for the definition of the embedding of TRS. 
-- Investigate the chapter of CPDT called Generic programming to discover if Coq inductives could be used instead of the deep-embedding
+- Investigate the chapter of CPDT called Generic programming to
+  discover if Coq inductives could be used instead of the deep-embedding
+
 
