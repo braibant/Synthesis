@@ -8,6 +8,9 @@ Axiom admit : forall {X} , X.
 
 Definition ident := string. 
 
+Definition comp {A B C} (f : B -> C) (g : A -> B) := fun (x : A) => f (g (x)). 
+Notation "f ∘ g" := (comp f g) (at level 60). 
+
 
 Notation "[ ]" := nil : list_scope.
 Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)%list : list_scope.

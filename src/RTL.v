@@ -1,7 +1,141 @@
 Require Import Common. 
-Require Moore. 
-Definition map A B := A -> option B. 
+Require Import Core. 
 
+(*   Module Diff. 
+    Section t. 
+      Variable Phi : state. 
+      Definition T := eval_env (option ∘ eval_sync) Phi. 
+      Definition add (Delta : T) t (v : var Phi t) w : option T :=
+        match get Phi t v Delta  with 
+          | None =>  Some  (set _ _ Phi t v (Some w) Delta)
+          | Some _ => None 
+        end.
+      
+    End t. 
+    Fixpoint init (Phi : state ): T Phi := 
+      match Phi with 
+        | nil => tt
+        | cons t Phi => (None, init Phi)
+      end. 
+    
+    Fixpoint apply (Phi : state) : T Phi -> eval_env eval_sync Phi -> eval_env eval_sync Phi :=
+      match Phi with 
+        | nil => fun _ _ => tt
+        | cons t Phi => fun Delta E => 
+                       match fst Delta with 
+                         | None => (fst E, apply Phi (snd Delta) (snd E))
+                         | Some d => (d, apply Phi (snd Delta) (snd E))
+                       end
+      end. 
+    
+  End Diff. 
+*)
+Module Sem2.
+  Module Guarded. 
+    (** static semantics: 
+     *)
+    Section t. 
+      Variable Phi : state. 
+      Variable Var : type -> Type. 
+
+      Record effect := 
+        {
+          args : list type;
+          res : type;
+          prim : primitive Phi args res;
+          exprs : dlist (expr Var) args; 
+          guard : expr Var Bool
+        }. 
+          
+      Record  T t := mk_T
+        {
+          content : expr Var t;
+          effects : list effect; 
+          valid : expr Var Bool}. 
+
+      Arguments mk_T {t} _ _ _. 
+      
+      Definition Return {t} (e : expr Var t) : T t := mk_T e nil (#b true).
+
+      Definition Bind {s t} : T s -> (expr Var s -> T t) -> T t. 
+      intros x f. 
+      assert (y := f (content _ x)). clear f. 
+      apply (mk_T (content _ y) (effects _ x ++ effects _ y) (valid _ x && valid _ y )%expr). 
+      Defined. 
+      
+      Definition primitive_denote  args res (p : primitive Phi args res) (exprs : eval_env eval_type args) : T (res). 
+      
+        match
+          p in (primitive _ l t) return (eval_env eval_type l -> T (eval_type t))
+        with
+          | register_read t v =>
+              fun _ (st : eval_state Phi)
+                  (Delta : Diff.T Phi) => Some (get Phi (Treg t) v st, Delta)
+          | register_write t v =>
+              fun (exprs : eval_env eval_type [t]) (_ : eval_state Phi) (Delta : Diff.T Phi) =>
+                let (w, _) := exprs in
+                  do Delta2 <- Diff.add Phi Delta (Treg t) v w; 
+                  Some (tt, Delta2)
+          | regfile_read n t v p =>
+              fun (exprs : eval_env eval_type [Tlift (W p)]) 
+                  (st : eval_state Phi) (Delta : Diff.T Phi) =>
+                let rf := get Phi (Tregfile n t) v st in
+                let adr := fst exprs in
+                  do v <- Regfile.get rf (Word.unsigned adr); Some (v, Delta)
+          | regfile_write n t v p =>
+              fun (exprs : eval_env eval_type [Tlift (W p); t]) 
+                  (st : eval_state Phi) (Delta : Diff.T Phi) =>
+                let rf := get Phi (Tregfile n t) v st in
+                let rf := match exprs with 
+                              (adr, (w, _)) => Regfile.set rf (Word.unsigned adr) w
+                          end
+                in
+                  do Delta2 <- Diff.add Phi Delta (Tregfile n t) v rf; Some (tt, Delta2)
+        end exprs.
+    End t. 
+  End Dyn. 
+
+  (** dynamic semantics: 
+    - all guard failures are represented by None. 
+    - continuation passing style: the current diff is threaded through the execution 
+  *)
+  Section t. 
+    Variable Phi : state. 
+    Definition eval_action (t : type) (a : action Phi eval_type t) : 
+      (Dyn.T Phi (eval_type t)). 
+
+    refine (
+        let fix eval_action (t : type) (a : action Phi eval_type t) :
+            Dyn.T Phi ( eval_type t) :=
+            match a with
+              | Return t exp => Dyn.Return Phi (eval_expr _ exp)
+              | Bind t u a f => 
+                  let act := eval_action _ a in 
+                    let f' := (fun e => eval_action u (f e)) in 
+                      Dyn.Bind Phi act f'              
+              | When t e a => 
+                  let g1 := eval_expr _ e in 
+                    let a' := eval_action t a in 
+                      match g1 with 
+                        | true => a' 
+                        | false => Dyn.Fail  Phi
+                      end
+              | Primitive args res p exprs => 
+                  Dyn.primitive_denote Phi args res p (dlist_fold' eval_expr _ exprs)
+              | Try a => 
+                  let a := eval_action _ a in 
+                    Dyn.Try Phi a                    
+          end                
+      in  eval_action t a). 
+  Defined.
+  End t. 
+  Arguments eval_action {Phi} {t} _%action _ _.  
+End Sem.           
+
+
+Section s. 
+
+  Variable Phi : state. 
 Section expr. 
   Variable mems : list type0. 
   Variable regs : list type0. 

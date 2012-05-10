@@ -144,6 +144,7 @@ Notation "{< f ; x >}" := (Ebuiltin f (dlist_cons (x)%expr dlist_nil)).
 
 Notation "~ x" :=  ({< BI_negb ; x >}) : expr_scope. 
 Notation "a || b" := ({< BI_orb ; a ; b >}) : expr_scope. 
+Notation "a && b" := ({< BI_andb ; a ; b >}) : expr_scope. 
 Notation "a - b" := ({< BI_minus _ ; a ; b >}) : expr_scope. 
 Notation "a + b" := ({< BI_plus _ ; a ; b >}) : expr_scope. 
 Notation "a = b" := ({< BI_eq _ ; a ; b >}) : expr_scope. 
@@ -165,44 +166,40 @@ Record TRS : Type := mk_TRS
   }. 
 
 
-
-Definition comp {A B C} (f : B -> C) (g : A -> B) := fun (x : A) => f (g (x)). 
-Notation "f ∘ g" := (comp f g) (at level 60). 
-
-Module Diff. 
-  Section t. 
-    Variable Phi : state. 
-    Definition T := eval_env (option ∘ eval_sync) Phi. 
-    Definition add (Delta : T) t (v : var Phi t) w : option T :=
-      match get Phi t v Delta  with 
-        | None =>  Some  (set _ _ Phi t v (Some w) Delta)
-        | Some _ => None 
-      end.
-      
-  End t. 
-  Fixpoint init (Phi : state ): T Phi := 
-    match Phi with 
-      | nil => tt
-      | cons t Phi => (None, init Phi)
-    end. 
-   
-  Fixpoint apply (Phi : state) : T Phi -> eval_env eval_sync Phi -> eval_env eval_sync Phi :=
-    match Phi with 
-      | nil => fun _ _ => tt
-      | cons t Phi => fun Delta E => 
-                     match fst Delta with 
-                       | None => (fst E, apply Phi (snd Delta) (snd E))
-                       | Some d => (d, apply Phi (snd Delta) (snd E))
-                     end
-    end. 
-
-End Diff. 
-
-
 Module Sem. 
 
+  Module Diff. 
+    Section t. 
+      Variable Phi : state. 
+      Definition T := eval_env (option ∘ eval_sync) Phi. 
+      Definition add (Delta : T) t (v : var Phi t) w : option T :=
+        match get Phi t v Delta  with 
+          | None =>  Some  (set _ _ Phi t v (Some w) Delta)
+          | Some _ => None 
+        end.
+      
+    End t. 
+    Fixpoint init (Phi : state ): T Phi := 
+      match Phi with 
+        | nil => tt
+        | cons t Phi => (None, init Phi)
+      end. 
+    
+    Fixpoint apply (Phi : state) : T Phi -> eval_env eval_sync Phi -> eval_env eval_sync Phi :=
+      match Phi with 
+        | nil => fun _ _ => tt
+        | cons t Phi => fun Delta E => 
+                       match fst Delta with 
+                         | None => (fst E, apply Phi (snd Delta) (snd E))
+                         | Some d => (d, apply Phi (snd Delta) (snd E))
+                       end
+      end. 
+    
+  End Diff. 
+  
+  
   Module Dyn. 
-  (** dynamic semantics: 
+    (** dynamic semantics: 
     - continuation passing style: the current diff is threaded through the execution 
     - illegal behaviors are denoted by None *)
     Section t. 
@@ -297,6 +294,7 @@ Module Sem.
       in  eval_action t a). 
   Defined.
   End t. 
+  Arguments eval_action {Phi} {t} _%action _ _.  
 End Sem.           
 
 Section run. 
@@ -305,7 +303,7 @@ Section run.
   Notation rule := (Action (Phi T) Unit). 
 
   Definition run_rule (R : rule) := 
-    fun st => Sem.Dyn.Run _ (Sem.eval_action _ _ (R eval_type)) st. 
+    fun st => Sem.Dyn.Run _ (Sem.eval_action (R eval_type)) st. 
                         
   Fixpoint first_rule (l : list rule) x :=
     match l with 
