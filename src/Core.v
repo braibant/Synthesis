@@ -28,6 +28,7 @@ Notation Int := (Tlift (Tint 16)).
 Notation Bool := (Tlift (Tbool)).
 Notation Unit := (Tlift (Tunit)). 
 
+
 Inductive primitive (Phi : state) : list type -> type -> Type:=
   | register_read : forall t, var Phi (Treg t) ->  primitive Phi nil t
   | register_write : forall t, var Phi (Treg t) -> primitive Phi (t:: nil) Unit
@@ -63,7 +64,8 @@ Section s.
     | Primitive : 
       forall args res (p : primitive Phi args res)
         (exprs : dlist (expr) args),
-        action res. 
+        action res
+    | Try : forall (a : action Unit), action Unit.
   End t. 
   Definition Action t := forall Var, action Var t.
   Definition Expr t := forall Var, expr Var t. 
@@ -216,6 +218,14 @@ Module Sem.
           end. 
       Definition Fail {t} : T t := fun _ _ => None. 
       
+      Definition Try : T unit -> T unit := 
+        fun a st Delta => 
+          match a st Delta with 
+            | None => Some (tt, Delta)
+            | x =>  x
+          end. 
+                                          
+        
       Definition Run (CMD : T unit) (st : eval_state Phi) := 
         match CMD st (Diff.init Phi) with 
           | None => None 
@@ -261,30 +271,32 @@ Module Sem.
     Variable Phi : state. 
     Definition eval_action (t : type) (a : action Phi eval_type t) : 
       (Dyn.T Phi (eval_type t)). 
-  refine (
-      let fix eval_action (t : type) (a : action Phi eval_type t) :
-          Dyn.T Phi ( eval_type t) :=
-          match a with
-            | Return t exp => Dyn.Return Phi (eval_expr _ exp)
-            | Bind t u a f => 
-                let act := eval_action _ a in 
-                let f' := (fun e => eval_action u (f e)) in 
-                  Dyn.Bind Phi act f'              
-            | When t e a => 
-                let g1 := eval_expr _ e in 
-                let a' := eval_action t a in 
-                match g1 with 
-                  | true => a' 
-                  | false => Dyn.Fail  Phi
-                end
-            | Primitive args res p exprs => 
-                Dyn.primitive_denote Phi args res p (dlist_fold' eval_expr _ exprs)
+
+    refine (
+        let fix eval_action (t : type) (a : action Phi eval_type t) :
+            Dyn.T Phi ( eval_type t) :=
+            match a with
+              | Return t exp => Dyn.Return Phi (eval_expr _ exp)
+              | Bind t u a f => 
+                  let act := eval_action _ a in 
+                    let f' := (fun e => eval_action u (f e)) in 
+                      Dyn.Bind Phi act f'              
+              | When t e a => 
+                  let g1 := eval_expr _ e in 
+                    let a' := eval_action t a in 
+                      match g1 with 
+                        | true => a' 
+                        | false => Dyn.Fail  Phi
+                      end
+              | Primitive args res p exprs => 
+                  Dyn.primitive_denote Phi args res p (dlist_fold' eval_expr _ exprs)
+              | Try a => 
+                  let a := eval_action _ a in 
+                    Dyn.Try Phi a                    
           end                
       in  eval_action t a). 
   Defined.
   End t. 
-
-
 End Sem.           
 
 Section run. 
