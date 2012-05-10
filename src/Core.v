@@ -28,10 +28,6 @@ Notation Int := (Tlift (Tint 16)).
 Notation Bool := (Tlift (Tbool)).
 Notation Unit := (Tlift (Tunit)). 
 
-Inductive member {T} : list T -> Type :=
-| member_0 : forall l t, member (t::l)
-| member_S : forall l t, member l -> member (t :: l). 
-
 Inductive primitive (Phi : state) : list type -> type -> Type:=
   | register_read : forall t, var Phi (Treg t) ->  primitive Phi nil t
   | register_write : forall t, var Phi (Treg t) -> primitive Phi (t:: nil) Unit
@@ -52,6 +48,7 @@ Section s.
                    dlist  (fun j => expr (Tlift j)) (args) -> 
                    expr  (Tlift res)
     | Econstant : forall  (c : constant0), expr (Tlift (cst_ty c))
+   
     | Enth : forall l t (m : var l t), expr (Ttuple l) -> expr t
     | Etuple : forall l (exprs : dlist (expr) l), expr (Ttuple l). 
     
@@ -208,7 +205,7 @@ Module Sem.
     - illegal behaviors are denoted by None *)
     Section t. 
       Variable Phi : state. 
-      
+      (* semantics :  Action Phi t -> T t  *)
       Definition T t := eval_state Phi -> Diff.T Phi -> option (t * Diff.T Phi). 
       Definition Return {t} (e : t) : T t  := fun st d => Some (e, d).
       Definition Bind {s t} : T s -> (s -> T t) -> T t :=
@@ -224,28 +221,35 @@ Module Sem.
           | None => None 
           | Some Delta => Some (Diff.apply Phi (snd Delta) st)
         end. 
-      Definition primitive_denote  args res (p : primitive Phi args res) (exprs : eval_env eval_type args) : T (eval_type res).  
-      destruct p;  simpl in *; intros st Delta. 
-      exact (Some (get Phi _ v st, Delta)).
-      destruct exprs as [w _]. 
-      refine (match Diff.add _ Delta _ v w with | None => None | Some Delta => Some (tt, Delta) end). 
-      refine (let rf := get Phi (Tregfile n t) v st in 
-              let adr := fst exprs in 
-              match @Regfile.get n _ rf  (Word.unsigned adr) with 
-                  | None => None
-                  | Some v => Some (v, Delta)
-              end). 
-      refine (
-          let rf := get Phi (Tregfile n t) v st in 
-          let rf := match exprs with 
-            | (adr, (w, _)) => @Regfile.set n _ rf (Word.unsigned adr) w
-          end in 
-            match Diff.add _ Delta _ v rf with 
-                | None => None 
-                | Some (Delta) => Some (tt, Delta)
-          end). 
-                      
-      Defined. 
+
+      Definition primitive_denote  args res (p : primitive Phi args res) (exprs : eval_env eval_type args) : T (eval_type res):=
+        match
+          p in (primitive _ l t) return (eval_env eval_type l -> T (eval_type t))
+        with
+          | register_read t v =>
+              fun _ (st : eval_state Phi)
+                  (Delta : Diff.T Phi) => Some (get Phi (Treg t) v st, Delta)
+          | register_write t v =>
+              fun (exprs : eval_env eval_type [t]) (_ : eval_state Phi) (Delta : Diff.T Phi) =>
+                let (w, _) := exprs in
+                  do Delta2 <- Diff.add Phi Delta (Treg t) v w; 
+                  Some (tt, Delta2)
+          | regfile_read n t v p =>
+              fun (exprs : eval_env eval_type [Tlift (W p)]) 
+                  (st : eval_state Phi) (Delta : Diff.T Phi) =>
+                let rf := get Phi (Tregfile n t) v st in
+                let adr := fst exprs in
+                  do v <- Regfile.get rf (Word.unsigned adr); Some (v, Delta)
+          | regfile_write n t v p =>
+              fun (exprs : eval_env eval_type [Tlift (W p); t]) 
+                  (st : eval_state Phi) (Delta : Diff.T Phi) =>
+                let rf := get Phi (Tregfile n t) v st in
+                let rf := match exprs with 
+                              (adr, (w, _)) => Regfile.set rf (Word.unsigned adr) w
+                          end
+                in
+                  do Delta2 <- Diff.add Phi Delta (Tregfile n t) v rf; Some (tt, Delta2)
+        end exprs.
     End t. 
   End Dyn. 
 

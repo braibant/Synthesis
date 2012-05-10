@@ -1,4 +1,11 @@
 
+05/10/2012 Discussion with Richard. 
+- GCD -> MOD. 
+- Turns out that to avoid having to use the scheduler, one may just
+use "a orElse b" composition of actions, and "a ; b", and use wires to
+implement sequential composition... 
+
+
 05/07/2012
 Provided core GAA with a formal 'monadic' semantics, with a mixture of
 PHOAS, and dependent de Bruijn indices. 

@@ -16,7 +16,7 @@ Section t.
           DO B <- read [: r2];
           WHEN (!B <= !A); 
           DO _ <- (write [: r1 <- (!A - !B)]);  
-          DO _ <- (write [: r2 <- (!B)]);  
+          (* DO _ <- (write [: r2 <- (!B)]);   *)
           RETURN #Ctt
          ). 
   Defined. 
@@ -31,7 +31,7 @@ Section t.
           DO B <- read [: r2];
           WHEN (!A < !B); 
           DO _ <- (write [: c <- #b false]);  
-          DO _ <- (write [: r1 <- !A ]);  
+          (* DO _ <- (write [: r1 <- !A ]);   *)
           RETURN #Ctt
          ). 
   Defined. 
@@ -62,4 +62,4 @@ Section t.
   Definition finish' x := match x with None => None | Some x => Some (finish x) end. 
 End t. 
 
-Eval compute in finish' 16 (run_unfair (GCD.T 16) 10 (GCD.st0 16 17 3)). 
+Eval compute in finish' 16 (run_unfair (T 16) 10 (st0 16 17 3)). 
