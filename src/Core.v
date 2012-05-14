@@ -64,7 +64,7 @@ Section s.
         (a : action  t) 
         (f : Var t -> action u),  
         action u
-    | When : forall t (e : expr Bool) (a : action t), action t
+    | Assert : forall (e : expr Bool), action Unit
     | Primitive : 
       forall args res (p : primitive Phi args res)
         (exprs : dlist (expr) args),
@@ -116,6 +116,9 @@ Delimit Scope action_scope with action.
 Arguments Bind {Phi Var t u} _%action _%action. 
 Notation "'DO' X <- A ; B" := (Bind A (fun X => B)) (at level 200, X ident, A at level 100, B at level 200) : action_scope. 
 
+Arguments Assert {Phi Var} e%expr. 
+
+Definition When {Phi Var t} e a : action Phi Var t := @Bind Phi Var _ _ (Assert e) (fun _ => a). 
 Arguments When {Phi Var t} _%expr _%action. 
 Notation " 'WHEN' e ; B" := (When e B) (at level 200, e at level 100, B at level 200). 
 
@@ -291,13 +294,12 @@ Module Sem.
                   let act := eval_action _ a in 
                     let f' := (fun e => eval_action u (f e)) in 
                       Dyn.Bind Phi act f'              
-              | When t e a => 
-                  let g1 := eval_expr _ e in 
-                    let a' := eval_action t a in 
-                      match g1 with 
-                        | true => a' 
-                        | false => Dyn.Fail  Phi
-                      end
+              | Assert e => 
+                  let g := eval_expr _ e in 
+                    match g with 
+                      | true => Dyn.Return Phi tt
+                      | false => Dyn.Fail  Phi
+                    end
               | Primitive args res p exprs => 
                   Dyn.primitive_denote Phi args res p (dlist_fold' eval_expr _ exprs)
               | Try a => 
@@ -305,7 +307,7 @@ Module Sem.
                     Dyn.Try Phi a                    
           end                
       in  eval_action t a). 
-  Defined.
+    Defined.
   End t. 
   Arguments eval_action {Phi} {t} _%action _ _.  
 End Sem.           

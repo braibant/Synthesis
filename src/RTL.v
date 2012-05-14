@@ -1,65 +1,112 @@
 Require Import Common. 
 Require Import Core. 
 
-
-Inductive comb (Phi : state) : list type -> type -> Type:=
-  | comb_register_read : forall t, var Phi (Treg t) ->  comb Phi nil t
-  (* register file primitives *)
-  | comb_regfile_read : forall n t (v : var Phi (Tregfile n t)) p, comb Phi ([Tlift (Tint p)])%list  t. 
-
-Inductive sync (Phi : state) : list type -> type -> Type:=
-  | sync_register_write : forall t, var Phi (Treg t) -> sync Phi (t:: nil) Unit
-  (* register file primitives *)
-  | sync_regfile_write : forall n t (v : var Phi (Tregfile n t)) p, sync Phi ([Tlift (Tint p); t])%list  Unit. 
+Definition R (t : type) := nat. 
+Definition bind (t : type) := (R t * expr R t)%type. 
 
 
-  Module Diff. 
-    Section t. 
-      Variable Phi : state. 
-      Definition T := eval_env (option ∘ eval_sync) Phi. 
-      Definition add (Delta : T) t (v : var Phi t) w : option T :=
-        match get Phi t v Delta  with 
-          | None =>  Some  (set _ _ Phi t v (Some w) Delta)
-          | Some _ => None 
-        end.
-      
-    End t. 
-    Fixpoint init (Phi : state ): T Phi := 
-      match Phi with 
-        | nil => tt
-        | cons t Phi => (None, init Phi)
-      end. 
-    
-    Fixpoint apply (Phi : state) : T Phi -> eval_env eval_sync Phi -> eval_env eval_sync Phi :=
-      match Phi with 
-        | nil => fun _ _ => tt
-        | cons t Phi => fun Delta E => 
-                       match fst Delta with 
-                         | None => (fst E, apply Phi (snd Delta) (snd E))
-                         | Some d => (d, apply Phi (snd Delta) (snd E))
-                       end
-      end. 
-    
-  End Diff. 
+Inductive sync : Type :=
+  | Treg : forall (t : Core.type), sync
+  | Tregfile : forall (n : nat) (t : Core.type), sync. 
+
+Definition state := list sync. 
+
+Definition eval_sync (s : sync) := 
+  match s with
+    | Treg t => Core.eval_type t 
+    | Tregfile n t => Regfile.T n (Core.eval_type t)
+  end. 
+
+(**  Each primitive in the top level language has must be massaged in
+smaller blocks whose semantics that depend only on the initial state. 
+
+This is naturally the case for [regs], and register [files]. I added
+[visible] just to make the problem obvious in the following
+translation.  
+
+Consider v a [visible]
+
+[ 
+  do _ <- write [: v <- e];
+  assert P; 
+  do x <- read [: v ];
+  assert Q(x); 
+  A
+]
+
+must be translated to 
+[
+ t1 <- e; 
+ Guard (P /\ Q(t1))
+   [
+    write [: v <- t1]; 
+    x <- t1; 
+    A
+   ]
+] 
+
+The global strategy is as follows:
+- All combinational operations bubble to the top of a block; 
+- The guard bubble to the top of a block, after the combinational operations; 
+- The synchronous updates stay are put in a Guard block. 
+
+This strategy does not work for, for instance, a bypass fifo of length 1 [F]
+(empty in the following example)
+[
+  do old <- fifo_enq_deq F new; 
+  assert (old = new); 
+  A
+]
+
+[
+  t1 <- new; 
+  comb (A) 
+  Guard (t1 = t1 /\ guard (A)) [ fifo 
+ 
+]
+
+*)
+
+Inductive update (Phi : state) : list Core.type -> Core.type -> Type :=
+  | register_write : forall t, var Phi (Treg t) -> update Phi (t :: nil) Core.Unit
+  | regfile_write : forall n t (v : var Phi (Tregfile n t)) p, update Phi ([Core.Tlift (Tint p); t])%list Core.Unit. 
 
 Section t. 
-  Variable Var : type -> Type. 
+  Variable Var : Core.type -> Type. 
   Variable Phi : state. 
   
   Inductive com := 
   (* event control *)
-  | Guard : expr Var Bool -> com -> com
+  | Guard : Core.expr Var Core.Bool -> com -> com
   (* combinational assigmenent *)
-  | Foo : forall t, expr Var t -> (Var t -> com) -> com
+  | Foo : forall t, Core.expr Var t -> (Var t -> com) -> com
   (* synchronous effect *)
-  | State : forall args res (p : primitive Phi args res) (exprs : dlist (expr Var) args),
+  | State : forall args res (p : update Phi args res) (exprs : dlist Var args),
               (Var res -> com) -> com. 
 End t. 
 
 Reserved Notation " c1 '/' st '==>' diff" (at level 40, st at level 39).
 
+ Definition chang (s: Core.state) : state.  
+  eapply List.map . 2: apply s. 
+  intros x. 
+  refine (match x with | Core.Treg t => Treg t | Core.Tvis t => Treg t | Core.Tregfile n t => Tregfile n t end). 
+          Defined.     
 Section eval. 
-  Variable Phi : state. 
+  Variable Phi : Core.state. 
+  
+  Definition comp V t (c : Core.action Phi V t ) : com V (chang Phi).
+  refine (match c with 
+              | Core.Return t e => _
+              | Core.Bind t u a f => _
+              | Core.When t e a => _
+              | Core.Primitive args res p exprs  => _
+              | Core.Try a => _
+          end). 
+  admit. 
+  | Try : Core.action Phi Var (Core.Tlift Tunit) ->
+          Core.action Phi Var (Core.Tlift Tunit)
+  induction c. 
   Definition eval_com  (c : com eval_type Phi) (st : eval_state Phi) (Delta : Diff.T Phi): option (Diff.T Phi). 
   refine (
       let fix eval_com (c : com eval_type Phi) :=
@@ -73,8 +120,7 @@ Section eval.
             | State args res p exprs c' => _
           end
       in
-        eval_com c st Delta).
-  
+        eval_com c st Delta).  
   intros st' Delta'. 
   
 
