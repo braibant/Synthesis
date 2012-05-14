@@ -1,6 +1,114 @@
 Require Import Common. 
 Require Import Core. 
 
+
+Inductive comb (Phi : state) : list type -> type -> Type:=
+  | comb_register_read : forall t, var Phi (Treg t) ->  comb Phi nil t
+  (* register file primitives *)
+  | comb_regfile_read : forall n t (v : var Phi (Tregfile n t)) p, comb Phi ([Tlift (Tint p)])%list  t. 
+
+Inductive sync (Phi : state) : list type -> type -> Type:=
+  | sync_register_write : forall t, var Phi (Treg t) -> sync Phi (t:: nil) Unit
+  (* register file primitives *)
+  | sync_regfile_write : forall n t (v : var Phi (Tregfile n t)) p, sync Phi ([Tlift (Tint p); t])%list  Unit. 
+
+
+  Module Diff. 
+    Section t. 
+      Variable Phi : state. 
+      Definition T := eval_env (option ∘ eval_sync) Phi. 
+      Definition add (Delta : T) t (v : var Phi t) w : option T :=
+        match get Phi t v Delta  with 
+          | None =>  Some  (set _ _ Phi t v (Some w) Delta)
+          | Some _ => None 
+        end.
+      
+    End t. 
+    Fixpoint init (Phi : state ): T Phi := 
+      match Phi with 
+        | nil => tt
+        | cons t Phi => (None, init Phi)
+      end. 
+    
+    Fixpoint apply (Phi : state) : T Phi -> eval_env eval_sync Phi -> eval_env eval_sync Phi :=
+      match Phi with 
+        | nil => fun _ _ => tt
+        | cons t Phi => fun Delta E => 
+                       match fst Delta with 
+                         | None => (fst E, apply Phi (snd Delta) (snd E))
+                         | Some d => (d, apply Phi (snd Delta) (snd E))
+                       end
+      end. 
+    
+  End Diff. 
+
+Section t. 
+  Variable Var : type -> Type. 
+  Variable Phi : state. 
+  
+  Inductive com := 
+  (* event control *)
+  | Guard : expr Var Bool -> com -> com
+  (* combinational assigmenent *)
+  | Foo : forall t, expr Var t -> (Var t -> com) -> com
+  (* synchronous effect *)
+  | State : forall args res (p : primitive Phi args res) (exprs : dlist (expr Var) args),
+              (Var res -> com) -> com. 
+End t. 
+
+Reserved Notation " c1 '/' st '==>' diff" (at level 40, st at level 39).
+
+Section eval. 
+  Variable Phi : state. 
+  Definition eval_com  (c : com eval_type Phi) (st : eval_state Phi) (Delta : Diff.T Phi): option (Diff.T Phi). 
+  refine (
+      let fix eval_com (c : com eval_type Phi) :=
+          match c with
+            | Guard g c' => fun st Delta => match eval_expr _ g with 
+                                      | true =>  eval_com c' st Delta 
+                                      | false => Some (Delta)
+                                    end
+            | Foo t e c' => fun st Delta => let v := eval_expr _ e in 
+                                      eval_com (c' v) st Delta
+            | State args res p exprs c' => _
+          end
+      in
+        eval_com c st Delta).
+  
+  intros st' Delta'. 
+  
+
+refine (match E with true => IHc | false => None end). 
+set (E := c (eval_expr _ e)).
+
+  Inductive com_eval : com -> state -> -> Prop :=
+.  
+  | Eseq : forall st1 st2 st3 c1 c2, 
+             c1 / st1 ==> st2 ->
+             c2 / st2 ==> st3 -> 
+             Cseq c1 c2 / st1 ==> st3
+  | Eset_reg : forall t (v : var regs t) (e : expr t) st1 st2 r, 
+                 eval_expr  st1 e = r ->
+                 update_reg  st1 v r = st2 -> 
+                 (Cset_reg t v e) / st1 ==> st2 
+  | Eset_mem : forall t (v : var mems t) (e : expr t) st1 st2 r, 
+                 eval_expr st1 e = r ->
+                 update_mem st1 v r = st2 -> 
+                 (Cset_mem t v e) / st1 ==> st2
+  | Eifb_true : forall (e : expr Tbool) c1 c2 st1 st2, 
+                  eval_expr  st1 e = true -> 
+                  c1 / st1 ==> st2 ->
+                  (Cifb e c1 c2) / st1 ==> st2
+  | Eifb_false : forall (e : expr Tbool) c1 c2 st1 st2, 
+                   eval_expr st1 e = false -> 
+                   c2 / st1 ==> st2 ->
+                   (Cifb e c1 c2) / st1 ==> st2 
+   where "c1 '/' st '==>' st'" := (com_eval c1 st st').
+
+  
+End t.     
+
+
 (*   Module Diff. 
     Section t. 
       Variable Phi : state. 
@@ -47,24 +155,35 @@ Module Sem2.
           guard : expr Var Bool
         }. 
           
-      Record  T t := mk_T
+      Record  M t := mk_M
         {
           content : expr Var t;
           effects : list effect; 
           valid : expr Var Bool}. 
 
-      Arguments mk_T {t} _ _ _. 
+      Arguments mk_M {t} _ _ _. 
       
-      Definition Return {t} (e : expr Var t) : T t := mk_T e nil (#b true).
+      Definition T t := expr Var Bool -> M t. 
+      
+      Definition Return {t} (e : expr Var t) : T t := fun _ => mk_M e nil (#b true).
 
-      Definition Bind {s t} : T s -> (expr Var s -> T t) -> T t. 
+      Definition Bind {s t} : T s -> (expr Var s -> T t) -> T t.
       intros x f. 
-      assert (y := f (content _ x)). clear f. 
-      apply (mk_T (content _ y) (effects _ x ++ effects _ y) (valid _ x && valid _ y )%expr). 
+      intros Psi. 
+      refine (let x' := x Psi in 
+              let y := f (content _ x') Psi in 
+                mk_M (content _ y) (effects _ x' ++ effects _ y) (valid _ x' && valid _ y )%expr). 
       Defined. 
       
       Definition primitive_denote  args res (p : primitive Phi args res) (exprs : eval_env eval_type args) : T (res). 
+      intros Psi. 
+      destruct p.  
+      (* register read *)
       
+      (* register write *)
+      (* regfile read *)
+      (* regfile write *)
+
         match
           p in (primitive _ l t) return (eval_env eval_type l -> T (eval_type t))
         with

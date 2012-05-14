@@ -13,12 +13,14 @@ Fixpoint eval_type (t : type) :=
 
 Inductive sync : Type :=
   | Treg : forall (t : type), sync
+  | Tvis : forall (t : type), sync
   | Tregfile : forall (n : nat) (t : type), sync. 
 
 Definition state := list sync. 
 Definition eval_sync (s : sync) := 
   match s with
     | Treg t => eval_type t 
+    | Tvis t => eval_type t
     | Tregfile n t => Regfile.T n (eval_type t)
   end. 
 
@@ -34,7 +36,9 @@ Inductive primitive (Phi : state) : list type -> type -> Type:=
   | register_write : forall t, var Phi (Treg t) -> primitive Phi (t:: nil) Unit
   (* register file primitives *)
   | regfile_read : forall n t (v : var Phi (Tregfile n t)) p, primitive Phi ([Tlift (Tint p)])%list  t
-  | regfile_write : forall n t (v : var Phi (Tregfile n t)) p, primitive Phi ([Tlift (Tint p); t])%list  Unit. 
+  | regfile_write : forall n t (v : var Phi (Tregfile n t)) p, primitive Phi ([Tlift (Tint p); t])%list  Unit
+  | visible_read : forall t, var Phi (Tvis t) -> primitive Phi nil t
+  | visible_write : forall t, var Phi (Tvis t) -> primitive Phi (t :: nil) Unit. 
 
 
 Section s.
@@ -64,7 +68,7 @@ Section s.
     | Primitive : 
       forall args res (p : primitive Phi args res)
         (exprs : dlist (expr) args),
-        action res
+        action res 
     | Try : forall (a : action Unit), action Unit.
   End t. 
   Definition Action t := forall Var, action Var t.
@@ -229,8 +233,8 @@ Module Sem.
           | Some Delta => Some (Diff.apply Phi (snd Delta) st)
         end. 
 
-      Definition primitive_denote  args res (p : primitive Phi args res) (exprs : eval_env eval_type args) : T (eval_type res):=
-        match
+      Definition primitive_denote  args res (p : primitive Phi args res) (exprs : eval_env eval_type args) : T (eval_type res). 
+      refine (match
           p in (primitive _ l t) return (eval_env eval_type l -> T (eval_type t))
         with
           | register_read t v =>
@@ -256,7 +260,16 @@ Module Sem.
                           end
                 in
                   do Delta2 <- Diff.add Phi Delta (Tregfile n t) v rf; Some (tt, Delta2)
-        end exprs.
+          | visible_read t v => 
+              fun _ (st : eval_state Phi) (Delta : Diff.T Phi) => 
+                match get Phi _ v Delta with | None => Some (get Phi _ v st, Delta) | Some p => Some (p, Delta) end 
+          | visible_write t v => 
+              fun (exprs: eval_env eval_type [t]) (st : eval_state Phi) (Delta : Diff.T Phi) => 
+                let (w, _) := exprs in
+                  do Delta <- Diff.add Phi Delta _ v w; 
+                  Some (tt, Delta)
+        end exprs). 
+      Defined. 
     End t. 
   End Dyn. 
 
@@ -335,3 +348,25 @@ End run.
 
 Open Scope action_scope. 
 
+Section Fifo. 
+  Variable t : type. 
+  
+  Notation tb := (Ttuple ([t ; Bool]%list)). 
+  Definition FIFO := Treg tb. 
+
+  Definition full {V} (I : expr V tb) : expr V Bool. 
+  eapply Enth. 2: apply I. apply var_S. apply var_0. 
+  Defined. 
+  Arguments full {V} I%expr. 
+  Definition data {V} (I : expr V tb) : expr V t. 
+  eapply Enth. 2: apply I. apply var_0. 
+  Defined. 
+  Arguments data {V} I%expr. 
+
+  Definition deq {Phi} (v : var Phi FIFO) : Action Phi Unit. intros V. 
+  refine (DO X <- read [: v]; 
+          WHEN (full (!X)%expr);
+          write [: v <- _]
+         ). 
+  Admitted. 
+End Fifo. 
