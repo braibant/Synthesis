@@ -5,7 +5,7 @@ Section t.
   Notation REG := (Tlift (Tint 2)). 
   Notation CONST := (Tlift (Tint n)). 
   
-  
+  Open Scope list_scope. 
   Definition INSTR := Ttuple (OPCODE :: REG :: REG :: REG :: CONST :: nil). 
   
   Notation "[2^n]" := (128). 

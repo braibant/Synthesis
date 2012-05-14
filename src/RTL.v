@@ -2,20 +2,158 @@ Require Import Common.
 Require Import Core. 
 
 Definition R (t : type) := nat. 
-Definition bind (t : type) := (R t * expr R t)%type. 
+
+Section t. 
+  Variable Phi : state. 
+  Inductive bind (t : type) : Type := 
+  | bind_expr :  R t -> expr R t ->  bind t
+  | bind_reg_read : R t -> var Phi (Treg t) -> bind t
+  | bind_regfile_read : R t -> forall n, var Phi (Tregfile n t) -> forall p, R (Tlift (W p)) -> bind t. 
+            
+  (* We would like to define an inductive and a record *)
+  Inductive T : type -> Type := 
+  | mk_T :     
+    forall t (env : list type) (bindings : dlist bind env) (pointer : R t) (guard : expr R Bool)
+      (effets : list effect), T t
+   with effect := 
+  | mk_block : T Unit -> effect
+  | effect_reg_write : forall t, var Phi (Treg t) -> R t -> effect  
+  | effect_regfile_write : forall n t, var Phi (Tregfile n t) -> forall p, R (Tlift (W p)) -> R t -> effect. 
+
+  Definition pointer {t} (x : T t) := match x with | mk_T _ _ _ pointer _ _ => pointer end. 
+  Definition effets {t} (x : T t) := match x with | mk_T _ _ _ _ _ effets => effets end. 
+  Definition guard  {t} (x : T t) := match x with | mk_T _ _ _ _ guard  _ => guard end. 
+  Definition env  {t} (x : T t) := match x with | mk_T _ env _ _ _ _ => env end. 
+  Definition bindings  {t} (x : T t) : dlist bind (env x) := match x with | mk_T _ _ bindings _ _  _ => bindings end. 
 
 
-Inductive sync : Type :=
-  | Treg : forall (t : Core.type), sync
-  | Tregfile : forall (n : nat) (t : Core.type), sync. 
+  Arguments mk_T {t} env%list bindings%dlist pointer guard effets. 
 
-Definition state := list sync. 
 
-Definition eval_sync (s : sync) := 
-  match s with
-    | Treg t => Core.eval_type t 
-    | Tregfile n t => Regfile.T n (Core.eval_type t)
-  end. 
+  Definition andb (a b : expr R Bool): expr R Bool :=
+    match a, b with 
+      | Econstant Tbool x, o 
+      | o, Econstant Tbool x => if x then o else (#b false)%expr
+      | _, _ => (a && b)%expr
+    end. 
+
+  Definition compile t (a : action Phi R t) : (T t * nat). 
+  refine (
+      let compile := fix compile t (a  : action Phi R t ) next {struct a}: (T t * nat):=
+          match a with
+            | Return t exp => 
+                _
+            | Bind t u A F => _
+            | Assert exp => _
+            | Primitive args res p exprs => _
+            | Try A => _
+          end
+      in compile t a 0               
+    ). 
+  (* return *)
+  refine (let bindings := ([bind_expr _ next exp])%dlist  in
+                (mk_T _ bindings  next (#b true)%expr nil, S next)). 
+  (* bind *)
+  refine (let (t, next') := compile  _ A next  in 
+          let (t', next'') := compile _ (F (pointer t)) next' in 
+          let T := 
+              mk_T _  (dlist_app (bindings t) (bindings t')) (pointer t') 
+                   (andb (guard t) (guard t'))%expr
+                   (List.app (effets t) (effets t'))
+          in  
+            (T , next'')
+         ). 
+  (* assert *)
+  refine (let bindings := ([bind_expr _ next exp])%dlist in
+            (mk_T _ bindings next (!next)%expr nil, S next) ). 
+  (* primitive *)
+  revert exprs. 
+  refine (match p with
+            | register_read t v => _
+            | register_write t v => _
+            | regfile_read n t v p => _
+            | regfile_write n t v p => _
+          end); clear p; intros exprs.        
+  (* register read *)
+   now (refine (let bindings :=  ([bind_reg_read _ next v])%dlist in 
+                 (mk_T _ bindings next (#b true)%expr nil, S next) )). 
+  (* register write *)
+   eapply dlist_fold' in exprs. destruct exprs as [w _]. 
+   refine 
+     (
+       let bindings := ([bind_expr _ next w])%dlist in 
+       let effects := ([effect_reg_write _ v next])%list in
+         (mk_T  _ bindings 0 (#b true) effects, S next)
+     ). 
+   auto. 
+  (* register file read *)
+  eapply dlist_fold' in exprs. simpl in exprs. destruct exprs as [adr _].  
+  refine (
+      let env := ((Tlift (W p0) ) :: t1 :: nil)%list in     
+      let bindings := 
+          ([
+             bind_expr _ next adr; 
+             bind_regfile_read _ (S next) n v p0 next
+          ])%dlist
+      in 
+        (mk_T env bindings next (#b true)%expr nil, S (S next)) 
+    ).   
+  auto. 
+  (* register file write *)
+  eapply dlist_fold' in exprs. simpl in exprs. destruct exprs as [adr [w _]].  
+  refine (
+      let env := ((Tlift (W p0) ) :: t1 :: nil)%list in     
+      let bindings := 
+          ([
+             bind_expr _ next adr; 
+             bind_expr _ (S next) w
+          ])%dlist in
+      let effects := ([effect_regfile_write _ _ v p0 next (S next)])%list in 
+        (mk_T env bindings next (#b true)%expr nil, S (S next)) 
+    ).
+  intros. apply X. 
+  (* try *)
+  refine (let (t, next') := compile _ A next in 
+          let block := [mk_block t]%list in 
+          let bindings := dlist_nil in 
+            (mk_T _ bindings 0 (#b true)%expr  block, next')
+  ).
+  Defined. 
+
+End t. 
+
+Arguments mk_T {Phi} {t} {env%list} bindings%dlist pointer guard effets. 
+
+Arguments bind_expr  {Phi t} _ _%expr. 
+Notation "[: x <- v ]" := (bind_expr x v). 
+
+Arguments bind_reg_read {Phi t} _ _. 
+Notation "[: x <- 'read' v ]" := (bind_reg_read x v). 
+
+Arguments effect_reg_write {Phi} {t} _ _. 
+Notation "[: 'write' ( v ) e ]" := (effect_reg_write v e). 
+
+Arguments bind_regfile_read {Phi t} _ {n} _ p _. 
+Notation "[: x <- 'read' ( M ) # adr ]" := (bind_regfile_read x M _ adr ) (no associativity). 
+
+Arguments regfile_write {Phi n t} _ p. 
+Notation "'write' M [: x <- v ]" := (Primitive ([Tlift (W _); _])%list _ (regfile_write M _ ) (dlist_cons (x)%expr (dlist_cons (v)%expr (dlist_nil)))) (no associativity). 
+
+Section test. 
+  Require Import MOD. 
+  Eval compute in compile _ _ (iterate 5 R). 
+
+  Eval compute in compile _ _ (done 5 R). 
+
+End test. 
+
+Section test2. 
+  Require Import Isa. 
+  Eval compute in compile _ _ (loadi_rule 5 R). 
+
+  Eval compute in compile _ _ (store_rule 5 R). 
+
+End test2. 
 
 (**  Each primitive in the top level language has must be massaged in
 smaller blocks whose semantics that depend only on the initial state. 
@@ -66,7 +204,7 @@ This strategy does not work for, for instance, a bypass fifo of length 1 [F]
 ]
 
 *)
-
+(*
 Inductive update (Phi : state) : list Core.type -> Core.type -> Type :=
   | register_write : forall t, var Phi (Treg t) -> update Phi (t :: nil) Core.Unit
   | regfile_write : forall n t (v : var Phi (Tregfile n t)) p, update Phi ([Core.Tlift (Tint p); t])%list Core.Unit. 
@@ -192,14 +330,6 @@ Module Sem2.
       Variable Phi : state. 
       Variable Var : type -> Type. 
 
-      Record effect := 
-        {
-          args : list type;
-          res : type;
-          prim : primitive Phi args res;
-          exprs : dlist (expr Var) args; 
-          guard : expr Var Bool
-        }. 
           
       Record  M t := mk_M
         {
@@ -535,4 +665,4 @@ Section expr.
   
 End expr. 
 
-*)
+*)*)

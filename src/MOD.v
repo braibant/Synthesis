@@ -4,7 +4,7 @@ Section t.
   Variable n : nat. 
   Notation NUM := (Tlift (Tint n)). 
   Notation VAL := (Tlift (Tbool)) (only parsing). 
-  Definition Phi : state := Treg VAL :: Treg NUM  :: Treg NUM :: nil. 
+  Definition Phi : state := (Treg VAL :: Treg NUM  :: Treg NUM :: nil)%list. 
   
   Definition iterate : Action Phi Unit. intros V.
   set (c := var_0 : var Phi (Treg VAL)). 
@@ -36,7 +36,7 @@ Section t.
          ). 
   Defined. 
   
-  Definition T : TRS := mk_TRS Phi (iterate :: done :: nil). 
+  Definition T : TRS := mk_TRS Phi (iterate :: done :: nil)%list. 
   
   Inductive Ty : Type :=
   | RET : Word.T n -> Ty

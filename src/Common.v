@@ -13,6 +13,7 @@ Notation "f ∘ g" := (comp f g) (at level 60).
 
 
 Notation "[ ]" := nil : list_scope.
+Notation "t :: q" := (cons t q) : list_scope. 
 Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)%list : list_scope.
 
 
@@ -94,6 +95,20 @@ Section dependent_lists.
       | dlist_cons _ _ t q => q
     end.
 
+  Definition dlist_app : forall (l1 l2 : list T), 
+                         dlist l1 -> dlist l2 -> dlist (List.app l1 l2).   
+  refine (
+      (fix dlist_app (l1 l2 : list T) {struct l1} :
+       dlist l1 -> dlist l2 -> dlist (l1 ++ l2) :=
+       match l1 as l3 return (dlist l3 -> dlist l2 -> dlist (l3 ++ l2)) with
+         | nil => fun (_ : dlist []) (dl2 : dlist l2) => dl2
+         | (t :: q)%list =>
+             fun (dl1 : dlist (t :: q)) (dl2 : dlist l2) =>
+               dlist_cons t (q ++ l2) (dlist_hd t q dl1)
+                          (dlist_app q l2 (dlist_tl t q dl1) dl2)
+      end)). 
+  Defined. 
+
   Section s1. 
     Variable F : forall (t : T), P t -> E t -> option (E t). 
     Fixpoint dlist_fold (l : list T) (d : dlist l) : eval_env E l -> option (eval_env E l):=
@@ -122,6 +137,12 @@ Arguments dlist {T} P _.
 Arguments dlist_nil {T P}. 
 Arguments dlist_cons {T P} {t q} _ _.  
 Arguments dlist_fold' {T P E} _ _ _. 
+Arguments dlist_app {T P l1 l2} _ _ . 
+
+Delimit Scope dlist_scope with dlist. 
+Notation "[ ]" := dlist_nil : dlist_scope.
+Notation "t :: q" := (dlist_cons t q) : dlist_scope.
+Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)%dlist : dlist_scope.
 
 Definition dlist_map  {T P Q} :
   forall (f : forall (x : T), P x -> Q x), 
@@ -339,44 +360,37 @@ Arguments res {T E} s.
 Arguments value {T E} s _. 
 
 (* could it be a primitive with an empty set of arguments ? *)
-Record constant T (E : T -> Type) := mk_constant
-  {
-    cst_ty :  T;
-    cst_val : E cst_ty
-  }. 
+Definition constant T (E : T -> Type) (ty : T) := E ty. 
 
-Arguments mk_constant {T E} cst_ty cst_val. 
-Arguments cst_ty {T E} c. 
-Arguments cst_val {T E} c. 
+Arguments constant {T E} ty. 
 
 Notation signature0 := (signature type0 eval_type0). 
-Notation constant0 := (constant type0 eval_type0). 
+Notation constant0 := (@constant type0 eval_type0). 
 
-Definition Cbool b : constant0 := mk_constant Tbool b. 
-Definition Cword {n} x : constant0 := mk_constant (Tint n) (Word.repr _ x). 
+Definition Cbool b : constant0 Tbool := b. 
+Definition Cword {n} x : constant0 (Tint n) := (Word.repr _ x). 
 
 Notation B := Tbool. 
 Notation W n := (Tint n).
-Notation "t :: q" := (cons t q). 
 
 Inductive builtin : list type0 -> type0 -> Type :=
 | BI_external :  forall (s : signature0), builtin (args s) (res s)
-| BI_andb : builtin (B :: B :: nil)  B
-| BI_orb  : builtin (B :: B :: nil)  B
-| BI_xorb : builtin (B :: B :: nil)  B
-| BI_negb : builtin (B  :: nil)  B
+| BI_andb : builtin (B :: B :: nil)%list  B
+| BI_orb  : builtin (B :: B :: nil)%list  B
+| BI_xorb : builtin (B :: B :: nil)%list  B
+| BI_negb : builtin (B  :: nil)%list  B
                     
 (* "type-classes" *)
-| BI_eq   : forall t, builtin (t :: t :: nil) B
-| BI_lt   : forall t, builtin (t :: t :: nil) B
+| BI_eq   : forall t, builtin (t :: t :: nil)%list B
+| BI_lt   : forall t, builtin (t :: t :: nil)%list B
                          
 (* integer operations *)
-| BI_plus  : forall n, builtin (W n :: W n :: nil) (W n)
-| BI_minus : forall n, builtin (W n :: W n :: nil) (W n). 
+| BI_plus  : forall n, builtin (W n :: W n :: nil)%list (W n)
+| BI_minus : forall n, builtin (W n :: W n :: nil)%list (W n). 
 
 (* applies a binary function to two arguments *)
 Definition bin_op {a b c} (f : eval_type0 a -> eval_type0 b -> eval_type0 c) 
-  : eval_type0_list (a :: b :: nil) -> eval_type0 c :=
+  : eval_type0_list (a :: b :: nil)%list -> eval_type0 c :=
   fun X => match X with (x,(y, _)) => f x y end. 
 
 (* applies a unary function to one arguments *)

@@ -13,14 +13,12 @@ Fixpoint eval_type (t : type) :=
 
 Inductive sync : Type :=
   | Treg : forall (t : type), sync
-  | Tvis : forall (t : type), sync
   | Tregfile : forall (n : nat) (t : type), sync. 
 
 Definition state := list sync. 
 Definition eval_sync (s : sync) := 
   match s with
     | Treg t => eval_type t 
-    | Tvis t => eval_type t
     | Tregfile n t => Regfile.T n (eval_type t)
   end. 
 
@@ -36,9 +34,7 @@ Inductive primitive (Phi : state) : list type -> type -> Type:=
   | register_write : forall t, var Phi (Treg t) -> primitive Phi (t:: nil) Unit
   (* register file primitives *)
   | regfile_read : forall n t (v : var Phi (Tregfile n t)) p, primitive Phi ([Tlift (Tint p)])%list  t
-  | regfile_write : forall n t (v : var Phi (Tregfile n t)) p, primitive Phi ([Tlift (Tint p); t])%list  Unit
-  | visible_read : forall t, var Phi (Tvis t) -> primitive Phi nil t
-  | visible_write : forall t, var Phi (Tvis t) -> primitive Phi (t :: nil) Unit. 
+  | regfile_write : forall n t (v : var Phi (Tregfile n t)) p, primitive Phi ([Tlift (Tint p); t])%list  Unit.
 
 
 Section s.
@@ -52,7 +48,7 @@ Section s.
     | Ebuiltin : forall args res (f : builtin args res), 
                    dlist  (fun j => expr (Tlift j)) (args) -> 
                    expr  (Tlift res)
-    | Econstant : forall  (c : constant0), expr (Tlift (cst_ty c))
+    | Econstant : forall  ty (c : constant0 ty), expr (Tlift ty)
    
     | Enth : forall l t (m : var l t), expr (Ttuple l) -> expr t
     | Etuple : forall l (exprs : dlist (expr) l), expr (Ttuple l). 
@@ -87,7 +83,7 @@ Section s.
                     _
                 in
                   builtin_denotation args res f exprs                            
-            | Econstant c => cst_val c
+            | Econstant ty c => c
             | Etuple l exprs => 
                 dlist_fold' eval_expr l exprs 
             | Enth l t v e => 
@@ -159,12 +155,12 @@ Notation "a < b" := ({< BI_lt _ ; a ; b >}) : expr_scope.
 Notation "x <= y" := ((x < y) || (x = y))%expr : expr_scope. 
 Notation "x <> y" := (~(x = y))%expr : expr_scope. 
 
-Arguments Econstant {Var} _.  
+Arguments Econstant {Var ty} _.  
 Notation "#i x" := (Econstant (Cword x)) (at level 0). 
 Notation "#b x" := (Econstant (Cbool x)) (at level 0). 
 Notation "#" := Econstant. 
 
-Definition Ctt : constant0 := mk_constant (Tunit) tt. 
+Definition Ctt : constant0 Tunit := tt. 
 
 Record TRS : Type := mk_TRS
   {
@@ -263,14 +259,6 @@ Module Sem.
                           end
                 in
                   do Delta2 <- Diff.add Phi Delta (Tregfile n t) v rf; Some (tt, Delta2)
-          | visible_read t v => 
-              fun _ (st : eval_state Phi) (Delta : Diff.T Phi) => 
-                match get Phi _ v Delta with | None => Some (get Phi _ v st, Delta) | Some p => Some (p, Delta) end 
-          | visible_write t v => 
-              fun (exprs: eval_env eval_type [t]) (st : eval_state Phi) (Delta : Diff.T Phi) => 
-                let (w, _) := exprs in
-                  do Delta <- Diff.add Phi Delta _ v w; 
-                  Some (tt, Delta)
         end exprs). 
       Defined. 
     End t. 
