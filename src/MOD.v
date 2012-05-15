@@ -5,11 +5,12 @@ Section t.
   Notation NUM := (Tlift (Tint n)). 
   Notation VAL := (Tlift (Tbool)) (only parsing). 
   Definition Phi : state := (Treg VAL :: Treg NUM  :: Treg NUM :: nil)%list. 
-  
+
+  Notation c := (var_0 : var Phi (Treg VAL)).
+  Notation r1 := (var_S (var_0) : var Phi (Treg NUM)).  
+  Notation r2 := (var_S (var_S (var_0)) : var Phi (Treg NUM)).  
+
   Definition iterate : Action Phi Unit. intros V.
-  set (c := var_0 : var Phi (Treg VAL)). 
-  set (r1 := var_S (var_0) : var Phi (Treg NUM)).  
-  set (r2 := var_S (var_S (var_0)) : var Phi (Treg NUM)). 
   refine (DO X <- read [: c]; 
           WHEN ( !X); 
           DO A <- read [: r1]; 
@@ -22,9 +23,6 @@ Section t.
   Defined. 
   
   Definition done : Action Phi Unit. intros V. 
-  set (c := var_0 : var Phi (Treg VAL)). 
-  set (r1 := var_S (var_0) : var Phi (Treg NUM)).  
-  set (r2 := var_S (var_S (var_0)) : var Phi (Treg NUM)). 
   refine (DO X <- read [: c]; 
           WHEN (!X); 
           DO A <- read [: r1]; 

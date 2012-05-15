@@ -230,6 +230,8 @@ Module Word.
 
 End Word. 
 
+Notation "<: val 'as' 'int' n :>" := (Word.mk n val _). 
+
 Fixpoint lt_nat_bool n m : bool :=
   match n,m with 
     | 0, S _ => true

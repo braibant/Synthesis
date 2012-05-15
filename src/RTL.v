@@ -1,16 +1,28 @@
 Require Import Common. 
 Require Import Core. 
 
+(** A particular instantiation of [Var] that holds an logical register number *)
 Definition R (t : type) := nat. 
 
 Section t. 
   Variable Phi : state. 
+ 
+  (** Combinational bindings (expressions, register reads)  *)
   Inductive bind (t : type) : Type := 
   | bind_expr :  R t -> expr R t ->  bind t
   | bind_reg_read : R t -> var Phi (Treg t) -> bind t
   | bind_regfile_read : R t -> forall n, var Phi (Tregfile n t) -> forall p, R (Tlift (W p)) -> bind t. 
             
-  (* We would like to define an inductive and a record *)
+  (** We define a datatype for a block (type [T]) that contains
+    combinational bindings, the logical register in which the current
+    result is held, the current guard, and the effects. 
+
+     An [effect] is either such a block or a register write.
+ 
+     NB: Here, we would like to define an inductive and a record, that
+     mutually depends on each other, but it is not possible with the
+     current version of Coq *)
+
   Inductive T : type -> Type := 
   | mk_T :     
     forall t (env : list type) (bindings : dlist bind env) (pointer : R t) (guard : expr R Bool)
@@ -20,15 +32,19 @@ Section t.
   | effect_reg_write : forall t, var Phi (Treg t) -> R t -> effect  
   | effect_regfile_write : forall n t, var Phi (Tregfile n t) -> forall p, R (Tlift (W p)) -> R t -> effect. 
 
+  (** Silly functions to implement projections of the 'record' [T] *)
+
   Definition pointer {t} (x : T t) := match x with | mk_T _ _ _ pointer _ _ => pointer end. 
   Definition effets {t} (x : T t) := match x with | mk_T _ _ _ _ _ effets => effets end. 
   Definition guard  {t} (x : T t) := match x with | mk_T _ _ _ _ guard  _ => guard end. 
   Definition env  {t} (x : T t) := match x with | mk_T _ env _ _ _ _ => env end. 
   Definition bindings  {t} (x : T t) : dlist bind (env x) := match x with | mk_T _ _ bindings _ _  _ => bindings end. 
 
-
   Arguments mk_T {t} env%list bindings%dlist pointer guard effets. 
 
+
+  (** This 'smart constructor' reduces the size of the guard, by using
+  the fact that [true] is a neutral element for [&&] *)
 
   Definition andb (a b : expr R Bool): expr R Bool :=
     match a, b with 
@@ -37,12 +53,12 @@ Section t.
       | _, _ => (a && b)%expr
     end. 
 
+  (**  The compilation function itself *)
   Definition compile t (a : action Phi R t) : (T t * nat). 
   refine (
       let compile := fix compile t (a  : action Phi R t ) next {struct a}: (T t * nat):=
           match a with
-            | Return t exp => 
-                _
+            | Return t exp => _
             | Bind t u A F => _
             | Assert exp => _
             | Primitive args res p exprs => _
