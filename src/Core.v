@@ -1,4 +1,5 @@
 Require Import Common. 
+Require Import DList. 
 
 Inductive type : Type :=
 | Tlift : type0 -> type

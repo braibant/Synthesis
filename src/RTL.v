@@ -1,8 +1,10 @@
 Require Import Common. 
+Require Import DList. 
 Require Import Core. 
 
 (** A particular instantiation of [Var] that holds an logical register number *)
-Definition R (t : type) := nat. 
+Definition R (t : type):= nat. 
+
 
 Section t. 
   Variable Phi : state. 
@@ -23,25 +25,56 @@ Section t.
      mutually depends on each other, but it is not possible with the
      current version of Coq *)
 
-  Inductive T : type -> Type := 
-  | mk_T :     
+  Inductive block : type -> Type := 
+  | mk_block :     
     forall t (env : list type) (bindings : dlist bind env) (pointer : R t) (guard : expr R Bool)
-      (effets : list effect), T t
+      (effets : list effect), block t
    with effect := 
-  | mk_block : T Unit -> effect
+  | effect_block : block Unit -> effect
   | effect_reg_write : forall t, var Phi (Treg t) -> R t -> effect  
   | effect_regfile_write : forall n t, var Phi (Tregfile n t) -> forall p, R (Tlift (W p)) -> R t -> effect. 
 
-  (** Silly functions to implement projections of the 'record' [T] *)
+  (** Silly functions to implement projections of the 'record' [block] *)
 
-  Definition pointer {t} (x : T t) := match x with | mk_T _ _ _ pointer _ _ => pointer end. 
-  Definition effets {t} (x : T t) := match x with | mk_T _ _ _ _ _ effets => effets end. 
-  Definition guard  {t} (x : T t) := match x with | mk_T _ _ _ _ guard  _ => guard end. 
-  Definition env  {t} (x : T t) := match x with | mk_T _ env _ _ _ _ => env end. 
-  Definition bindings  {t} (x : T t) : dlist bind (env x) := match x with | mk_T _ _ bindings _ _  _ => bindings end. 
+  Definition pointer {t} (x : block t) := match x with | mk_block _ _ _ pointer _ _ => pointer end. 
+  Definition effets {t} (x : block t) := match x with | mk_block _ _ _ _ _ effets => effets end. 
+  Definition guard  {t} (x : block t) := match x with | mk_block _ _ _ _ guard  _ => guard end. 
+  Definition env  {t} (x : block t) := match x with | mk_block _ env _ _ _ _ => env end. 
+  Definition bindings  {t} (x : block t) : dlist bind (env x) := match x with | mk_block _ _ bindings _ _  _ => bindings end. 
 
-  Arguments mk_T {t} env%list bindings%dlist pointer guard effets. 
+  Arguments mk_block {t} env%list bindings%dlist pointer guard effets. 
 
+  (** * Semantics *)
+  
+  Section sem. 
+    
+  (** The semantics of a value of type [block t] is: 
+      - a map from logical registers to values
+      - a distinguished pointer
+      - a boolean valued expression
+      - a list of effects. 
+  *)
+    Record T := mk_T
+      {
+        lr_type :  list type; 
+        lr_value : dlist eval_type lr_type;
+        updates  : eval_env (option ∘ eval_sync) Phi
+      }. 
+        
+    Variable st : eval_state Phi. 
+
+    Definition eval_expr t (e : expr R t) (G : T) : option (eval_type t). 
+    Admitted. 
+
+    Definition eval_bind t (B : bind t) (G : T) : option (eval_type t). 
+    Admitted. 
+    
+    Definition eval_block t (B : block t) (G : T): option T. 
+    Admitted. 
+
+  End sem. 
+
+  (** * Compilation *)
 
   (** This 'smart constructor' reduces the size of the guard, by using
   the fact that [true] is a neutral element for [&&] *)
@@ -54,9 +87,9 @@ Section t.
     end. 
 
   (**  The compilation function itself *)
-  Definition compile t (a : action Phi R t) : (T t * nat). 
+  Definition compile t (a : action Phi R t) : (block t * nat). 
   refine (
-      let compile := fix compile t (a  : action Phi R t ) next {struct a}: (T t * nat):=
+      let compile := fix compile t (a  : action Phi R t ) next {struct a}: (block t * nat):=
           match a with
             | Return t exp => _
             | Bind t u A F => _
@@ -68,20 +101,20 @@ Section t.
     ). 
   (* return *)
   refine (let bindings := ([bind_expr _ next exp])%dlist  in
-                (mk_T _ bindings  next (#b true)%expr nil, S next)). 
+                (mk_block _ bindings  next (#b true)%expr nil, S next)). 
   (* bind *)
   refine (let (t, next') := compile  _ A next  in 
           let (t', next'') := compile _ (F (pointer t)) next' in 
-          let T := 
-              mk_T _  (dlist_app (bindings t) (bindings t')) (pointer t') 
+          let block := 
+              mk_block _  (dlist_app (bindings t) (bindings t')) (pointer t') 
                    (andb (guard t) (guard t'))%expr
                    (List.app (effets t) (effets t'))
           in  
-            (T , next'')
+            (block , next'')
          ). 
   (* assert *)
   refine (let bindings := ([bind_expr _ next exp])%dlist in
-            (mk_T _ bindings next (!next)%expr nil, S next) ). 
+            (mk_block _ bindings next (!next)%expr nil, S next) ). 
   (* primitive *)
   revert exprs. 
   refine (match p with
@@ -92,14 +125,14 @@ Section t.
           end); clear p; intros exprs.        
   (* register read *)
    now (refine (let bindings :=  ([bind_reg_read _ next v])%dlist in 
-                 (mk_T _ bindings next (#b true)%expr nil, S next) )). 
+                 (mk_block _ bindings next (#b true)%expr nil, S next) )). 
   (* register write *)
    eapply dlist_fold' in exprs. destruct exprs as [w _]. 
    refine 
      (
        let bindings := ([bind_expr _ next w])%dlist in 
        let effects := ([effect_reg_write _ v next])%list in
-         (mk_T  _ bindings 0 (#b true) effects, S next)
+         (mk_block  _ bindings 0 (#b true) effects, S next)
      ). 
    auto. 
   (* register file read *)
@@ -112,7 +145,7 @@ Section t.
              bind_regfile_read _ (S next) n v p0 next
           ])%dlist
       in 
-        (mk_T env bindings next (#b true)%expr nil, S (S next)) 
+        (mk_block env bindings next (#b true)%expr nil, S (S next)) 
     ).   
   auto. 
   (* register file write *)
@@ -125,26 +158,26 @@ Section t.
              bind_expr _ (S next) w
           ])%dlist in
       let effects := ([effect_regfile_write _ _ v p0 next (S next)])%list in 
-        (mk_T env bindings next (#b true)%expr nil, S (S next)) 
+        (mk_block env bindings next (#b true)%expr nil, S (S next)) 
     ).
   intros. apply X. 
   (* try *)
   refine (let (t, next') := compile _ A next in 
-          let block := [mk_block t]%list in 
+          let block := [effect_block t]%list in 
           let bindings := dlist_nil in 
-            (mk_T _ bindings 0 (#b true)%expr  block, next')
+            (mk_block _ bindings 0 (#b true)%expr  block, next')
   ).
   Defined. 
 
 End t. 
 
-Arguments mk_T {Phi} {t} {env%list} bindings%dlist pointer guard effets. 
+Arguments mk_block {Phi} {t} {env%list} bindings%dlist pointer guard effets. 
 
 Arguments bind_expr  {Phi t} _ _%expr. 
 Notation "[: x <- v ]" := (bind_expr x v). 
 
 Arguments bind_reg_read {Phi t} _ _. 
-Notation "[: x <- 'read' v ]" := (bind_reg_read x v). 
+Notation "[: x <- 'read' ( v ) ]" := (bind_reg_read x v). 
 
 Arguments effect_reg_write {Phi} {t} _ _. 
 Notation "[: 'write' ( v ) e ]" := (effect_reg_write v e). 

@@ -1,4 +1,5 @@
 
+
 05/10/2012 Discussion with Richard. 
 - GCD -> MOD. 
 - Turns out that to avoid having to use the scheduler, one may just
