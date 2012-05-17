@@ -1,3 +1,26 @@
+05/16/2012 Discussion with Adam
+Discussion about the translation and about a potential paper.  My
+translation issues should be resolved by keeping PHOAS, and using a
+proof similar to the one in ltamer/examples/untyped/CC.v
+
+Paper
+Section 1. Language. 
+- Core + Match + Sigma -> Core -> RTL 
+- Proofs of the previous
+Section 2. Examples
+- Mod, Isa, Pipelined (MIPS ?)
+Section 3. Free stuff
+- Scheduler
+- Type system to prevent some bad stuff to happen
+- Hoare/VCG
+- Meta-level definition
+- Compliance to a protocol / refinement
+Section 4. Ripe Lava. 
+
+Question to ask to Arvind: to what kind of conference should we
+submit this. 
+
+Shown the example of the coffe machines
 
 
 05/10/2012 Discussion with Richard. 
@@ -22,5 +45,6 @@ round robin ?
 - Investigate the use of PHOAS for the definition of the embedding of TRS. 
 - Investigate the chapter of CPDT called Generic programming to
   discover if Coq inductives could be used instead of the deep-embedding
+
 
 
