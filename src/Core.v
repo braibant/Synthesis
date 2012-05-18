@@ -5,6 +5,8 @@ Inductive type : Type :=
 | Tlift : type0 -> type
 | Ttuple : list type -> type. 
 
+
+
 Fixpoint eval_type (t : type) :=
   match t with 
     | Tlift t => eval_type0 t
@@ -23,7 +25,7 @@ Definition eval_sync (s : sync) :=
     | Tregfile n t => Regfile.T n (eval_type t)
   end. 
 
-Definition eval_state := eval_env eval_sync. 
+Definition eval_state := Tuple.of_list eval_sync. 
 
 Notation Int := (Tlift (Tint 16)).
 Notation Bool := (Tlift (Tbool)).
@@ -88,11 +90,11 @@ Section s.
             | Etuple l exprs => 
                 dlist_fold' eval_expr l exprs 
             | Enth l t v e => 
-                get l t v (eval_expr (Ttuple l) e)
+                Tuple.get l t v (eval_expr (Ttuple l) e)
           end 
       in eval_expr t e). 
   
-  refine (let fix fold l (dl : dlist (fun j => expr eval_type (Tlift j)) l) : eval_env eval_type0 l :=
+  refine (let fix fold l (dl : dlist (fun j => expr eval_type (Tlift j)) l) : Tuple.of_list eval_type0 l :=
               match dl with 
                 | dlist_nil => tt
                 | dlist_cons _ _ t q => (eval_expr _ t,fold _ q)
@@ -169,37 +171,38 @@ Record TRS : Type := mk_TRS
     rules : list (Action Phi Unit)
   }. 
 
+Module Diff. 
+  Section t. 
+    Variable Phi : state. 
+    Definition T := Tuple.of_list (option ∘ eval_sync) Phi. 
+    Definition add (Delta : T) t (v : var Phi t) w : option T :=
+      match Tuple.get Phi t v Delta  with 
+        | None =>  Some  (Tuple.set _ _ Phi t v (Some w) Delta)
+        | Some _ => None 
+      end.
+    
+  End t. 
+  Fixpoint init (Phi : state ): T Phi := 
+    match Phi with 
+      | nil => tt
+      | cons t Phi => (None, init Phi)
+    end. 
+  
+  Fixpoint apply (Phi : state) : T Phi -> Tuple.of_list eval_sync Phi -> Tuple.of_list eval_sync Phi :=
+    match Phi with 
+      | nil => fun _ _ => tt
+      | cons t Phi => fun Delta E => 
+                     match fst Delta with 
+                       | None => (fst E, apply Phi (snd Delta) (snd E))
+                       | Some d => (d, apply Phi (snd Delta) (snd E))
+                     end
+    end. 
+  
+End Diff. 
+
 
 Module Sem. 
 
-  Module Diff. 
-    Section t. 
-      Variable Phi : state. 
-      Definition T := eval_env (option ∘ eval_sync) Phi. 
-      Definition add (Delta : T) t (v : var Phi t) w : option T :=
-        match get Phi t v Delta  with 
-          | None =>  Some  (set _ _ Phi t v (Some w) Delta)
-          | Some _ => None 
-        end.
-      
-    End t. 
-    Fixpoint init (Phi : state ): T Phi := 
-      match Phi with 
-        | nil => tt
-        | cons t Phi => (None, init Phi)
-      end. 
-    
-    Fixpoint apply (Phi : state) : T Phi -> eval_env eval_sync Phi -> eval_env eval_sync Phi :=
-      match Phi with 
-        | nil => fun _ _ => tt
-        | cons t Phi => fun Delta E => 
-                       match fst Delta with 
-                         | None => (fst E, apply Phi (snd Delta) (snd E))
-                         | Some d => (d, apply Phi (snd Delta) (snd E))
-                       end
-      end. 
-    
-  End Diff. 
   
   
   Module Dyn. 
@@ -233,28 +236,28 @@ Module Sem.
           | Some Delta => Some (Diff.apply Phi (snd Delta) st)
         end. 
 
-      Definition primitive_denote  args res (p : primitive Phi args res) (exprs : eval_env eval_type args) : T (eval_type res). 
+      Definition primitive_denote  args res (p : primitive Phi args res) (exprs : Tuple.of_list eval_type args) : T (eval_type res). 
       refine (match
-          p in (primitive _ l t) return (eval_env eval_type l -> T (eval_type t))
+          p in (primitive _ l t) return (Tuple.of_list eval_type l -> T (eval_type t))
         with
           | register_read t v =>
               fun _ (st : eval_state Phi)
-                  (Delta : Diff.T Phi) => Some (get Phi (Treg t) v st, Delta)
+                  (Delta : Diff.T Phi) => Some (Tuple.get Phi (Treg t) v st, Delta)
           | register_write t v =>
-              fun (exprs : eval_env eval_type [t]) (_ : eval_state Phi) (Delta : Diff.T Phi) =>
+              fun (exprs : Tuple.of_list eval_type [t]) (_ : eval_state Phi) (Delta : Diff.T Phi) =>
                 let (w, _) := exprs in
                   do Delta2 <- Diff.add Phi Delta (Treg t) v w; 
                   Some (tt, Delta2)
           | regfile_read n t v p =>
-              fun (exprs : eval_env eval_type [Tlift (W p)]) 
+              fun (exprs : Tuple.of_list eval_type [Tlift (W p)]) 
                   (st : eval_state Phi) (Delta : Diff.T Phi) =>
-                let rf := get Phi (Tregfile n t) v st in
+                let rf := Tuple.get Phi (Tregfile n t) v st in
                 let adr := fst exprs in
-                  do v <- Regfile.get rf (Word.unsigned adr); Some (v, Delta)
+                  let v := Regfile.get rf (Word.unsigned adr) in Some (v, Delta)
           | regfile_write n t v p =>
-              fun (exprs : eval_env eval_type [Tlift (W p); t]) 
+              fun (exprs : Tuple.of_list eval_type [Tlift (W p); t]) 
                   (st : eval_state Phi) (Delta : Diff.T Phi) =>
-                let rf := get Phi (Tregfile n t) v st in
+                let rf := Tuple.get Phi (Tregfile n t) v st in
                 let rf := match exprs with 
                               (adr, (w, _)) => Regfile.set rf (Word.unsigned adr) w
                           end

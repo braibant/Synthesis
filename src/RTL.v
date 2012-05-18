@@ -2,119 +2,97 @@ Require Import Common.
 Require Import DList. 
 Require Import Core. 
 
-(** A particular instantiation of [Var] that holds an logical register number *)
-Definition R (t : type):= nat. 
-
-
+     
 Section t. 
   Variable Phi : state. 
- 
+  Notation updates := (Tuple.of_list (option ∘ eval_sync) Phi). 
+  
+  Section defs. 
+  Variable R : type -> Type. 
   (** Combinational bindings (expressions, register reads)  *)
   Inductive bind (t : type) : Type := 
-  | bind_expr :  R t -> expr R t ->  bind t
-  | bind_reg_read : R t -> var Phi (Treg t) -> bind t
-  | bind_regfile_read : R t -> forall n, var Phi (Tregfile n t) -> forall p, R (Tlift (W p)) -> bind t. 
-            
-  (** We define a datatype for a block (type [T]) that contains
-    combinational bindings, the logical register in which the current
-    result is held, the current guard, and the effects. 
-
-     An [effect] is either such a block or a register write.
- 
-     NB: Here, we would like to define an inductive and a record, that
-     mutually depends on each other, but it is not possible with the
-     current version of Coq *)
-
-  Inductive block : type -> Type := 
-  | mk_block :     
-    forall t (env : list type) (bindings : dlist bind env) (pointer : R t) (guard : expr R Bool)
-      (effets : list effect), block t
-   with effect := 
-  | effect_block : block Unit -> effect
-  | effect_reg_write : forall t, var Phi (Treg t) -> R t -> effect  
-  | effect_regfile_write : forall n t, var Phi (Tregfile n t) -> forall p, R (Tlift (W p)) -> R t -> effect. 
-
-  (** Silly functions to implement projections of the 'record' [block] *)
-
-  Definition pointer {t} (x : block t) := match x with | mk_block _ _ _ pointer _ _ => pointer end. 
-  Definition effets {t} (x : block t) := match x with | mk_block _ _ _ _ _ effets => effets end. 
-  Definition guard  {t} (x : block t) := match x with | mk_block _ _ _ _ guard  _ => guard end. 
-  Definition env  {t} (x : block t) := match x with | mk_block _ env _ _ _ _ => env end. 
-  Definition bindings  {t} (x : block t) : dlist bind (env x) := match x with | mk_block _ _ bindings _ _  _ => bindings end. 
-
-  Arguments mk_block {t} env%list bindings%dlist pointer guard effets. 
-
-  (** * Semantics *)
+  | bind_expr :  expr R t ->  bind t
+  | bind_reg_read : var Phi (Treg t) -> bind t
+  | bind_regfile_read : forall n, var Phi (Tregfile n t) -> forall p, R (Tlift (W p)) -> bind t. 
   
-  Section sem. 
-    
-  (** The semantics of a value of type [block t] is: 
-      - a map from logical registers to values
-      - a distinguished pointer
-      - a boolean valued expression
-      - a list of effects. 
-  *)
-    Record T := mk_T
-      {
-        lr_type :  list type; 
-        lr_value : dlist eval_type lr_type;
-        updates  : eval_env (option ∘ eval_sync) Phi
-      }. 
-        
-    Variable st : eval_state Phi. 
-
-    Definition eval_expr t (e : expr R t) (G : T) : option (eval_type t). 
-    Admitted. 
-
-    Definition eval_bind t (B : bind t) (G : T) : option (eval_type t). 
-    Admitted. 
-    
-    Definition eval_block t (B : block t) (G : T): option T. 
-    Admitted. 
-
-  End sem. 
-
+  Inductive effect  : Type :=
+  | effect_guard : forall (guard : expr R Bool), list (effect) -> effect 
+  | effect_reg_write : forall t, var Phi (Treg t) -> R t -> effect
+  | effect_regfile_write : forall n t, var Phi (Tregfile n t) -> forall p, R (Tlift (W p)) -> R t -> effect. 
+  
+  Inductive telescope (A : Type): Type :=
+  | telescope_end : A -> telescope A
+  | telescope_bind : forall arg, bind arg -> (R arg -> telescope A) -> telescope A. 
+  
+  Definition preblock t := telescope (R t * expr R Bool * list effect)%type. 
+  Definition block := telescope (list effect). 
+  
+  Fixpoint compose {t B} 
+                   (tA : preblock t)
+                   (f : R t -> expr R Bool -> list effect -> telescope B) :
+    telescope B :=
+    match tA with
+      | telescope_end ((r,g),e) => f r g e
+      | telescope_bind arg b cont => telescope_bind _ arg b (fun x => compose (cont x) f) 
+    end. 
+  
+  Notation "x <- e1 ; e2" := (telescope_bind _ _ e1 (fun x => e2)) (right associativity, at level 80, e1 at next level).  
+  Notation " & e " := (telescope_end _ e) (at level 71). 
+  Notation "[< r , g , e >] :- t1 ; t2 " := (compose t1 (fun r g e => t2)) (right associativity, at level 80, t1 at next level). 
+  
+  Arguments effect_guard guard%expr effects%list. 
+  
   (** * Compilation *)
-
   (** This 'smart constructor' reduces the size of the guard, by using
   the fact that [true] is a neutral element for [&&] *)
-
+  
   Definition andb (a b : expr R Bool): expr R Bool :=
     match a, b with 
       | Econstant Tbool x, o 
       | o, Econstant Tbool x => if x then o else (#b false)%expr
       | _, _ => (a && b)%expr
     end. 
-
+  
   (**  The compilation function itself *)
-  Definition compile t (a : action Phi R t) : (block t * nat). 
+  Variable varunit : R Unit. 
+  
+  
+  Definition convert : forall l, dlist (expr R) l -> Tuple.of_list (expr R) l := dlist_fold' (fun _ X => X).
+
+  Fixpoint map T F F' (G : forall t, F t -> F' t) (l : list T) : Tuple.of_list F l -> Tuple.of_list F' l:=
+    match l with 
+      | nil => fun x => x
+      | cons t q => fun x => (G t (fst x), map T F F' G q (snd x))
+    end. 
+
+  Arguments map {T F F'} G l _. 
+  (*  fst (dlist_fold' eval_expr [t] exprs) =
+   eval_expr t
+     (fst
+        (dlist_fold' (fun (t0 : type) (X : expr eval_type t0) => X) [t] exprs))
+
+*)
+  
+  Definition compile  t (a : action Phi R t) : telescope (R t * expr R Bool * list effect).  
   refine (
-      let compile := fix compile t (a  : action Phi R t ) next {struct a}: (block t * nat):=
-          match a with
-            | Return t exp => _
-            | Bind t u A F => _
-            | Assert exp => _
+      let f := fix compile t (a : action Phi R t) : telescope (R t * expr R Bool * list effect):= 
+          match a with 
+            | Return t exp =>  
+                x <- (bind_expr _ exp); 
+                & (x, #b true, nil)
+            | Bind t u A F => 
+                [< rA, gA, eA >] :- compile _ A;
+                [< rB, gB, eB >] :- compile _ (F rA); 
+                & (rB, andb gA gB, List.app eA eB)             
+            | Assert exp => 
+                x <- (bind_expr _ exp); 
+                & (varunit, !x, nil)%expr
             | Primitive args res p exprs => _
-            | Try A => _
-          end
-      in compile t a 0               
-    ). 
-  (* return *)
-  refine (let bindings := ([bind_expr _ next exp])%dlist  in
-                (mk_block _ bindings  next (#b true)%expr nil, S next)). 
-  (* bind *)
-  refine (let (t, next') := compile  _ A next  in 
-          let (t', next'') := compile _ (F (pointer t)) next' in 
-          let block := 
-              mk_block _  (dlist_app (bindings t) (bindings t')) (pointer t') 
-                   (andb (guard t) (guard t'))%expr
-                   (List.app (effets t) (effets t'))
-          in  
-            (block , next'')
-         ). 
-  (* assert *)
-  refine (let bindings := ([bind_expr _ next exp])%dlist in
-            (mk_block _ bindings next (!next)%expr nil, S next) ). 
+            | Try A => 
+                [< rA, gA, eA >] :- compile _ A;
+                let e := effect_guard gA eA in 
+                  & (varunit, #b true, [e])%list
+          end in f t a).
   (* primitive *)
   revert exprs. 
   refine (match p with
@@ -122,596 +100,288 @@ Section t.
             | register_write t v => _
             | regfile_read n t v p => _
             | regfile_write n t v p => _
-          end); clear p; intros exprs.        
+          end); clear p; intros exprs. 
   (* register read *)
-   now (refine (let bindings :=  ([bind_reg_read _ next v])%dlist in 
-                 (mk_block _ bindings next (#b true)%expr nil, S next) )). 
+  refine (x <- (bind_reg_read _ v); &(x, #b true, nil)). 
   (* register write *)
-   eapply dlist_fold' in exprs. destruct exprs as [w _]. 
-   refine 
-     (
-       let bindings := ([bind_expr _ next w])%dlist in 
-       let effects := ([effect_reg_write _ v next])%list in
-         (mk_block  _ bindings 0 (#b true) effects, S next)
-     ). 
-   auto. 
+  refine ( let env := convert _ exprs in 
+             let w := fst env in 
+               x <- bind_expr _ w; 
+           let e := ([effect_reg_write _ v x])%list  in 
+             &( varunit, #b true, e)
+         ). 
   (* register file read *)
-  eapply dlist_fold' in exprs. simpl in exprs. destruct exprs as [adr _].  
-  refine (
-      let env := ((Tlift (W p0) ) :: t1 :: nil)%list in     
-      let bindings := 
-          ([
-             bind_expr _ next adr; 
-             bind_regfile_read _ (S next) n v p0 next
-          ])%dlist
-      in 
-        (mk_block env bindings next (#b true)%expr nil, S (S next)) 
-    ).   
-  auto. 
+  refine ( let env := convert _ exprs in 
+             let adr := fst env in 
+               adr <- bind_expr _ adr; 
+           x <- bind_regfile_read _ _ v _ adr; 
+           &( x, #b true, nil)
+         ). 
   (* register file write *)
-  eapply dlist_fold' in exprs. simpl in exprs. destruct exprs as [adr [w _]].  
-  refine (
-      let env := ((Tlift (W p0) ) :: t1 :: nil)%list in     
-      let bindings := 
-          ([
-             bind_expr _ next adr; 
-             bind_expr _ (S next) w
-          ])%dlist in
-      let effects := ([effect_regfile_write _ _ v p0 next (S next)])%list in 
-        (mk_block env bindings next (#b true)%expr nil, S (S next)) 
-    ).
-  intros. apply X. 
-  (* try *)
-  refine (let (t, next') := compile _ A next in 
-          let block := [effect_block t]%list in 
-          let bindings := dlist_nil in 
-            (mk_block _ bindings 0 (#b true)%expr  block, next')
-  ).
+  refine ( let env := convert _ exprs in 
+             match env with 
+               | (adr, (w, _)) => 
+                   adr <- bind_expr _ adr; 
+                   w <- bind_expr _ w;
+                   let e :=  ([effect_regfile_write _ _ v _ adr w])%list in                      
+                     &( varunit, #b true, e)                      
+             end
+         ). 
   Defined. 
+  
+  Definition wrap t (T : preblock t) : block. 
+  Proof. 
+    eapply compose. apply T. 
+    intros _ g e. 
+    refine (            let e := effect_guard g e in 
+                          & (cons e nil )). 
+  Defined. 
+  End defs. 
+  
+  (** * Semantics *)
+  Section sem. 
+    Variable st : eval_state Phi. 
+    Definition eval_bind t (b : bind eval_type t) : (eval_type t).
+    refine (match b with
+              | bind_expr x =>  (eval_expr _ x)
+              | bind_reg_read v => (Tuple.get _ _ v st)
+              | bind_regfile_read n v p adr => 
+                  let rf := Tuple.get Phi (Tregfile n t) v st in
+                    Regfile.get rf (Word.unsigned adr)                
+            end
+           ). 
+    Defined. 
+    
+  
+    Fixpoint eval_effect (e :effect eval_type) (Delta : updates) : option updates :=    
+      match e with 
+      | effect_guard g l' => 
+          let fix eval_effects l Delta := 
+              match l with 
+                | nil => Some Delta
+                | cons e q =>  do Delta <- eval_effect e Delta; 
+                    eval_effects q Delta
+              end in     
+            match eval_expr _ g with 
+              | true =>  match eval_effects l' Delta with
+                            | Some Delta => Some Delta
+                            | None => Some Delta
+                        end
+              | false => Some Delta
+            end
+      | effect_reg_write t v w =>                                               
+          Core.Diff.add Phi Delta (Treg t) v w 
+      | effect_regfile_write  n t v p adr w  =>  
+          let rf := Tuple.get Phi (Tregfile n t) v st in                          
+            let rf := Regfile.set rf (Word.unsigned adr) w in 
+              Core.Diff.add Phi Delta (Tregfile n t) v rf            
+    end. 
+  
+    Fixpoint eval_effects ( l : list (effect eval_type)) Delta : option updates :=
+      match l with 
+        | nil => Some Delta
+        | cons e q => do Delta <- eval_effect e Delta; 
+            eval_effects q Delta
+      end. 
+  
+    Lemma fold_eval_effects :
+      (fix eval_effects l Delta := 
+       match l with 
+                | nil => Some Delta
+                | cons e q =>  do Delta <- eval_effect e Delta; 
+                    eval_effects q Delta
+       end)= eval_effects .
+    Proof. 
+      unfold eval_effects. reflexivity.
+    Qed. 
+    
+    Fixpoint eval_preblock t  (T : preblock  eval_type t) :
+      updates -> option (eval_type t * updates) := 
+      match T with
+        | telescope_bind arg bind cont => 
+            fun Delta => 
+              let res := eval_bind _ bind in
+              eval_preblock _ (cont res) Delta
+        | telescope_end (p, g, e) => fun Delta =>
+                                      let g := eval_expr _ g  in             
+                                      if g then 
+                                        do x <- eval_effects e Delta;
+                                        Some (p, x)
+                                      else None
+    end. 
+  
+  
+    Fixpoint eval_block (a : block eval_type) {struct a}: updates -> option updates :=
+      match a with
+        | telescope_bind arg bind cont => 
+            fun Delta => 
+              let res  := eval_bind _ bind in 
+                eval_block (cont res) Delta
+        | telescope_end effects => 
+            eval_effects effects
+      end. 
+    
+  End sem. 
 
+
+  Notation "x <-- e1 ; e2" := (telescope_bind  _ _ _ e1 (fun x => e2)) (right associativity, at level 80, e1 at next level).  
+  Notation " & e " := (telescope_end  _ _ e) (at level 71). 
+  Notation "[< r , g , e >] :- t1 ; t2 " := (compose  _ t1 (fun r g e => t2)) (right associativity, at level 80, t1 at next level). 
+  
+  Section correctness. 
+  
+    
+    
+    Notation C := (compile eval_type tt). 
+    Lemma eval_andb_true x y : (eval_expr Bool (andb eval_type x y)) = (eval_expr Bool x && eval_expr Bool y)%bool.
+    Proof.
+      Require Import Equality. 
+      dependent destruction x. simpl. 
+    Admitted.  
+
+    Lemma eval_effects_append  st e f (Delta : updates) : 
+      eval_effects st (e ++ f) Delta = 
+                   do D <- eval_effects st e Delta; eval_effects st f D.              
+    Proof. 
+      revert Delta. 
+      induction e. 
+      + reflexivity. 
+      + intros Delta.
+        
+        simpl. case_eq (eval_effect st a Delta). intros. apply IHe. 
+        reflexivity. 
+    Qed. 
+
+    Variable st : eval_state Phi. 
+
+    Notation "B / Delta " := (eval_preblock st _ B Delta). 
+    Theorem CPS_compile_correct t (a : action Phi eval_type t)  Delta:
+      eval_preblock st _ (C t a ) Delta =  (Core.Sem.eval_action a st Delta).
+    Proof. 
+      revert Delta. 
+      induction a. 
+      - intros.  reflexivity. 
+      - intros Delta. simpl. unfold  Sem.Dyn.Bind. rewrite <- IHa.
+        transitivity (do ed <- (C t a) / Delta ; 
+                      let (e,d) := ed in 
+                      eval_preblock st u (C u (f e)) d
+                   ); 
+        [|destruct  ((C t a) / Delta) as [[ e d ]| ]; simpl; easy]. 
+        clear IHa H.
+        generalize (C t a) as T. intros T. clear a.
+        
+        induction T. destruct a as [[rA gA] eA]. 
+        simpl in *. 
+        case_eq (eval_expr Bool gA); intros H.  
+        case_eq (eval_effects st eA Delta). 
+        + intros D HD.
+          unfold Common.bind. 
+          generalize (C u (f rA)).  intros T'. clear rA. 
+          induction T'. destruct a as [[rB gB] eB]. simpl. 
+          rewrite eval_andb_true. rewrite H. simpl. 
+          Ltac t :=
+            repeat match goal with 
+                     | |- context [check ?x ; ?y] => 
+                         let H := fresh "check" in 
+                           case_eq x; intros H
+                   end. 
+          t; trivial.   
+          rewrite eval_effects_append. rewrite HD. reflexivity. 
+          simpl. 
+          rewrite <- H0. reflexivity. 
+        + intros HD.
+          unfold Common.bind. 
+          generalize (C u (f rA)).  intros T'. 
+          induction T'. destruct a as [[rB gB] eB]. simpl. 
+          rewrite eval_andb_true. rewrite H. simpl. 
+          t; try reflexivity. 
+          rewrite eval_effects_append. rewrite HD. reflexivity. 
+          
+          simpl. 
+          apply H0. 
+          
+        +  unfold Common.bind. generalize (C u (f rA)).  intros T'. 
+          induction T'. destruct a as [[rB gB] eB]. simpl. 
+          rewrite eval_andb_true. rewrite H. simpl. reflexivity. 
+          
+          simpl. unfold Common.bind.  
+          apply H0. 
+
+        + simpl. unfold Common.bind.  
+          simpl. apply H. 
+
+      - intros. 
+        simpl. 
+        t. reflexivity.  reflexivity. 
+
+      - intros. 
+        simpl. destruct p.
+        +  simpl. reflexivity. 
+        + simpl. 
+          unfold Common.bind.
+          set (x := dlist_fold' eval_expr ([t])%list exprs). 
+          replace (x) with (fst x, snd x) by (destruct x; reflexivity).
+          Lemma convert_commute  l (dl : dlist (expr eval_type) l): map  _ _ _ (eval_expr) l (convert _ l dl) = dlist_fold' eval_expr l dl.
+          Proof. 
+            induction dl. simpl. reflexivity. 
+            simpl. f_equal. apply IHdl. 
+          Qed. 
+            
+    
+          replace (eval_expr t (fst (convert eval_type [t] exprs))) with (fst x). 
+          case_eq (Diff.add Phi Delta (Treg t) v (fst x)); trivial.
+          subst x. rewrite <- convert_commute. simpl. reflexivity. 
+        + simpl. 
+          rewrite <- convert_commute. simpl. reflexivity.
+        + simpl. 
+          rewrite <- convert_commute. simpl. 
+          case_eq (convert eval_type ([Tlift (W p); t])%list exprs). 
+          intros adr [value tt] H.  simpl. simpl in tt. 
+          case_eq ( Diff.add Phi Delta (Tregfile n t) v
+       (Regfile.set (Tuple.get Phi (Tregfile n t) v st)
+          (Word.unsigned (eval_expr (Tlift (W p)) adr)) 
+          (eval_expr t value))). 
+          intros. 
+          simpl. reflexivity. 
+          intros. simpl. reflexivity. 
+
+      - intros.
+        simpl. unfold Sem.Dyn.Try. rewrite <- IHa; clear IHa.
+        generalize (C Unit a). intros T. induction T. 
+
+        * destruct a0 as [[rA gA] eA]. 
+        simpl compose. 
+        simpl; rewrite (fold_eval_effects st).
+        t. 
+        destruct (eval_effects st eA Delta); simpl; [destruct rA; reflexivity|].  reflexivity. 
+
+        simpl.  reflexivity. 
+
+        * simpl. 
+          rewrite H.  reflexivity. 
+          
+    Qed.
+End correctness. 
 End t. 
-
-Arguments mk_block {Phi} {t} {env%list} bindings%dlist pointer guard effets. 
-
-Arguments bind_expr  {Phi t} _ _%expr. 
-Notation "[: x <- v ]" := (bind_expr x v). 
-
-Arguments bind_reg_read {Phi t} _ _. 
-Notation "[: x <- 'read' ( v ) ]" := (bind_reg_read x v). 
-
-Arguments effect_reg_write {Phi} {t} _ _. 
-Notation "[: 'write' ( v ) e ]" := (effect_reg_write v e). 
-
-Arguments bind_regfile_read {Phi t} _ {n} _ p _. 
-Notation "[: x <- 'read' ( M ) # adr ]" := (bind_regfile_read x M _ adr ) (no associativity). 
-
-Arguments regfile_write {Phi n t} _ p. 
-Notation "'write' M [: x <- v ]" := (Primitive ([Tlift (W _); _])%list _ (regfile_write M _ ) (dlist_cons (x)%expr (dlist_cons (v)%expr (dlist_nil)))) (no associativity). 
-
+Arguments telescope_bind {Phi R A arg}  _ _.  
+Notation "'DO' X <- E ; F" := (telescope_bind E (fun X => F)).  
+Notation "'RETURN' X" := (telescope_end _ _ _ X). 
+Arguments bind_expr  {Phi R t} _%expr. 
+Notation "[: v ]" := (bind_reg_read _ _ _ v).   
 Section test. 
   Require Import MOD. 
-  Eval compute in compile _ _ (iterate 5 R). 
+  Definition Z (t : type) := unit. 
+  Eval compute in compile _ Z _ _  (iterate 5 Z) . 
 
-  Eval compute in compile _ _ (done 5 R). 
+  Eval compute in compile _ Z _ _ (done 5 Z). 
 
 End test. 
 
 Section test2. 
   Require Import Isa. 
-  Eval compute in compile _ _ (loadi_rule 5 R). 
+  Eval compute in compile _ _ 0 _ (loadi_rule 5 (fun _ => nat)). 
 
-  Eval compute in compile _ _ (store_rule 5 R). 
+  Eval compute in compile _ _ 0 _ (store_rule 5 (fun _ => nat)). 
 
 End test2. 
 
-(**  Each primitive in the top level language has must be massaged in
-smaller blocks whose semantics that depend only on the initial state. 
-
-This is naturally the case for [regs], and register [files]. I added
-[visible] just to make the problem obvious in the following
-translation.  
-
-Consider v a [visible]
-
-[ 
-  do _ <- write [: v <- e];
-  assert P; 
-  do x <- read [: v ];
-  assert Q(x); 
-  A
-]
-
-must be translated to 
-[
- t1 <- e; 
- Guard (P /\ Q(t1))
-   [
-    write [: v <- t1]; 
-    x <- t1; 
-    A
-   ]
-] 
-
-The global strategy is as follows:
-- All combinational operations bubble to the top of a block; 
-- The guard bubble to the top of a block, after the combinational operations; 
-- The synchronous updates stay are put in a Guard block. 
-
-This strategy does not work for, for instance, a bypass fifo of length 1 [F]
-(empty in the following example)
-[
-  do old <- fifo_enq_deq F new; 
-  assert (old = new); 
-  A
-]
-
-[
-  t1 <- new; 
-  comb (A) 
-  Guard (t1 = t1 /\ guard (A)) [ fifo 
- 
-]
-
-*)
-(*
-Inductive update (Phi : state) : list Core.type -> Core.type -> Type :=
-  | register_write : forall t, var Phi (Treg t) -> update Phi (t :: nil) Core.Unit
-  | regfile_write : forall n t (v : var Phi (Tregfile n t)) p, update Phi ([Core.Tlift (Tint p); t])%list Core.Unit. 
-
-Section t. 
-  Variable Var : Core.type -> Type. 
-  Variable Phi : state. 
-  
-  Inductive com := 
-  (* event control *)
-  | Guard : Core.expr Var Core.Bool -> com -> com
-  (* combinational assigmenent *)
-  | Foo : forall t, Core.expr Var t -> (Var t -> com) -> com
-  (* synchronous effect *)
-  | State : forall args res (p : update Phi args res) (exprs : dlist Var args),
-              (Var res -> com) -> com. 
-End t. 
-
-Reserved Notation " c1 '/' st '==>' diff" (at level 40, st at level 39).
-
- Definition chang (s: Core.state) : state.  
-  eapply List.map . 2: apply s. 
-  intros x. 
-  refine (match x with | Core.Treg t => Treg t | Core.Tvis t => Treg t | Core.Tregfile n t => Tregfile n t end). 
-          Defined.     
-Section eval. 
-  Variable Phi : Core.state. 
-  
-  Definition comp V t (c : Core.action Phi V t ) : com V (chang Phi).
-  refine (match c with 
-              | Core.Return t e => _
-              | Core.Bind t u a f => _
-              | Core.When t e a => _
-              | Core.Primitive args res p exprs  => _
-              | Core.Try a => _
-          end). 
-  admit. 
-  | Try : Core.action Phi Var (Core.Tlift Tunit) ->
-          Core.action Phi Var (Core.Tlift Tunit)
-  induction c. 
-  Definition eval_com  (c : com eval_type Phi) (st : eval_state Phi) (Delta : Diff.T Phi): option (Diff.T Phi). 
-  refine (
-      let fix eval_com (c : com eval_type Phi) :=
-          match c with
-            | Guard g c' => fun st Delta => match eval_expr _ g with 
-                                      | true =>  eval_com c' st Delta 
-                                      | false => Some (Delta)
-                                    end
-            | Foo t e c' => fun st Delta => let v := eval_expr _ e in 
-                                      eval_com (c' v) st Delta
-            | State args res p exprs c' => _
-          end
-      in
-        eval_com c st Delta).  
-  intros st' Delta'. 
-  
-
-refine (match E with true => IHc | false => None end). 
-set (E := c (eval_expr _ e)).
-
-  Inductive com_eval : com -> state -> -> Prop :=
-.  
-  | Eseq : forall st1 st2 st3 c1 c2, 
-             c1 / st1 ==> st2 ->
-             c2 / st2 ==> st3 -> 
-             Cseq c1 c2 / st1 ==> st3
-  | Eset_reg : forall t (v : var regs t) (e : expr t) st1 st2 r, 
-                 eval_expr  st1 e = r ->
-                 update_reg  st1 v r = st2 -> 
-                 (Cset_reg t v e) / st1 ==> st2 
-  | Eset_mem : forall t (v : var mems t) (e : expr t) st1 st2 r, 
-                 eval_expr st1 e = r ->
-                 update_mem st1 v r = st2 -> 
-                 (Cset_mem t v e) / st1 ==> st2
-  | Eifb_true : forall (e : expr Tbool) c1 c2 st1 st2, 
-                  eval_expr  st1 e = true -> 
-                  c1 / st1 ==> st2 ->
-                  (Cifb e c1 c2) / st1 ==> st2
-  | Eifb_false : forall (e : expr Tbool) c1 c2 st1 st2, 
-                   eval_expr st1 e = false -> 
-                   c2 / st1 ==> st2 ->
-                   (Cifb e c1 c2) / st1 ==> st2 
-   where "c1 '/' st '==>' st'" := (com_eval c1 st st').
-
-  
-End t.     
-
-
-(*   Module Diff. 
-    Section t. 
-      Variable Phi : state. 
-      Definition T := eval_env (option ∘ eval_sync) Phi. 
-      Definition add (Delta : T) t (v : var Phi t) w : option T :=
-        match get Phi t v Delta  with 
-          | None =>  Some  (set _ _ Phi t v (Some w) Delta)
-          | Some _ => None 
-        end.
-      
-    End t. 
-    Fixpoint init (Phi : state ): T Phi := 
-      match Phi with 
-        | nil => tt
-        | cons t Phi => (None, init Phi)
-      end. 
-    
-    Fixpoint apply (Phi : state) : T Phi -> eval_env eval_sync Phi -> eval_env eval_sync Phi :=
-      match Phi with 
-        | nil => fun _ _ => tt
-        | cons t Phi => fun Delta E => 
-                       match fst Delta with 
-                         | None => (fst E, apply Phi (snd Delta) (snd E))
-                         | Some d => (d, apply Phi (snd Delta) (snd E))
-                       end
-      end. 
-    
-  End Diff. 
-*)
-Module Sem2.
-  Module Guarded. 
-    (** static semantics: 
-     *)
-    Section t. 
-      Variable Phi : state. 
-      Variable Var : type -> Type. 
-
-          
-      Record  M t := mk_M
-        {
-          content : expr Var t;
-          effects : list effect; 
-          valid : expr Var Bool}. 
-
-      Arguments mk_M {t} _ _ _. 
-      
-      Definition T t := expr Var Bool -> M t. 
-      
-      Definition Return {t} (e : expr Var t) : T t := fun _ => mk_M e nil (#b true).
-
-      Definition Bind {s t} : T s -> (expr Var s -> T t) -> T t.
-      intros x f. 
-      intros Psi. 
-      refine (let x' := x Psi in 
-              let y := f (content _ x') Psi in 
-                mk_M (content _ y) (effects _ x' ++ effects _ y) (valid _ x' && valid _ y )%expr). 
-      Defined. 
-      
-      Definition primitive_denote  args res (p : primitive Phi args res) (exprs : eval_env eval_type args) : T (res). 
-      intros Psi. 
-      destruct p.  
-      (* register read *)
-      
-      (* register write *)
-      (* regfile read *)
-      (* regfile write *)
-
-        match
-          p in (primitive _ l t) return (eval_env eval_type l -> T (eval_type t))
-        with
-          | register_read t v =>
-              fun _ (st : eval_state Phi)
-                  (Delta : Diff.T Phi) => Some (get Phi (Treg t) v st, Delta)
-          | register_write t v =>
-              fun (exprs : eval_env eval_type [t]) (_ : eval_state Phi) (Delta : Diff.T Phi) =>
-                let (w, _) := exprs in
-                  do Delta2 <- Diff.add Phi Delta (Treg t) v w; 
-                  Some (tt, Delta2)
-          | regfile_read n t v p =>
-              fun (exprs : eval_env eval_type [Tlift (W p)]) 
-                  (st : eval_state Phi) (Delta : Diff.T Phi) =>
-                let rf := get Phi (Tregfile n t) v st in
-                let adr := fst exprs in
-                  do v <- Regfile.get rf (Word.unsigned adr); Some (v, Delta)
-          | regfile_write n t v p =>
-              fun (exprs : eval_env eval_type [Tlift (W p); t]) 
-                  (st : eval_state Phi) (Delta : Diff.T Phi) =>
-                let rf := get Phi (Tregfile n t) v st in
-                let rf := match exprs with 
-                              (adr, (w, _)) => Regfile.set rf (Word.unsigned adr) w
-                          end
-                in
-                  do Delta2 <- Diff.add Phi Delta (Tregfile n t) v rf; Some (tt, Delta2)
-        end exprs.
-    End t. 
-  End Dyn. 
-
-  (** dynamic semantics: 
-    - all guard failures are represented by None. 
-    - continuation passing style: the current diff is threaded through the execution 
-  *)
-  Section t. 
-    Variable Phi : state. 
-    Definition eval_action (t : type) (a : action Phi eval_type t) : 
-      (Dyn.T Phi (eval_type t)). 
-
-    refine (
-        let fix eval_action (t : type) (a : action Phi eval_type t) :
-            Dyn.T Phi ( eval_type t) :=
-            match a with
-              | Return t exp => Dyn.Return Phi (eval_expr _ exp)
-              | Bind t u a f => 
-                  let act := eval_action _ a in 
-                    let f' := (fun e => eval_action u (f e)) in 
-                      Dyn.Bind Phi act f'              
-              | When t e a => 
-                  let g1 := eval_expr _ e in 
-                    let a' := eval_action t a in 
-                      match g1 with 
-                        | true => a' 
-                        | false => Dyn.Fail  Phi
-                      end
-              | Primitive args res p exprs => 
-                  Dyn.primitive_denote Phi args res p (dlist_fold' eval_expr _ exprs)
-              | Try a => 
-                  let a := eval_action _ a in 
-                    Dyn.Try Phi a                    
-          end                
-      in  eval_action t a). 
-  Defined.
-  End t. 
-  Arguments eval_action {Phi} {t} _%action _ _.  
-End Sem.           
-
-
-Section s. 
-
-  Variable Phi : state. 
-Section expr. 
-  Variable mems : list type0. 
-  Variable regs : list type0. 
-
-  Inductive expr : type0 -> Type :=
-  | get_reg : forall t, var regs t ->  expr t
-  | get_mem : forall t, var mems t ->  expr t
-  | const : forall (c : constant),  expr (cst_ty c)
-  | op :
-    forall (f : signature), 
-      dlist expr (args f) -> 
-      expr (res f). 
-
-  Inductive com : Type :=
-    | Cskip 
-    | Cseq : com -> com -> com
-    | Cset_reg : forall t (v : var regs t), expr t -> com
-    | Cset_mem : forall t (v : var mems t), expr t -> com
-    | Cifb : expr Tbool -> com  -> com -> com. 
-  
-    
-  Record state :=
-    {
-      st_mems : eval_env eval_type0 mems;
-      st_regs : eval_env eval_type0 regs    
-    }. 
-
-  Reserved Notation " c1 '/' st '==>' st'" (at level 40, st at level 39).
-  Definition eval_expr {t} : state -> expr t -> eval_type0 t. 
-  Admitted. 
-
-  Definition update_reg : forall {t},  state -> var regs t ->  eval_type0 t -> state. Admitted. 
-  Definition update_mem : forall {t},  state -> var mems t -> eval_type0 t -> state. Admitted. 
-  
-  Inductive com_eval : com -> state -> state -> Prop :=
-  | Eskip : forall st, Cskip  / st ==> st
-  | Eseq : forall st1 st2 st3 c1 c2, 
-             c1 / st1 ==> st2 ->
-             c2 / st2 ==> st3 -> 
-             Cseq c1 c2 / st1 ==> st3
-  | Eset_reg : forall t (v : var regs t) (e : expr t) st1 st2 r, 
-                 eval_expr  st1 e = r ->
-                 update_reg  st1 v r = st2 -> 
-                 (Cset_reg t v e) / st1 ==> st2 
-  | Eset_mem : forall t (v : var mems t) (e : expr t) st1 st2 r, 
-                 eval_expr st1 e = r ->
-                 update_mem st1 v r = st2 -> 
-                 (Cset_mem t v e) / st1 ==> st2
-  | Eifb_true : forall (e : expr Tbool) c1 c2 st1 st2, 
-                  eval_expr  st1 e = true -> 
-                  c1 / st1 ==> st2 ->
-                  (Cifb e c1 c2) / st1 ==> st2
-  | Eifb_false : forall (e : expr Tbool) c1 c2 st1 st2, 
-                   eval_expr st1 e = false -> 
-                   c2 / st1 ==> st2 ->
-                   (Cifb e c1 c2) / st1 ==> st2 
-   where "c1 '/' st '==>' st'" := (com_eval c1 st st').
-
-Fixpoint com_denote (c : com) (st1 : state) : option state :=
-  match c with
-    | Cskip => Some st1
-    | Cseq c1 c2 => 
-        do st2 <- com_denote c1 st1;
-        com_denote c2 st2
-    | Cset_reg t v e =>
-        let r := eval_expr st1 e in 
-          Some (update_reg st1 v r)
-    | Cset_mem t v e =>
-        let r := eval_expr st1 e in 
-          Some (update_mem st1 v r)
-    | Cifb e c1 c2  =>
-        let r := eval_expr st1 e in 
-          if r then com_denote c1 st1 
-          else  com_denote c2 st1
-  end. 
-End expr.  
-
-Record RTL :=
-  {
-    mems : list type0;
-    regs : list type0;
-    code : com mems regs; 
-    t_outputs : list type0;
-    outputs : dlist (var regs) t_outputs;
-    t_inputs : list type0;
-    inputs : dlist  (var regs) t_inputs
-  }. 
-
-
-Section semantics. 
-  Variable R : RTL. 
-  
-  Let I := eval_env eval_type0 (t_inputs R). 
-  Let O := eval_env eval_type0 (t_outputs R). 
-
-  Let sigma := state (mems R) (regs R). 
-
-  (* Definition M : Moore.T I O sigma. *)
-  (* constructor.  *)
-  (* Fixpoint zob E F (l : dlist  (var E) F) :  *)
-  (*   eval_env eval_type0 E -> eval_env eval_type0 F := *)
-  (* match l with *)
-  (*   | dlist_nil => fun _ => tt *)
-  (*   | dlist_cons t q T Q => fun X => (get E t T X, zob _ _ Q X) *)
-  (* end.  *)
-  
-  (* intros. eapply zob. apply outputs. apply (st_regs _ _ X).  *)
-  (* intros. apply com_denote. apply (code  R).  *)
-  (* apply X.  *)
-  (* Defined.  *)
-
-End semantics. 
- (*
-Inductive machine :=
-  {
-    mems : list type0;
-    regs : list type0;
-    instances : list machine;
-    reset : com mems regs ;
-    step : com mems regs
-  }. 
-
-Inductive state (m : machine) := 
-  {
-    ls : local_state (mems m) (regs m);
-    st_machines : dlist _ state (instances m)
-  }.
-  
-Reserved Notation " c1 '/' st '==>' st'" (at level 40, st at level 39).
-
-Inductive com_eval m : com (mems m) (regs m) -> state m -> state m -> Prop :=
-  | Eskip : forall st, Cskip (mems m) (regs m)  / st ==> st
-  | Eseq : forall st1 st2 st3 c1 c2, 
-             c1 / st1 ==> st2 ->
-             c2 / st2 ==> st3 -> 
-             Cseq (mems m) (regs m) c1 c2 / st1 ==> st3
-  | Eset_reg : forall t (v : var (regs m) t) (e : expr (mems m) (regs m) t) st1 st2 r, 
-                 eval_expr _ _ st1 e = r ->
-                 update_reg _ _ st1 r = st2 -> 
-                 (Cset_reg _ _ _ t v e) / st1 ==> st2 (*
-  | Eset_mem : forall t (v : var mems t) (e : expr t) st1 st2 r, 
-                 eval_expr _ st1 e = r ->
-                 update_mem _ st1 r = st2 -> 
-                   (Cset_mem t v e) / st1 ==> st2
-    | Eifb_true : forall (e : expr Tbool) c1 c2 st1 st2, 
-               eval_expr _ st1 e = true -> 
-               c1 / st1 ==> st2 ->
-               (Cifb e c1 c2) / st1 ==> st2
-    | Eifb_false : forall (e : expr Tbool) c1 c2 st1 st2, 
-               eval_expr _ st1 e = false -> 
-               c2 / st1 ==> st2 ->
-               (Cifb e c1 c2) / st1 ==> st2 *)
-    where "c1 '/' st '==>' st'" := (com_eval _ c1 st st').
- 
-
-
-
-
-
-End expr. 
-  
-
-End expr. 
-Inductive type :=
-| Tregfile : forall (size : nat) (base : type0) , type
-| Tfifo : nat -> type0 -> type
-| Tbase : type0 -> type
-| Tinput  : type0 -> type
-| Toutput : type0 -> type. 
-
-Fixpoint eval_type (t : type) : Type :=
-  match t with
-    | Tregfile size bt =>Regfile.T size (eval_type0 bt) 
-    | Tfifo n bt => FIFO.T n (eval_type0 bt)
-    | Tbase bt => eval_type0 bt
-    | Tinput bt => eval_type0 bt
-    | Toutput bt => eval_type0 bt
-  end. 
-
-Section expr. 
-  Variable Env : list type. 
-  
-  Inductive expr : type0 -> Type :=
-  | Eprim : forall f (args: expr_vector (args (f))), expr ( (res ( f)))
-  | Eget : forall t (v : var Env (Tbase t)), expr t
-  (* operations on arrays *)
-  | Eget_array : forall size  n t (v : var Env (Tregfile size t)), expr (Tint n) -> expr t
-  (* operations on fifo *)
-  | Efirst : forall n t (v : var Env (Tfifo n t)), expr t
-  | Eisfull : forall n t (v : var Env (Tfifo n t)), expr (Tbool)
-  | Eisempty : forall n t (v : var Env (Tfifo n t)), expr (Tbool)
-  (* operations on Inputs *)
-  | Eget_input : forall t (v : var Env (Tinput t)), expr t
-  (* operations on Outputs *)
-  | Eget_output : forall t (v : var Env (Toutput t)), expr t
-                                                      with expr_vector : list type0 -> Type :=
-  | expr_vector_nil : expr_vector nil
-  | expr_vector_cons : forall t q, expr  (t) -> expr_vector q -> expr_vector (t::q). 
-
-
-  Record reg_update (t : type0): Type :=
-    {
-      latch_enable : expr Tbool;
-      data : expr t
-    }. 
-  
-  Record array_update (size : nat) (width : nat) (t : type0) :=
-    {
-      write_addr : expr (Tint width);
-      write_data : expr t;
-      write_enable : expr Tbool
-    }.
-
-  Record fifo_update (t : type0) :=
-    {
-      enqueue_data : expr t;
-      enqueue_enable : expr Tbool;
-      dequeue_enable : expr Tbool;
-      clear_enable : expr Tbool
-    }. 
-  
-  Inductive expr2 : type -> Type :=
-  (* expression to affect and latch enable  *)
-  | Eregister : forall t, reg_update t -> expr2 (Tbase t)
-  (* array operations *)
-  | Earray :  forall size width t, array_update size width t -> 
-                   expr2 (Tregfile size t)
-  (* fifo operations *)
-  | Efifo : forall n t, fifo_update t ->  expr2 (Tfifo n t) 
-  | Enop : forall t, expr2 t. 
-              
-  
-End expr. 
-
-*)*)

@@ -1,7 +1,13 @@
 Require Export String. 
 Require Vector. 
 
-Notation "'do' X <- A ; B" := (match A with Some X => B | None => None end)
+Definition bind {A B: Type} (f: option A) (g: A -> option B) : option B :=
+  match f with
+    | Some x => g x
+    | None => None
+  end.
+
+Notation "'do' X <- A ; B" := (bind A (fun X => B) )
   (at level 200, X ident, A at level 100, B at level 200). 
 Notation "'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200). 
@@ -17,53 +23,63 @@ Notation "[ ]" := nil : list_scope.
 Notation "t :: q" := (cons t q) : list_scope. 
 Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)%list : list_scope.
 
-
 Section var.   
   Variable T : Type. 
+
   Inductive var : list T -> T -> Type :=
   | var_0 : forall E t , var (cons t E) t
   | var_S : forall E t t' , var E t' -> var (cons t E) t'. 
 
-  Variable eval_type : T -> Type. 
-
-  Fixpoint eval_env E : Type :=
-    match E with 
-        nil => unit
-      | cons t q => (eval_type t * eval_env q)%type
-    end. 
-
-  Fixpoint get E t (v: var E t): eval_env E -> eval_type t :=
-    match v with 
-      | var_0  _ _ => fun e => (fst e)
-      | var_S _ _ _ v => fun e => get _ _ v (snd e)
-    end. 
-
-  Fixpoint append_envs E F : eval_env E -> eval_env F -> eval_env (List.app E F) :=
-    match E with 
-      | nil => fun _ (x : eval_env F) => x 
-      | cons t q => fun (X : eval_type t * eval_env q) Y => 
-                     let (A,B) := X in (A, append_envs q F B Y)
-    end. 
-  Fixpoint set E t (v : var E t) : eval_type t ->  eval_env E -> eval_env E :=
-    match v  with 
-      | var_0 _ _ => fun x e => (x, snd e)
-      | var_S _ _ _ v => fun x e => (fst e, set _ _ v x (snd e))
-    end. 
 
   Fixpoint var_lift E F t (v : var E t) : var (E++F) t :=
     match v with 
         var_0 E' t'=> var_0 (E' ++ F) t'
       | var_S E' s' s'' v' => var_S (E' ++ F ) s' s'' (var_lift E' F s'' v') 
     end. 
-End var. 
 
+End var. 
+  
 Arguments var {T} _ _. 
 Arguments var_0 {T} {E} {t}. 
 Arguments var_S {T} {E} {t} {t'} _. 
-Arguments get {T eval_type} E t _ _. 
-Arguments append_envs {T eval_type} E F _ _. 
-Arguments eval_env {T} _ _ .  
 Arguments var_lift {T E F t} v. 
+
+Module Tuple. 
+  Section t. 
+    Variable T : Type. 
+    Variable F : T -> Type. 
+
+    Fixpoint of_list l : Type :=
+      match l with 
+          nil => unit
+        | cons t q => (F t * of_list q)%type
+      end. 
+    
+    Fixpoint app l1 l2 : of_list l1 -> of_list l2 -> of_list (List.app l1 l2) :=
+      match l1 with 
+        | nil => fun _ (x : of_list l2) => x 
+        | cons t q => fun (X : F t * of_list q) Y => 
+                       let (A,B) := X in (A, app q l2 B Y)
+      end. 
+    
+    Fixpoint get l t (v: var l t): of_list l -> F t :=
+      match v with 
+        | var_0  _ _ => fun e => (fst e)
+        | var_S _ _ _ v => fun e => get _ _ v (snd e)
+      end. 
+    
+    Fixpoint set l t (v : var l t) : F t ->  of_list l -> of_list l:=
+      match v  with 
+        | var_0 _ _ => fun x e => (x, snd e)
+        | var_S _ _ _ v => fun x e => (fst e, set _ _ v x (snd e))
+      end. 
+
+  End t. 
+End Tuple. 
+
+Arguments Tuple.get {T F} l t _ _. 
+Arguments Tuple.app {T F} l1 l2 _ _. 
+Arguments Tuple.of_list {T} _ _ .  
 
 Module Abstract. 
   Record T :=
@@ -85,7 +101,6 @@ Module Word.
   Arguments range {n} _. 
   
   Definition unsigned {n} (x : T n) : nat := Zabs_nat (val x).
-
   Notation "[2^ n ]" := (two_power_nat n). 
   
   Open Scope Z_scope. 
@@ -158,23 +173,43 @@ Module FIFO.
   End t. 
 End FIFO. 
 
+
+Module Finite. 
+  Record T ( n : nat) :Type :=
+    {
+      val : nat;
+      range : val < n
+    }. 
+  
+End Finite. 
+
 Module Regfile. 
     
+  Record T (size : nat) (X : Type) := mk 
+    {content : Vector.vector X size; 
+     default : X}. 
+  Arguments mk {size X} _ _. 
+  Arguments content {size X} _. 
+
+  Notation "! x" := (content x) (at level 70).
   
-  Definition T (size : nat) (X : Type) := Vector.vector X size.  
-    
-  Definition empty size X (el : X ): T size X := Vector.empty X size el.  
-  Definition get {size X} (v : T size X) (n : nat) := 
-    Vector.get _ _ v n. 
-  
+  Definition empty size X (el : X ): T size X := 
+    mk (Vector.empty X size el) el. 
+ 
+  (* Definition get {size X} (v : T size X) (n : nat) :=  *)
+  (*   Vector.get _ _ (!v) n.  *)
+
+  Definition get {size X} (v : T size X) (n : nat) : X :=
+    match Vector.get _ _ (!v) n with 
+      | Some x => x
+      | None => default _ _ v
+    end. 
+
   Definition set  {size X} (v : T size X) (addr : nat) (el : X) : T size X :=
-    Vector.set _ _ v (addr)%nat el. 
-  
-  Definition of_list {X : Type} (l : list X) : T (List.length l) X :=
-    Vector.of_list _ l. 
+    mk (Vector.set _ _ (!v) (addr)%nat el) (default _ _ v). 
 
   Definition of_list_pad {X} n (default : X) (l : list X) : T n X := 
-    Vector.of_list_pad _ n default l.  
+    mk (Vector.of_list_pad _ n default l) default.  
 
 End Regfile. 
 
@@ -196,7 +231,7 @@ Fixpoint eval_type0 st : Type :=
     | Tabstract _ t => Abstract.carrier t
   end. 
 
-Definition eval_type0_list l : Type := eval_env eval_type0 l. 
+Definition eval_type0_list l : Type := Tuple.of_list eval_type0 l. 
 
 (** Operations on types *)
 Section type_ops. 
@@ -238,7 +273,7 @@ Record signature T (E : T -> Type) := mk_signature
   {
     args : list T;
     res : T; 
-    value :> eval_env E args -> E res
+    value :> Tuple.of_list E args -> E res
   }. 
 
 Arguments mk_signature {T E} args res value. 

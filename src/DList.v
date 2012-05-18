@@ -52,7 +52,7 @@ Section dependent_lists.
   
   Section foldo. 
     Variable F : forall (t : T), P t -> E t -> option (E t). 
-    Fixpoint dlist_fold (l : list T) (d : dlist l) : eval_env E l -> option (eval_env E l):=
+    Fixpoint dlist_fold (l : list T) (d : dlist l) : Tuple.of_list E l -> option (Tuple.of_list E l):=
       match d with
           dlist_nil => fun v => Some v
         | dlist_cons t q pt dlq => fun v => 
@@ -65,7 +65,7 @@ Section dependent_lists.
   Section s2. 
     Variable F : forall (t : T), P t -> E t. 
 
-    Fixpoint dlist_fold' (l : list T) (dl : dlist l) : eval_env E l :=
+    Fixpoint dlist_fold' (l : list T) (dl : dlist l) : Tuple.of_list E l :=
       match dl with 
         | dlist_nil => tt
         | dlist_cons _ _ t q => (F _ t,  dlist_fold' _ q)
@@ -112,9 +112,9 @@ Defined.
 Definition dlist_fold2 :
   forall (S T : Type) (P : T -> Type) (E : S -> Type)
     (F : S -> T),
-    (forall t : S, P (F t) -> E t) -> forall l : list S, dlist P (List.map F l) -> eval_env E l. intros S T P E F f.
-refine (let fix fold (l : list S) (dl : dlist P (List.map F l)) : eval_env E l :=
-              match l return dlist P (List.map F l) -> eval_env E l with 
+    (forall t : S, P (F t) -> E t) -> forall l : list S, dlist P (List.map F l) -> Tuple.of_list E l. intros S T P E F f.
+refine (let fix fold (l : list S) (dl : dlist P (List.map F l)) : Tuple.of_list E l :=
+              match l return dlist P (List.map F l) -> Tuple.of_list E l with 
                 | nil =>  fun _ => tt
                 | cons t q => fun x : dlist P (F t :: List.map F q) =>
                     (f  _ (dlist_hd _ _ _ _ x),  fold _ (dlist_tl _ _ _ _ x)) 
