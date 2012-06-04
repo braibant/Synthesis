@@ -1,3 +1,18 @@
+06/01/2012 Discussion with Adam 
+
+- Mentionned the semantics issues with double-update errors treated as
+   guard errors. This has some impact on the number of multiplexers at
+   the end (and on the semantics of course, because more programs are
+   correct).
+
+- Mentionned the fact that there shall be no bind errors (which were
+  real errors). This has impact on the semantics of register files,
+  which cannot be accessed out of bounds. Otherwise we have the tricky
+  situation that try (check false; x <- \bot) is different from x <-
+  \bot; try (check false).
+
+- Discussion about the coq workshop proposal. 
+ 
 05/16/2012 Discussion with Adam
 Discussion about the translation and about a potential paper.  My
 translation issues should be resolved by keeping PHOAS, and using a
