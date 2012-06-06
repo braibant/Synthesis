@@ -46,6 +46,7 @@ Section dependent_lists.
                           (dlist_app q l2 (dlist_tl t q dl1) dl2)
       end)). 
   Defined. 
+  
 
   (** * Other functions operating on tuples like things *)
   Variable E : T -> Type.
@@ -55,21 +56,20 @@ Section dependent_lists.
     Fixpoint dlist_fold (l : list T) (d : dlist l) : Tuple.of_list E l -> option (Tuple.of_list E l):=
       match d with
           dlist_nil => fun v => Some v
-        | dlist_cons t q pt dlq => fun v => 
+        | dlist_cons t q pt dlq => fun v =>
             do x <- F t pt (fst v);
             do y <- dlist_fold q dlq (snd v);
             Some (x,y)
-      end. 
+      end.
   End foldo. 
 
   Section s2. 
     Variable F : forall (t : T), P t -> E t. 
 
-    Fixpoint dlist_fold' (l : list T) (dl : dlist l) : Tuple.of_list E l :=
-      match dl with 
-        | dlist_nil => tt
-        | dlist_cons _ _ t q => (F _ t,  dlist_fold' _ q)
-      end. 
+    Definition dlist_fold' (l : list T) (dl : dlist l) : Tuple.of_list E l. 
+    induction dl. simpl. apply tt. 
+    simpl. destruct q. auto. split. auto. auto. 
+    Defined. 
   End s2. 
 
 End dependent_lists. 
@@ -77,14 +77,24 @@ End dependent_lists.
 Arguments dlist {T} P _. 
 Arguments dlist_nil {T P}. 
 Arguments dlist_cons {T P} {t q} _ _.  
-Arguments dlist_fold' {T P E} _ _ _. 
+(* Arguments dlist_fold' {T P E} _ _ _.  *)
 Arguments dlist_app {T P l1 l2} _ _ . 
 
-Delimit Scope dlist_scope with dlist. 
-Notation "[ ]" := dlist_nil : dlist_scope.
-Notation "t :: q" := (dlist_cons t q) : dlist_scope.
-Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)%dlist : dlist_scope.
+Definition to_tuple T (l : list T) F G  (Trans : forall x, F x -> G x): dlist F l -> Tuple.of_list G l. 
+Proof. 
+  induction 1. simpl. apply tt. 
+  simpl. split. auto. auto. 
+Defined. 
 
+Arguments to_tuple {T l F G} Trans _%dlist. 
+
+Definition to_etuple T (l : list T) F G  (Trans : forall x, F x -> G x): dlist F l -> ETuple.of_list G l. 
+Proof. 
+  induction 1. simpl. apply tt. 
+  simpl. destruct q. auto. split.  auto. auto. 
+Defined. 
+
+Arguments to_etuple {T l F G} Trans _%dlist. 
 
 
   
@@ -114,10 +124,10 @@ Definition dlist_fold2 :
     (F : S -> T),
     (forall t : S, P (F t) -> E t) -> forall l : list S, dlist P (List.map F l) -> Tuple.of_list E l. intros S T P E F f.
 refine (let fix fold (l : list S) (dl : dlist P (List.map F l)) : Tuple.of_list E l :=
-              match l return dlist P (List.map F l) -> Tuple.of_list E l with 
+              match l return dlist P (List.map F l) -> Tuple.of_list E l with
                 | nil =>  fun _ => tt
                 | cons t q => fun x : dlist P (F t :: List.map F q) =>
-                    (f  _ (dlist_hd _ _ _ _ x),  fold _ (dlist_tl _ _ _ _ x)) 
+                    (f  _ (dlist_hd _ _ _ _ x),  fold _ (dlist_tl _ _ _ _ x))
               end dl
-          in fold). 
-Defined. 
+          in fold).
+Defined.

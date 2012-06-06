@@ -1,5 +1,146 @@
-Require Import Common Core. 
-Section t. 
+Require Import Common. 
+Require TaggedUnions Core. 
+
+Module Ex1. 
+  Section t. 
+  Import TaggedUnions. 
+  Variable n : nat. 
+  Notation OPCODE := (Tlift (Tint 3)). 
+  Notation REG := (Tlift (Tint 2)). 
+  Notation CONST := (Tlift (Tint n)). 
+  
+  Open Scope list_scope. 
+  Definition INSTR := 
+    Tunion 
+      (
+        [
+          Ttuple [REG; CONST];        (* LOADI *) 
+          REG;                        (* LOADPC *)
+          Ttuple [REG; REG; REG];     (* ADD*)
+          Ttuple [REG; REG];          (* BZ *)
+          Ttuple [REG; REG];          (* LOAD *)
+          Ttuple [REG; REG]           (* STORE *)
+        ]
+      ). 
+  Notation LOADI := (var_0 : var (constrs INSTR) _). 
+  Notation LOADPC := (var_S var_0 : var (constrs INSTR) _). 
+  Notation ADD := (var_S (var_S var_0) : var (constrs INSTR) _). 
+  Notation BZ := (var_S (var_S (var_S var_0)) : var (constrs INSTR) _). 
+  Notation LOAD := (var_S (var_S (var_S (var_S var_0))) : var (constrs INSTR) _). 
+  Notation STORE := (var_S (var_S (var_S (var_S (var_S var_0)))) : var (constrs INSTR) _). 
+  
+  Notation "[2^n]" := (128). 
+  Definition Phi : state := Treg CONST :: Tregfile 4 CONST  :: Tregfile [2^n] INSTR :: Tregfile [2^n] CONST :: nil. 
+  
+  Ltac set_env := 
+    set (PC := var_0 : var Phi (Treg CONST));
+    set (RF := var_S (var_0) : var Phi (Tregfile 4 CONST));
+    set (IMEM := var_S (var_S (var_0)) : var Phi (Tregfile [2^n] INSTR));
+    set (DMEM := var_S (var_S (var_S (var_0))) : var Phi (Tregfile [2^n] CONST)). 
+  
+  (* (pc,rf,imem,dmem) where LOADI(rd,const) = imem[pc]
+     –> (pc+1, rf[rd <- const], imem, dmem) *)
+  Definition loadi_rule  : Action Phi Unit.  intros V; set_env. 
+  refine (DO PC' <- read [: PC ]; 
+          DO I <- read IMEM [: (! PC') ]; 
+          MATCH (!I) IN INSTR WITH LOADI OF  rd, const ==> 
+            (
+              DO _ <- (write [: PC <-  (!PC' + #i 1)]);  
+              DO _ <- (write RF [: !rd <- !const ]);
+              RETURN (#Ctt))). 
+    Defined. 
+  
+  (* (pc,rf,imem,dmem) where LOADPC(rd) = imem[pc]
+     –> (pc+1, rf[rd <- pc], imem, dmem) *)
+  Definition loadpc_rule  : Action Phi Unit.  intros V; set_env. 
+  refine (DO PC' <- read [: PC ]; 
+          DO I <- read IMEM [: (! PC') ]; 
+          MATCH (!I) IN INSTR WITH LOADPC OF rd ==> 
+                (
+                  DO _ <- (write [: PC <-  (!PC' + #i 1)]);  
+                  DO _ <- (write RF [: !rd <- !PC' ]);
+                  RETURN (#Ctt))). 
+  Defined. 
+  
+  (* (pc,rf,imem,dmem) where ADD(rd,r1,r2) = imem[pc]
+     –> (pc+1, rf[rd <- rf[r1] + rf[r2]], imem, dmem) *)
+  Definition add_rule : Action Phi Unit.   intros V; set_env. 
+  refine (DO PC' <- read [: PC ]; 
+          DO I <- read IMEM [: (! PC') ]; 
+          MATCH !I IN INSTR WITH ADD OF  rd , r1 , r2  ==>
+            DO _ <- (write [: PC <-  (!PC' + #i 1)]);
+            DO R1 <- read RF [: !r1 ];
+            DO R2 <- read RF [: !r2 ];
+            DO _ <- (write RF [: !rd <- (!R1 + !R2) ]);
+            RETURN (#Ctt)). 
+  Defined. 
+  
+  (* (pc,rf,imem,dmem) where BZ(r1,r2) = imem[pc] 
+     –> (rf[r2], rf , imem, dmem) when rf[r1] = 0 *)
+  Definition bztaken_rule : Action Phi Unit. intros V; set_env. 
+  refine (DO PC' <- read [: PC ]; 
+          DO I <- read IMEM [: (! PC') ]; 
+          MATCH !I IN INSTR WITH BZ OF r1 , r2 ==>
+          (DO R1 <- read RF [: !r1  ];
+           DO R2 <- read RF [: !r2  ];
+           WHEN ( !R1 = #i 0 ); 
+           DO _ <- (write [: PC <-  (!R2)]);
+           RETURN (#Ctt))). 
+  Defined. 
+  
+  (* (pc,rf,imem,dmem) where BZ(r1,r2) = imem[pc] 
+     –> (pc+1, rf , imem, dmem) when rf[r1] <> 0 *)
+  Definition bznottaken_rule : Action Phi Unit. intros V; set_env. 
+  refine (DO PC' <- read [: PC ]; 
+          DO I <- read IMEM [: (! PC') ]; 
+          MATCH !I IN INSTR WITH BZ OF r1 , r2 ==>
+          (DO R1 <- read RF [: !r1  ];
+           DO R2 <- read RF [: !r2  ];
+           WHEN ( !R1 <> #i 0 ); 
+           DO _ <- (write [: PC <-  (!PC' + #i 1)]);
+           RETURN (#Ctt))). 
+  Defined. 
+  
+  (* (pc,rf,imem,dmem) where LOAD(r1,r2) = imem[pc] 
+     –> (pc+1, rf[r1 := dmem[rf [r2 ]]], imem, dmem) *)
+  Definition load_rule : Action Phi Unit. intros V; set_env. 
+  refine (DO PC' <- read [: PC ]; 
+          DO I <- read IMEM [: (! PC') ]; 
+          MATCH !I IN INSTR WITH LOAD OF r1 , r2 ==>
+          DO R2 <- read RF [: !r2  ];
+          DO D <- read DMEM [: (!R2)];
+          DO _ <- (write RF [: !r1  <-  (!D)]);
+          DO _ <- (write [: PC <-  (!PC' + #i 1)]);
+          RETURN (#Ctt)). 
+  Defined. 
+
+  (* (pc,rf,imem,dmem) where STORE(r1,r2) = imem[pc] 
+     –> (pc+1, rf, imem, dmem (rf[r1] := rf[r2])) *)
+  Definition store_rule : Action Phi Unit. intros V; set_env. 
+  refine (DO PC' <- read [: PC ]; 
+          DO I <- read IMEM [: (! PC') ]; 
+          MATCH !I IN INSTR WITH STORE OF r1 , r2 ==>
+          DO R1 <- read RF [: !r1 ];
+          DO R2 <- read RF [: !r2 ];
+          DO _ <- (write DMEM [: (!R1) <-  (!R2)]);
+          DO _ <- (write [: PC <-  (!PC' + #i 1)]);
+          RETURN (#Ctt)). 
+  Defined. 
+  
+  Definition T : TRS := mk_TRS Phi 
+                               (loadi_rule ::
+                                           loadpc_rule ::
+                                           add_rule ::
+                                           bztaken_rule ::
+                                           bznottaken_rule ::
+                                           load_rule ::
+                                           store_rule :: nil). 
+End t. 
+End Ex1. 
+
+Module Ex2. 
+  Section t. 
+  Import Core. 
   Variable n : nat. 
   Notation OPCODE := (Tlift (Tint 3)). 
   Notation REG := (Tlift (Tint 2)). 
@@ -140,3 +281,4 @@ Section t.
                                            load_rule ::
                                            store_rule :: nil). 
 End t. 
+End Ex2. 

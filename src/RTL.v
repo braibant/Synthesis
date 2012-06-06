@@ -56,8 +56,7 @@ Section t.
   (**  The compilation function itself *)
   Variable varunit : R Unit. 
   
-  
-  Definition convert : forall l, dlist (expr R) l -> Tuple.of_list (expr R) l := dlist_fold' (fun _ X => X).
+  Definition convert  l : dlist (expr R) l -> Tuple.of_list (expr R) l := to_tuple (fun t X => X). 
 
   Fixpoint map T F F' (G : forall t, F t -> F' t) (l : list T) : Tuple.of_list F l -> Tuple.of_list F' l:=
     match l with 
@@ -319,9 +318,9 @@ Section t.
         +  simpl. reflexivity. 
         + simpl. 
           unfold Common.bind.
-          set (x := dlist_fold' eval_expr ([t])%list exprs). 
+          set (x := to_tuple eval_expr exprs). 
           replace (x) with (fst x, snd x) by (destruct x; reflexivity).
-          Lemma convert_commute  l (dl : dlist (expr eval_type) l): map  _ _ _ (eval_expr) l (convert _ l dl) = dlist_fold' eval_expr l dl.
+          Lemma convert_commute  l (dl : dlist (expr eval_type) l): map  _ _ _ (eval_expr) l (convert _ l dl) = to_tuple (eval_expr) dl. 
           Proof. 
             induction dl. simpl. reflexivity. 
             simpl. f_equal. apply IHdl. 
@@ -368,20 +367,20 @@ Notation "'DO' X <- E ; F" := (telescope_bind E (fun X => F)).
 Notation "'RETURN' X" := (telescope_end _ _ _ X). 
 Arguments bind_expr  {Phi R t} _%expr. 
 Notation "[: v ]" := (bind_reg_read _ _ _ v).   
-Section test. 
-  Require Import MOD. 
-  Definition Z (t : type) := unit. 
-  Eval compute in compile _ Z _ _  (iterate 5 Z) . 
+(* Section test.  *)
+(*   Require Import MOD.  *)
+(*   Definition Z (t : type) := unit.  *)
+(*   Eval compute in compile _ Z _ _  (iterate 5 Z) .  *)
 
-  Eval compute in compile _ Z _ _ (done 5 Z). 
+(*   Eval compute in compile _ Z _ _ (done 5 Z).  *)
 
-End test. 
+(* End test.  *)
 
-Section test2. 
-  Require Import Isa. 
-  Eval compute in compile _ _ 0 _ (loadi_rule 5 (fun _ => nat)). 
+(* Section test2.  *)
+(*   Require Import Isa.  *)
+(*   Eval compute in compile _ _ 0 _ (loadi_rule 5 (fun _ => nat)).  *)
 
-  Eval compute in compile _ _ 0 _ (store_rule 5 (fun _ => nat)). 
+(*   Eval compute in compile _ _ 0 _ (store_rule 5 (fun _ => nat)).  *)
 
-End test2. 
+(* End test2.  *)
 

@@ -75,11 +75,85 @@ Module Tuple.
       end. 
 
   End t. 
+
 End Tuple. 
 
 Arguments Tuple.get {T F} l t _ _. 
 Arguments Tuple.app {T F} l1 l2 _ _. 
 Arguments Tuple.of_list {T} _ _ .  
+
+
+Module ETuple. 
+  Section t. 
+    Variable T : Type. 
+    Variable F : T -> Type. 
+
+    Fixpoint of_list l : Type :=
+      match l with 
+        |  nil => unit
+        | cons t q =>
+            match q with 
+                | nil => F t
+                | cons t' q' => (F t * of_list q)%type
+            end
+      end. 
+    
+
+    Definition fst {t l} : of_list (t :: l) -> F t. 
+    intros X. simpl in X. destruct l.  auto. destruct X. auto. 
+    Defined. 
+    
+    Definition snd {t l} : of_list (t :: l) -> of_list l. 
+    intros X. simpl in X. destruct l.  auto.  apply tt. destruct X. auto. 
+    Defined. 
+    
+    Definition pair {t l} : F t -> of_list l -> of_list (t::l). 
+    intros. simpl. destruct l. auto. auto. 
+    Defined. 
+    
+    Definition app l1 l2 : of_list l1 -> of_list l2 -> of_list (List.app l1 l2). 
+    refine (let fix app l1 l2 : of_list l1 -> of_list l2 -> of_list (List.app l1 l2) :=
+                match l1 with 
+                  | nil => fun _ e => e
+                  | cons t q => fun X Y => 
+                                let A := fst X in 
+                                let B := snd X in 
+                                  pair A (app _ _ B Y)
+                end in app l1 l2).
+    Defined. 
+    
+    Fixpoint get l t (v: var l t): of_list l -> F t :=
+      match v with 
+        | var_0  _ _ => fun e => (fst e)
+        | var_S _ _ _ v => fun e => get _ _ v (snd e)
+      end. 
+    
+    Fixpoint set l t (v : var l t) : F t ->  of_list l -> of_list l:=
+      match v  with 
+        | var_0 _ _ => fun x e => pair x (snd e)
+        | var_S _ _ _ v => fun x e => pair (fst e) (set _ _ v x (snd e))
+      end. 
+    
+    Definition init (el : forall t, F t) l : of_list l. 
+    induction l. simpl. apply tt. 
+    destruct l. simpl. auto. simpl. 
+    split; auto. 
+    Defined. 
+  End t. 
+  
+  Section map2. 
+    Context {T : Type} {F : T -> Type} {F' : T -> Type}. 
+    Variable (up : forall a,  F a -> F' a -> F' a). 
+    Definition map2 l : of_list T F l -> of_list T F' l -> of_list T F' l. 
+    induction l. simpl. auto. 
+    simpl. destruct l. apply up. intros [x xs] [y ys]. split; auto. 
+    Defined. 
+  End map2. 
+End ETuple. 
+
+Arguments ETuple.get {T F} l t _ _. 
+Arguments ETuple.app {T F} l1 l2 _ _. 
+Arguments ETuple.of_list {T} _ _ .  
 
 Module Abstract. 
   Record T :=
@@ -313,12 +387,12 @@ Inductive builtin : list type0 -> type0 -> Type :=
 (* applies a binary function to two arguments *)
 Definition bin_op {a b c} (f : eval_type0 a -> eval_type0 b -> eval_type0 c) 
   : eval_type0_list (a :: b :: nil)%list -> eval_type0 c :=
-  fun X => match X with (x,(y, _)) => f x y end. 
+  fun X => match X with (x,(y,tt)) => f x y end. 
 
 (* applies a unary function to one arguments *)
 Definition un_op {a b} (f : eval_type0 a -> eval_type0 b) 
   : eval_type0_list (a :: nil) -> eval_type0 b :=
-  fun X => match X with (x,_) => f x end. 
+  fun X => match X with (x,tt) => f x end. 
 
   (* denotation of the builtin functions *)
 Definition builtin_denotation (dom : list type0) ran (f : builtin dom ran) : 
@@ -338,3 +412,6 @@ Definition builtin_denotation (dom : list type0) ran (f : builtin dom ran) :
 
 Definition relation A := A -> A -> Prop. 
 Definition union {A} (R S : relation A) := fun x y => R x y \/ S x y. 
+
+
+Delimit Scope dlist_scope with dlist. 
