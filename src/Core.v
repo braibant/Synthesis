@@ -5,13 +5,10 @@ Inductive type : Type :=
 | Tlift : type0 -> type
 | Ttuple : list type -> type. 
 
-
-
 Fixpoint eval_type (t : type) :=
   match t with 
     | Tlift t => eval_type0 t
-    | Ttuple l => 
-        Tuple.of_list eval_type l
+    | Ttuple l => ETuple.of_list eval_type l
   end.    
 
 Inductive sync : Type :=
@@ -53,7 +50,10 @@ Section s.
                    dlist  (fun j => expr (Tlift j)) (args) -> 
                    expr  (Tlift res)
     | Econstant : forall  ty (c : constant0 ty), expr (Tlift ty)
-   
+                                                 
+    (* Tuple operations *)
+    | Efst : forall l t , expr (Ttuple (t::l)) -> expr t
+    | Esnd : forall l t , expr (Ttuple (t::l)) -> expr (Ttuple l)
     | Enth : forall l t (m : var l t), expr (Ttuple l) -> expr t
     | Etuple : forall l (exprs : dlist (expr) l), expr (Ttuple l). 
     
@@ -74,8 +74,7 @@ Section s.
   Definition Action t := forall Var, action Var t.
   Definition Expr t := forall Var, expr Var t. 
 
-
-  Notation eval_type_list := (Tuple.of_list eval_type). 
+  Notation eval_type_list := (ETuple.of_list eval_type). 
   
   Definition eval_expr (t : type) (e : expr eval_type t) : eval_type t. 
   refine ( 
@@ -92,9 +91,13 @@ Section s.
                   builtin_denotation args res f exprs                            
             | Econstant ty c => c
             | Etuple l exprs => 
-                to_tuple eval_expr exprs
+                to_etuple eval_expr exprs
             | Enth l t v e => 
-                Tuple.get l t v (eval_expr (Ttuple l) e)
+                ETuple.get l t v (eval_expr (Ttuple l) e)
+            | Efst l t  e => 
+                ETuple.fst _ _ (eval_expr _ e)
+            | Esnd l t  e => 
+                ETuple.snd _ _  (eval_expr _ e)
           end 
       in eval_expr t e). 
   Defined. 

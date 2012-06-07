@@ -5,6 +5,9 @@ all:
 	$(MAKE) -C src
 	$(MAKE) -C examples
 
+doc:
+	$(MAKE) -C src html
+
 clean:
 	$(MAKE) -C src clean
 	$(MAKE) -C examples clean
