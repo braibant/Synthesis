@@ -38,11 +38,17 @@ Section var.
     end. 
 
 End var. 
-  
+
 Arguments var {T} _ _. 
 Arguments var_0 {T} {E} {t}. 
 Arguments var_S {T} {E} {t} {t'} _. 
 Arguments var_lift {T E F t} v. 
+
+Definition var_map {A B: Type} (F : A -> B) (l : list A) t (v : var l t) : var (List.map F l) (F t). 
+induction v. apply var_0. 
+simpl. apply var_S.   auto. 
+Defined. 
+
 
 Module Tuple. 
   Section t. 
@@ -254,7 +260,14 @@ Module Finite.
       val : nat;
       range : val < n
     }. 
-  
+  Arguments val {n} _. 
+
+  Definition eqb {n} (x y : T n) :=
+    NPeano.Nat.eqb (val x) (val y). 
+
+  Definition ltb {n} (x y : T n) :=
+    NPeano.Nat.ltb (val x) (val y). 
+
 End Finite. 
 
 Module Regfile. 
@@ -295,6 +308,7 @@ Inductive type0 : Type :=
 | Tunit : type0 
 | Tbool: type0 
 | Tint: nat -> type0
+| Tfin: nat -> type0
 | Tabstract : ident -> Abstract.T -> type0. 
 
 Fixpoint eval_type0 st : Type := 
@@ -302,6 +316,7 @@ Fixpoint eval_type0 st : Type :=
     | Tunit => unit
     | Tbool => bool
     | Tint n => Word.T n
+    | Tfin n => Finite.T n
     | Tabstract _ t => Abstract.carrier t
   end. 
 
@@ -321,6 +336,7 @@ Section type_ops.
     match t with 
       | Tunit => fun _ _  => true
       | Tint n => @Word.eq n
+      | Tfin n => @Finite.eqb n
       | Tbool  => eqb_bool 
       | Tabstract _ t => Abstract.eqb t
     end. 
@@ -338,6 +354,7 @@ Section type_ops.
                               
       | Tbool => ltb_bool 
       | Tint n => @Word.lt n
+      | Tfin n => @Finite.ltb n
       | Tabstract _ t => Abstract.lt t
     end. 
 End type_ops. 

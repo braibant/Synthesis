@@ -340,27 +340,28 @@ Section run.
 
 End run. 
 
-Open Scope action_scope. 
 
-Section Fifo. 
-  Variable t : type. 
+(* Open Scope action_scope.  *)
+
+(* Section Fifo.  *)
+(*   Variable t : type.  *)
   
-  Notation tb := (Ttuple ([t ; Bool]%list)). 
-  Definition FIFO := Treg tb. 
+(*   Notation tb := (Ttuple ([t ; Bool]%list)).  *)
+(*   Definition FIFO := Treg tb.  *)
 
-  Definition full {V} (I : expr V tb) : expr V Bool. 
-  eapply Enth. 2: apply I. apply var_S. apply var_0. 
-  Defined. 
-  Arguments full {V} I%expr. 
-  Definition data {V} (I : expr V tb) : expr V t. 
-  eapply Enth. 2: apply I. apply var_0. 
-  Defined. 
-  Arguments data {V} I%expr. 
+(*   Definition full {V} (I : expr V tb) : expr V Bool.  *)
+(*   eapply Enth. 2: apply I. apply var_S. apply var_0.  *)
+(*   Defined.  *)
+(*   Arguments full {V} I%expr.  *)
+(*   Definition data {V} (I : expr V tb) : expr V t.  *)
+(*   eapply Enth. 2: apply I. apply var_0.  *)
+(*   Defined.  *)
+(*   Arguments data {V} I%expr.  *)
 
-  Definition deq {Phi} (v : var Phi FIFO) : Action Phi Unit. intros V. 
-  refine (DO X <- read [: v]; 
-          WHEN (full (!X)%expr);
-          write [: v <- _]
-         ). 
-  Admitted. 
-End Fifo. 
+(*   Definition deq {Phi} (v : var Phi FIFO) : Action Phi Unit. intros V.  *)
+(*   refine (DO X <- read [: v];  *)
+(*           WHEN (full (!X)%expr); *)
+(*           write [: v <- _] *)
+(*          ).  *)
+(*   Admitted.  *)
+(* End Fifo.  *)
