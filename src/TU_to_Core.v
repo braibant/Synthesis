@@ -117,6 +117,10 @@ Section compile.
   Proof. 
   Admitted. 
 
+  Definition deallocate t l tr (c : var l t) (e : T.expr R (flat (S.Tunion l))) 
+                        (cont : R (flat t) -> T.action (compile_state Phi) R (flat tr)): 
+    T.action (compile_state Phi) R (flat tr). 
+  Admitted. 
   
   Definition compile_expr t : S.expr (fun x => R (flat x)) t  -> T.expr R (flat t).  
 
@@ -200,11 +204,14 @@ Section compile.
                     (flat (S.Tlift Tunit)))
          end ). 
   (* Case case *)
-  + apply compile_expr in e. simpl in *. 
+  + apply compile_expr in e.
     Import T. 
-    refine (T.Bind (T.Assert _) _). 
+    refine (T.Bind (T.Assert _) (fun _ => _)). 
     refine (_  = _ )%expr. 
     eapply Econstant. exact (fin_of_var _ _ c : constant0 (Tfin _)). 
-    apply Efst in e. apply e. 
-
+    simpl in e. apply Efst in e. apply e. 
+    
+    clear _H. set (y := fun e => compile _ (x e)). clearbody y. clear x.  clear - e y c. 
+   apply (deallocate _ _ _ c e y). 
+  
   Defined. 
