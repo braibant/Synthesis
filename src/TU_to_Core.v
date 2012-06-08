@@ -40,18 +40,20 @@ Module M.
         | (n,x) :: q => max n x (union q b)
       end%list. 
     
-    Fixpoint copy n (x : X) l :=
+    Fixpoint copy n (x : X)  :=
       match n with 
-        | xH => x :: l
-        | xO m => copy m x (copy m x l)
-        | xI m => x :: copy m x (copy m x l)
+        | xH => [x]
+        | xO m => copy m x ++ copy m x
+        | xI m => x :: copy m x  ++ copy m x
       end%list. 
 
     Fixpoint contents (a : T) := 
       match a with 
         | nil => nil
-        | (n,x) :: q => copy n x (contents q)
+        | (n,x) :: q => copy n x ++ (contents q)
       end%list.         
+    
+    Fixpoint elements (a : T) : list X := List.map (@snd _ _) a. 
     
     Fixpoint of_list (l : list X) : T :=
       match l with 
@@ -97,15 +99,25 @@ Section compile.
           end in _). 
   apply (f x). 
   Defined. 
-  Definition compile_state : S.state -> T.state.
-  intros l.  refine (List.map _ l). 
-  intros. refine (match X with
+  Definition compile_sync : S.sync -> T.sync. 
+  Proof. 
+    refine (fun X => match X with
                       |S.Treg t => T.Treg (flat t)
                       |S.Tregfile n t => T.Tregfile n (flat t)
-                  end
-                 ). 
+            end). 
   Defined. 
+  Definition var_map { A B } (f : A -> B) l (t : A) : var l t -> var (List.map f l) (f t). 
+  Admitted. 
+  Definition compile_state : S.state -> T.state := List.map compile_sync. 
+
+
   Variable (R : T.type -> Type). 
+
+  Definition allocate t l (c : var l t) (x : T.expr R (flat t)) : T.expr R (flat (S.Tunion l)). 
+  Proof. 
+  Admitted. 
+
+  
   Definition compile_expr t : S.expr (fun x => R (flat x)) t  -> T.expr R (flat t).  
 
   refine (let compile := fix compile t (e : S.expr (fun x => R (flat x)) t) : T.expr R (flat t) := 
@@ -134,45 +146,65 @@ Section compile.
   
   
   eapply (zob _ _ _ compile) in exprs. apply exprs.
+  apply (allocate _ _ c (compile _ x)). 
+  Defined. 
 
   Definition fin_of_var {T} l (t : T) : var l t -> Finite.T (List.length l).
   induction 1.
-  refine  (Finite.Build_T _ 0 _). simpl. admit. 
-  refine  (Finite.Build_T _ (S (Finite.val IHX)) _). simpl. admit. 
+  refine  (Finite.Build_T _ 0 _). simpl. admit.
+  refine  (Finite.Build_T _ (S (Finite.val IHX)) _). simpl. admit.
   Defined.
-  
-  simpl.
-  apply T.Etuple.  constructor. apply T.Econstant. apply (fin_of_var _ _ c). apply compile in x. 
-  clear compile. 
 
-  apply fin_of_var in c.
-  
-  revert x. generalize (flat t1) as ta. intros ta source. 
-  generalize (List.map (fun x => flat x) l) as lb. intros lb. 
-  clear - c ta source lb. 
-  destruct ta. 
-  Definition alloue 
-  induction lb. simpl. constructor. 
-  simpl. destruct a. simpl open. 
-  
-  Defined. 
-  eapply DList.dlist_map. eapply compile. 
-  apply compile. 
-  simpl in x. 
-  unfold flat.  simpl. apply (T.Econstant ). 
   Definition compile   t : S.action Phi (fun x => R (flat x )) t -> T.action (compile_state Phi ) R (flat t). 
   refine (let compile := fix compile t (a : S.action Phi (fun x => R (flat x)) t) : 
               T.action (compile_state Phi) R (flat t) :=
               match a with
-                | S.Return t exp => _
-                | S.Bind t u a f => _
-                | S.Assert e => _
-                | S.Primitive args res p exprs => _
-                | S.Try a => _
+                | S.Return t exp => T.Return (compile_expr _ exp)
+                | S.Bind t u a f => T.Bind (compile _ a) (fun X => compile _ (f X))  
+                | S.Assert e => T.Assert (compile_expr _ e)
+                | S.Primitive args res p exprs => 
+                    let exprs := 
+                        (zob (S.expr (fun x : S.type => R (flat x))) 
+                             (T.expr R) flat compile_expr args exprs)
+                    in 
+                      T.Primitive (List.map flat args) (flat res) _ exprs
+                | S.Try a => T.Try _ _ (compile _ a)
                 | S.Case td l t c e x => _
               end
           in compile t
          ). 
+  clear exprs0. revert exprs. 
+  refine (match p with 
+              S.register_read t v => fun exprs =>
+                                     (
+                                       T.register_read  (var_map compile_sync _ _ v)
+                                       :T.primitive (compile_state Phi) (List.map flat []) (flat t))
+              
+            | S.register_write t v => fun exprs => 
+                                     (
+                                       T.register_write (var_map compile_sync Phi (S.Treg t) v)
+                                       :T.primitive (compile_state Phi) (List.map flat [t])
+                                         (flat (S.Tlift Tunit))
+                                     )
+            | S.regfile_read n t v p => fun exprs => ( T.regfile_read
+                                                      (var_map compile_sync Phi (S.Tregfile n t) v) p
+                                                     :T.primitive (compile_state Phi)
+                                                       (List.map flat [S.Tlift (W p)]) 
+                                                       (flat t))
+            | S.regfile_write m t v p => fun exprs => 
 
-  intros a. 
-  induction a. 
+                                          (   T.regfile_write
+                   (var_map compile_sync Phi (S.Tregfile m t) v) p
+                 :T.primitive (compile_state Phi)
+                    (List.map flat [S.Tlift (W p); t])
+                    (flat (S.Tlift Tunit)))
+         end ). 
+  (* Case case *)
+  + apply compile_expr in e. simpl in *. 
+    Import T. 
+    refine (T.Bind (T.Assert _) _). 
+    refine (_  = _ )%expr. 
+    eapply Econstant. exact (fin_of_var _ _ c : constant0 (Tfin _)). 
+    apply Efst in e. apply e. 
+
+  Defined. 
