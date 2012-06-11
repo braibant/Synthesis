@@ -3,3 +3,15 @@ src/html/
 *.vo
 *.glob
 *~
+
+examples/Makefile.coq
+papers/coq-workshop-12/auto/
+papers/coq-workshop-12/main-blx.bib
+papers/coq-workshop-12/main.aux
+papers/coq-workshop-12/main.bbl
+papers/coq-workshop-12/main.blg
+papers/coq-workshop-12/main.log
+papers/coq-workshop-12/main.rel
+papers/coq-workshop-12/main.run.xml
+papers/coq-workshop-12/main.synctex.gz
+src/Makefile.coq
