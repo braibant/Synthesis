@@ -81,6 +81,8 @@ Module Tuple.
       end. 
 
   End t. 
+  Definition fst {T F l} {t: T} : (Tuple.of_list _ F (t::l)%list) -> F t. apply fst. Defined. 
+  Definition snd {T F l} {t: T} : (Tuple.of_list _ F (t::l)%list) -> Tuple.of_list _ F l. apply snd. Defined. 
 
 End Tuple. 
 

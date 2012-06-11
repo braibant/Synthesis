@@ -131,3 +131,10 @@ refine (let fix fold (l : list S) (dl : dlist P (List.map F l)) : Tuple.of_list 
               end dl
           in fold).
 Defined.
+
+Definition dmap {A B} (F : A -> Type) (G: B -> Type) (C : A -> B) (D : forall x, F x -> G ( C x)) (l: list  A) (dl : DList.dlist F l) : DList.dlist G (List.map C l). 
+  induction dl. simpl. constructor. 
+  simpl. constructor. apply D.  auto. 
+  apply IHdl. 
+Defined. 
+

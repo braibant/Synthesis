@@ -32,7 +32,7 @@ Definition eval_sync (s : sync) :=
     | Tregfile n t => Regfile.T n (eval_type t)
   end. 
 
-Definition eval_state := ETuple.of_list eval_sync. 
+Definition eval_state := Tuple.of_list eval_sync. 
 
 Notation Int n := (Tlift (Tint n)).
 Notation Bool := (Tlift (Tbool)).
@@ -254,15 +254,15 @@ Record TRS : Type := mk_TRS
 Module Diff. 
   Section t. 
     Variable Phi : state. 
-    Definition T := ETuple.of_list (option ∘ eval_sync) Phi. 
+    Definition T := Tuple.of_list (option ∘ eval_sync) Phi. 
     Definition add (Delta : T) t (v : var Phi t) w : option T :=
-      match ETuple.get Phi t v Delta  with 
-        | None =>  Some  (ETuple.set _ _ Phi t v (Some w) Delta)
+      match Tuple.get Phi t v Delta  with 
+        | None =>  Some  (Tuple.set _ _ Phi t v (Some w) Delta)
         | Some _ => None 
       end.
     
     
-    Definition init : T := ETuple.init _ _ (fun _ => None) Phi. 
+    Definition init : T := Tuple.init _ _ (fun _ => None) Phi. 
     Definition apply : T  -> ETuple.of_list eval_sync Phi -> ETuple.of_list eval_sync Phi := 
                 ETuple.map2 (fun s delta old => match delta with 
                                              | None => old
@@ -436,5 +436,43 @@ Section run.
   end. 
 
 End run. 
+
+Module WF. 
+  Section t. 
+    Variable va vb : type -> Type. 
+    Variable Phi : state. 
+    Reserved Notation "l & Gamma |- x == y" (at level 80). 
+
+    
+    Inductive 
+      equiv_expr : forall t, expr va t  -> expr vb t -> Prop := . 
+    
+    Notation ctxt l := (DList.dlist  (fun x => (va x * vb x)%type) l). 
+
+    Inductive 
+      equiv_action : forall (l : list type), ctxt l ->   forall t, action Phi va t  -> action Phi vb t -> Prop :=
+    | EA_Return : forall l Gamma t ea eb, 
+                    equiv_expr t ea eb -> 
+                    l & Gamma |- @Return Phi va t ea == @Return Phi vb t eb
+    | EA_Bind  : forall l Gamma t u a1 a2 f1 f2,
+                   l & Gamma |- a1 == a2 -> 
+                      (forall v1 v2, (t::l)%list &  ((v1,v2)::Gamma)%dlist |- f1 v1 == f2 v2) -> 
+                      l & Gamma |- @Bind Phi va t u a1 f1 == @Bind Phi vb t u a2 f2
+    | EA_Assert : forall l Gamma ea eb, 
+                    equiv_expr _ ea eb -> 
+                    l & Gamma |- @Assert Phi va ea == @Assert Phi vb eb
+    | EA_Primitive : forall l Gamma args res p lea leb, 
+                       l & Gamma |- @Primitive Phi va args res p lea ==  @Primitive Phi vb args res p leb  
+    | EA_Try : forall l Gamma a1 a2,
+                 l & Gamma |- a1 == a2 -> 
+                    l & Gamma |- @Try Phi va a1 == @Try Phi vb a2                                                       
+    | EA_Case : forall l Gamma td constrs t c ea eb fa fb, 
+                  equiv_expr _ ea eb -> 
+                  (forall v1 v2, (t::l)%list &  ((v1,v2)::Gamma)%dlist |- fa v1 == fb v2) ->               
+                  l & Gamma |- (@Case Phi va td constrs t c ea fa) == (@Case Phi vb td constrs t c eb fb)
+                        where "l & Gamma |- x == y" := (equiv_action l Gamma _ x y). 
+End t. 
+End WF. 
+Notation " l & Gamma |- x == y" := (WF.equiv_action _ _ _ l Gamma _ x y) (no associativity, at level 80). 
 
 Open Scope action_scope. 
