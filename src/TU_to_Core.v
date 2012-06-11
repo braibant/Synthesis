@@ -144,6 +144,9 @@ Section compile.
       | T.Ttuple l => M.of_list l
     end. 
 
+  Definition process (l : list T.type) : M.T T.type :=
+    List.fold_right M.join []%list  (List.map open  l).  
+
   
   Definition flat : S.type -> T.type .
   intros x. 
@@ -154,8 +157,7 @@ Section compile.
                   | S.Ttuple l => T.Ttuple (List.map convert l)
                   | S.Tunion C =>  
                             let l := List.map convert C in 
-                            let l := List.map open l in 
-                            let m := List.fold_right M.join nil l in 
+                            let m := process l in
                             let c := T.Tlift (Tfin (List.length C )) in 
                               T.Ttuple (c:: M.contents _ m)
 
@@ -223,70 +225,122 @@ Section compile.
 
   Section t. 
     Notation MS := (M.T T.type). 
-    Inductive layout : MS -> MS -> Type :=
-    | layout_nil : forall l, layout nil l
-    | layout_cons : forall n m x q q', layout q q' -> 
-                                   (n <= m)%positive ->  
-                                  layout ((n,x) :: q)%list ((m, x):: q')%list
-    | layout_drop : forall n x q q', layout q q' -> 
-                                layout q ((n,x) :: q')%list. 
 
-    Definition apply_layout m1 m2 (H : layout m1 m2) (x : T.expr R (T.Ttuple (M.contents _ m1))) : T.expr R (T.Ttuple (M.contents _ m2)). 
-    induction H. 
-    + apply Enull. 
-    +  simpl. 
-    apply Eapp.  2: apply IHlayout. simpl in x. 
-    apply Efirst in x. clear - x l.  admit.  
-    simpl in x. apply Eskip in x. apply x.
-    + simpl. apply Eapp. 
-   
-    apply Enull. 
-    auto.
+
+      Definition type_eqb : T.type -> T.type -> bool. Admitted. 
+      Definition type_eqb_correct x y : type_eqb x y = true -> x = y. Admitted. 
+    Definition proj_on_t l t' (e : T.expr R (T.Ttuple l)) : list (T.expr R t'). 
+    revert  t' e. 
+    induction l. 
+    intros. apply nil. 
+    intros. set (hd := T.Efst _ _ _ e). 
+    case_eq (type_eqb a  t'). intros. apply cons. 
+    
+    erewrite <- type_eqb_correct. apply hd. apply H. 
+    apply IHl. apply (T.Esnd _ _ _ e). 
+    intros. apply IHl. apply (T.Esnd _ _ _ e). 
+    Defined. 
+    
+    Definition zob (t : T.type) : list T.type. 
+    destruct t. 
+    refine ([T.Tlift t])%list. 
+    exact l. 
+    Defined. 
+    
+    Definition unpack t : T.expr R t -> T.expr R (T.Ttuple (zob t)). Admitted. 
+
+    Definition allocate t l (c : var l t) (x : T.expr R (flat t)) : T.expr R (flat (S.Tunion l)). 
+    Proof. 
+      simpl flat.
+      match goal with 
+          |- context [M.contents _ ?c] => set (ms := c)
+      end. 
+      set (types := M.elements _ ms). 
+      apply Econs. admit. 
+      refine (
+          let tutu := fix tutu l : T.expr _ (T.Ttuple (M.contents _ l)):= 
+              match l with 
+                | nil => T.Etuple  _ _ (DList.dlist_nil)
+                | (n,x) :: q => _
+              end%list in 
+            (tutu _)
+        ).
+      apply Eapp. 2: apply tutu. 
+      
+    apply unpack in x. 
+    eapply proj_on_t in x. 
+      
+      Definition pad n t : list (T.expr R t) -> T.expr R (T.Ttuple (M.copy _  n t)). Admitted. 
+   apply (pad _ _ x). 
     Defined. 
 
-  Definition allocate t l (c : var l t) (x : T.expr R (flat t)) : T.expr R (flat (S.Tunion l)). 
-  Proof. 
-    simpl flat. 
-    apply Econs. 
-    apply T.Econstant. apply (fin_of_var _ _  c).
+    (* This function must cherry-pick the right types. It assumes that
+    the check that the tag is the right one was done elsewhere *)
 
-    eapply (apply_layout ((M.singleton (flat t)))). 
-    Focus 2. simpl. apply T.Etuple. constructor. apply x. constructor. 
-    clear x.
-    Program Fixpoint try_layout m1 m2 : option (layout m1 m2) :=
-      match m1 with 
-        | nil => Some (layout_nil m2)
-        | (n,x)::q => match m2 with 
-                       | nil => None
-                       | (m,y) :: q' => match type_cmp x y with 
-                                        | Lt => None
-                                        | Eq => if Pos.ltb n m then 
-                                                 do l <- try_layout q q';
-                                                 _
-                                               else 
-                                                 None
-                                        | Gt => 
-                                            do l <- try_layout ((n,x)::q) q';
-                                            Some (layout_drop m y ((n,x)::q) q' l) : 
-                                            option (layout ((n,x)::q) ((m,y)::q'))
-                                       end
-                     end
-
-      end%list. 
-    Next Obligation. 
-      apply Some. 
-      apply layout_cons. 
-      refine Some (layout_cons n m x q q' l admit ):
-      option (layout (n,) m2)
- 
-    induction l. simpl. inversion c.
-    simpl. 
-    simpl. 
-    apply T.Etuple. constructor. 
   Definition deallocate t l tr (c : var l t) (e : T.expr R (flat (S.Tunion l))) 
                         (cont : R (flat t) -> T.action (compile_state Phi) R (flat tr)): 
     T.action (compile_state Phi) R (flat tr). 
-  Admitted. 
+  Proof. 
+    simpl in e. 
+    apply T.Esnd in e. 
+    eapply T.Bind. 
+    eapply T.Return. 2: apply cont. clear cont. 
+    
+    Definition test (t : T.type) : T.expr R (T.Ttuple (zob t)) -> T.expr R (t). 
+    destruct t.  simpl. apply T.Efst. 
+    simpl. apply id. 
+    Defined. 
+
+    apply test. 
+revert e. 
+      match goal with 
+          |- context [M.contents _ ?c] => set (ms := c)
+      end.
+      
+      Definition layout (E : list T.type) (L : list T.type) := DList.dlist (fun x => var L x) E. 
+
+      
+      Definition get_layout t l (c : var l t) : layout (zob t) (M.contents  _ (process l)). Admitted. 
+    
+    set (ohmy := get_layout  _ _ (var_map (flat ) _ _ c)).
+
+    change (fun x : S.type => flat x) with flat in ms. 
+    fold ms in ohmy. 
+    clearbody ohmy. clearbody ms. 
+
+    induction ms. simpl in ohmy. unfold layout in *. simpl. admit. 
+    simpl in *. 
+    intros. 
+    destruct a. 
+ 
+    simpl. 
+    unfold ms in *. 
+      intros e. 
+      induction ms. 
+      simpl. 
+      refine (
+
+          let tutu := fix tutu l : T.expr _ (T.Ttuple (M.contents _ l)):= 
+              match l with 
+                | nil => T.Etuple  _ _ (DList.dlist_nil)
+                | (n,x) :: q => _
+              end%list in 
+            (tutu _)
+        ).
+
+REVERT E. 
+    refine (
+        let tutu := fix tutu l : T.expr _ (T.Ttuple (M.contents _ l)):= 
+            match l with 
+              | nil => T.Etuple  _ _ (DList.dlist_nil)
+              | (n,x) :: q => _
+            end%list in 
+          (tutu _)
+      ).
+
+    
+  Qed.     
+    
   
   Definition compile_expr t : S.expr (fun x => R (flat x)) t  -> T.expr R (flat t).  
 
