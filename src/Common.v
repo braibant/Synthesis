@@ -79,10 +79,26 @@ Module Tuple.
         | var_0 _ _ => fun x e => (x, snd e)
         | var_S _ _ _ v => fun x e => (fst e, set _ _ v x (snd e))
       end. 
-
+  Definition init (el : forall t, F t) l : of_list l. 
+  induction l. simpl. apply tt. 
+  destruct l. simpl. auto. simpl. 
+  split; auto. 
+  Defined. 
   End t. 
+  
+  Section map2. 
+    Context {T : Type} {F : T -> Type} {F' : T -> Type}. 
+    Variable (up : forall a,  F a -> F' a -> F' a). 
+    Definition map2 l : of_list T F l -> of_list T F' l -> of_list T F' l. 
+    induction l. simpl. auto. 
+    simpl. intros [x xs] [y ys]. split. apply up; auto.  
+    apply IHl; auto. 
+    Defined. 
+  End map2. 
+  
   Definition fst {T F l} {t: T} : (Tuple.of_list _ F (t::l)%list) -> F t. apply fst. Defined. 
   Definition snd {T F l} {t: T} : (Tuple.of_list _ F (t::l)%list) -> Tuple.of_list _ F l. apply snd. Defined. 
+
 
 End Tuple. 
 

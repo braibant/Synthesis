@@ -263,8 +263,8 @@ Module Diff.
     
     
     Definition init : T := Tuple.init _ _ (fun _ => None) Phi. 
-    Definition apply : T  -> ETuple.of_list eval_sync Phi -> ETuple.of_list eval_sync Phi := 
-                ETuple.map2 (fun s delta old => match delta with 
+    Definition apply : T  -> Tuple.of_list eval_sync Phi -> Tuple.of_list eval_sync Phi := 
+                Tuple.map2 (fun s delta old => match delta with 
                                              | None => old
                                              | Some delta => delta
                                            end
@@ -316,7 +316,7 @@ Module Sem.
         with
           | register_read t v =>
               fun _ (st : eval_state Phi)
-                  (Delta : Diff.T Phi) => Some (ETuple.get Phi (Treg t) v st, Delta)
+                  (Delta : Diff.T Phi) => Some (Tuple.get Phi (Treg t) v st, Delta)
           | register_write t v =>
               fun (exprs : ETuple.of_list eval_type [t]) (_ : eval_state Phi) (Delta : Diff.T Phi) =>
                 let w := exprs in
@@ -325,13 +325,13 @@ Module Sem.
           | regfile_read n t v p =>
               fun (exprs : ETuple.of_list eval_type [Tlift (W p)]) 
                   (st : eval_state Phi) (Delta : Diff.T Phi) =>
-                let rf := ETuple.get Phi (Tregfile n t) v st in
+                let rf := Tuple.get Phi (Tregfile n t) v st in
                 let adr := exprs in
                   let v := Regfile.get rf (Word.unsigned adr) in Some (v, Delta)
           | regfile_write n t v p =>
               fun (exprs : ETuple.of_list eval_type [Tlift (W p); t]) 
                   (st : eval_state Phi) (Delta : Diff.T Phi) =>
-                let rf := ETuple.get Phi (Tregfile n t) v st in
+                let rf := Tuple.get Phi (Tregfile n t) v st in
                 let rf := match exprs with
                               (adr, (w)) => Regfile.set rf (Word.unsigned adr) w
                           end

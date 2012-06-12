@@ -289,46 +289,57 @@ Section compile.
   (* we start by defining what it means to be equivalent as values *)
   
   Notation " l & Gamma |- x == y" := (S.WF.equiv_action _ _ _ l Gamma _ x y) (no associativity, at level 80). 
-
-  Lemma correct l Gamma t a b R: 
-    l & Gamma |- a == b ->
-    R (@S.Sem.eval_action Phi t a) 
-      (@T.Sem.eval_action (compile_state Phi) (scheme t) (compile _ _ b)). 
-  Proof. 
-
-    Fixpoint tuple_eq {A} 
-                        (F : A -> Type )
-                        (G : A -> Type)
-                        (R : forall x, F x -> G x -> Prop)
-                        (l : list A) : Tuple.of_list F l ->  Tuple.of_list G l -> Prop :=
-      match l with 
-          | nil => fun _ _  => True
-          | cons t q => fun t1 t2 => R _ (Tuple.fst t1) (Tuple.fst t2) /\ 
-                                     tuple_eq F G R q (Tuple.snd t1)  (Tuple.snd t2)
-      end. 
-    
-    Definition equiv_sync t : S.eval_sync t -> T.eval_sync (compile_sync t) -> Prop. Admitted. 
+  Inductive 
+    equiv_eval : forall t, S.eval_type t -> T.eval_type (scheme t) -> Prop :=
+  | ee_lift : forall (s : type0) 
+                (x : S.eval_type (S.Tlift s))
+                (y : T.eval_type (T.Tlift s)), x = y -> 
+              equiv_eval (S.Tlift s) x y
+  | ee_tuple : forall l, 
+                 (x : S.eval_type (S.Ttuple l))
+                 (y : T.eval_type (scheme (S.Ttuple l)))
+                 
+                 
+                 Definition equiv_sync t : S.eval_sync t -> T.eval_sync (compile_sync t) -> Prop. 
+    Proof. 
+    Admitted. 
     Definition equiv_state l :  (S.eval_state l) -> (T.eval_state (compile_state l)) -> Prop.    
-    intros. 
-   eapply tuple_eq. apply equiv_sync. apply X. unfold T.eval_state in *. apply X0. 
-2: apply X. 
+    Proof. 
+      induction l. 
+      intros. apply True. 
+      simpl. intros [x xs] [y ys]. 
+      apply (equiv_sync _ x y /\ IHl xs ys). 
+    Defined.
+    Definition equiv_diff  : S.Diff.T Phi -> T.Diff.T (compile_state Phi) -> Prop.  Admitted. 
+    Inductive option_equiv {A B} (R : A -> B -> Prop) : option A -> option B -> Prop :=
+    | oe_none : option_equiv R None None
+    | oe_some : forall x y, R x y -> option_equiv R (Some x) (Some y). 
+    Definition equiv_sem_dyn t : 
+      S.Sem.Dyn.T  Phi (S.eval_type t) -> 
+      T.Sem.Dyn.T  (compile_state Phi) (T.eval_type (scheme t)) -> 
+      Prop 
+      := fun dyn1 dyn2 => 
+           forall st1 st2, 
+           forall delta1 delta2, 
+             option_equiv 
+               (fun tda tdb =>                   equiv_eval t (fst tda) (fst tdb) /\ equiv_diff (snd tda) (snd  tdb)                              
+               )
+               (dyn1 st1 delta1) ( dyn2 st2 delta2). 
+    
 
-
-    2: apply X0. := tuple_eq _ _ _ l. 
-                                                                              
-  S.eval_state   
- (* R : S.Sem.Dyn.T Phi (S.eval_type t) -> *)
- (*      T.Sem.Dyn.T (compile_state Phi) (T.eval_type (scheme t)) -> Type *)
-
-  Definition okdyn t : S.Sem.Dyn.T Phi (S.eval_type (t)) -> 
-                       T.Sem.Dyn.T (compile_state Phi) (T.eval_type (scheme t)) -> 
-                       Prop 
-  := fun dyn1 dyn2 => 
-  forall st1 st2, 
-             forall delta1 delta2, lr_diff _ delta1 delta2 -> 
-             dyn1 st1 delta1 = dyn2 st2 delta2. 
-                                 
-  
+  Lemma correct l Gamma t a b : 
+    l & Gamma |- a == b ->
+    equiv_sem_dyn t (@S.Sem.eval_action Phi t a) 
+      (@T.Sem.eval_action (compile_state Phi) (scheme t) (compile _ _ b)). 
+  Proof.     
+    induction 1. simpl. 
+    intros st1 st2 delta1 delta2. apply oe_some.  
+    split. simpl. 
+    unfold S.Sem.Dyn.Return. 
+    induction H. 
+    
+                             
+    
 
   Definition ok t a1 a2 :=
     okdyn t (S.Sem.eval_action a1) (T.Sem.eval_action (compile T.eval_type t a2)). 
