@@ -45,15 +45,15 @@ Module Ex1.
     | RET : Word.T n -> Ty
     | ST : Word.T n -> Word.T n -> Ty. 
     
-    
+    Eval compute in eval_state Phi. 
     Definition start (x : Ty) : eval_state Phi :=
       match x with 
-        | RET a => inl a
-        | ST a b => inr (inl (a,b))
+        | RET a => (inl a, tt)
+        | ST a b => (inr (inl ((a,b))) , tt)
       end.
 
     Definition finish (x : eval_state Phi) : Ty :=
-      match x with
+      match fst x with
         | inl t => RET t
         | inr (inl p) => ST (fst p) (snd p)
         | inr (inr f) => False_rec Ty f
@@ -79,7 +79,7 @@ Module  Ex2.
     Notation c := (var_0 : var Phi (Treg VAL)).
     Notation r1 := (var_S (var_0) : var Phi (Treg NUM)).  
     Notation r2 := (var_S (var_S (var_0)) : var Phi (Treg NUM)).  
-
+    Open Scope action_scope. 
     Definition iterate : Action Phi Unit. intros V.
     refine (DO X <- read [: c]; 
             WHEN ( !X); 

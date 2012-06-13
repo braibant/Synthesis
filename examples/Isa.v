@@ -183,8 +183,8 @@ Module Ex2.
   
   Definition const {V} (I : expr V INSTR) : expr V CONST. 
   eapply Enth. 2: apply I. apply var_S. apply var_S. apply var_S. apply var_S. apply var_0. 
-  Defined. 
-  
+    Defined. 
+    Open Scope action_scope. 
   (* (pc,rf,imem,dmem) where LOADI(rd,const) = imem[pc]
      –> (pc+1, rf[rd <- const], imem, dmem) *)
   Definition loadi_rule  : Action Phi Unit.  intros V; set_env. 

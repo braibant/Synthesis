@@ -1,10 +1,6 @@
 Require Import Common. 
 Require DList. 
 
-Notation "[ ]" := DList.dlist_nil : dlist_scope.
-Notation "t :: q" := (DList.dlist_cons t q) : dlist_scope.
-Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)%dlist : dlist_scope.
-
 Inductive type : Type :=
 | Tlift : type0 -> type
 | Ttuple : list type -> type
@@ -54,14 +50,14 @@ Section s.
     Inductive expr :  type -> Type :=
     | Evar : forall t (v : Var t), expr t
     | Ebuiltin : forall args res (f : builtin args res), 
-                   DList.dlist  (fun j => expr (Tlift j)) (args) -> 
+                   DList.T  (fun j => expr (Tlift j)) (args) -> 
                    expr  (Tlift res)
     | Econstant : forall  ty (c : constant0 ty), expr (Tlift ty)
     (* Tuple operations *)
     | Efst : forall l t, expr (Ttuple (t::l)) -> expr t
     | Esnd : forall l t, expr (Ttuple (t::l)) -> expr (Ttuple l)
     | Enth : forall l t (m : var l t), expr (Ttuple l) -> expr t
-    | Etuple : forall l (exprs : DList.dlist (expr) l), expr (Ttuple l)
+    | Etuple : forall l (exprs : DList.T (expr) l), expr (Ttuple l)
 
     (* Tagged-unions constructors *)
     | Econstr : forall l t (c : var l t), expr t -> (expr (Tunion l)). 
@@ -76,7 +72,7 @@ Section s.
     | Assert : forall (e : expr Bool), action Unit
     | Primitive : 
       forall args res (p : primitive Phi args res)
-        (exprs : DList.dlist (expr) args),
+        (exprs : DList.T (expr) args),
         action res 
     | Try : forall (a : action Unit), action Unit
 
@@ -154,16 +150,16 @@ Arguments Primitive {Phi Var} args res _ _%expr.
 
 (** * Primitives *)
 Arguments register_read {Phi t} _. 
-Notation "'read' [: v ]" := (Primitive nil _ (register_read v) DList.dlist_nil) (no associativity).
+Notation "'read' [: v ]" := (Primitive nil _ (register_read v) DList.nil) (no associativity).
 
 Arguments register_write {Phi t} _. 
-Notation "'write' [: v <- w ]" := (Primitive (cons _ nil) Unit (register_write v) (DList.dlist_cons (w)%expr (DList.dlist_nil))) (no associativity). 
+Notation "'write' [: v <- w ]" := (Primitive (cons _ nil) Unit (register_write v) (DList.cons (w)%expr (DList.nil))) (no associativity). 
 
 Arguments regfile_read {Phi n t} _ p. 
-Notation "'read' M [: v ]" := (Primitive ([Tlift (W _)])%list _ (regfile_read M _ ) (DList.dlist_cons (v)%expr (DList.dlist_nil))) (no associativity). 
+Notation "'read' M [: v ]" := (Primitive ([Tlift (W _)])%list _ (regfile_read M _ ) (DList.cons (v)%expr (DList.nil))) (no associativity). 
 
 Arguments regfile_write {Phi n t} _ p. 
-Notation "'write' M [: x <- v ]" := (Primitive ([Tlift (W _); _])%list _ (regfile_write M _ ) (DList.dlist_cons (x)%expr (DList.dlist_cons (v)%expr (DList.dlist_nil)))) (no associativity). 
+Notation "'write' M [: x <- v ]" := (Primitive ([Tlift (W _); _])%list _ (regfile_write M _ ) (DList.cons (x)%expr (DList.cons (v)%expr (DList.nil)))) (no associativity). 
 
 (** * Expressions  *)
 Arguments Enth {Var l t} m _%expr. 
@@ -176,8 +172,8 @@ Arguments Evar  {Var t} _.
 Notation "! x" := (Evar x) (at level  10) : expr_scope . 
 
 Arguments Ebuiltin {Var} {args res} _ _%expr. 
-Notation "{< f ; x ; y >}" := (Ebuiltin f (DList.dlist_cons  (x)%expr (DList.dlist_cons (y)%expr DList.dlist_nil))).
-Notation "{< f ; x >}" := (Ebuiltin f (DList.dlist_cons (x)%expr DList.dlist_nil)).
+Notation "{< f ; x ; y >}" := (Ebuiltin f (DList.cons  (x)%expr (DList.cons (y)%expr DList.nil))).
+Notation "{< f ; x >}" := (Ebuiltin f (DList.cons (x)%expr DList.nil)).
 
 Notation "~ x" :=  ({< BI_negb ; x >}) : expr_scope. 
 Notation "a || b" := ({< BI_orb ; a ; b >}) : expr_scope. 
@@ -447,7 +443,7 @@ Module WF.
     Inductive 
       equiv_expr : forall t, expr va t  -> expr vb t -> Prop := . 
     
-    Notation ctxt l := (DList.dlist  (fun x => (va x * vb x)%type) l). 
+    Notation ctxt l := (DList.T  (fun x => (va x * vb x)%type) l). 
 
     Inductive 
       equiv_action : forall (l : list type), ctxt l ->   forall t, action Phi va t  -> action Phi vb t -> Prop :=

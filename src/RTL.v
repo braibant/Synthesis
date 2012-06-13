@@ -56,7 +56,7 @@ Section t.
   (**  The compilation function itself *)
   Variable varunit : R Unit. 
   
-  Definition convert  l : dlist (expr R) l -> Tuple.of_list (expr R) l := to_tuple (fun t X => X). 
+  Definition convert  l : DList.T (expr R) l -> Tuple.of_list (expr R) l := DList.to_tuple (fun t X => X). 
 
   Fixpoint map T F F' (G : forall t, F t -> F' t) (l : list T) : Tuple.of_list F l -> Tuple.of_list F' l:=
     match l with 
@@ -65,10 +65,10 @@ Section t.
     end. 
 
   Arguments map {T F F'} G l _. 
-  (*  fst (dlist_fold' eval_expr [t] exprs) =
+  (*  fst (DList.T_fold' eval_expr [t] exprs) =
    eval_expr t
      (fst
-        (dlist_fold' (fun (t0 : type) (X : expr eval_type t0) => X) [t] exprs))
+        (DList.T_fold' (fun (t0 : type) (X : expr eval_type t0) => X) [t] exprs))
 
 *)
   
@@ -318,9 +318,9 @@ Section t.
         +  simpl. reflexivity. 
         + simpl. 
           unfold Common.bind.
-          set (x := to_tuple eval_expr exprs). 
+          set (x := DList.to_tuple eval_expr exprs). 
           replace (x) with (fst x, snd x) by (destruct x; reflexivity).
-          Lemma convert_commute  l (dl : dlist (expr eval_type) l): map  _ _ _ (eval_expr) l (convert _ l dl) = to_tuple (eval_expr) dl. 
+          Lemma convert_commute  l (dl : DList.T (expr eval_type) l): map  _ _ _ (eval_expr) l (convert _ l dl) = DList.to_tuple (eval_expr) dl. 
           Proof. 
             induction dl. simpl. reflexivity. 
             simpl. f_equal. apply IHdl. 

@@ -47,7 +47,7 @@ Section s.
     Inductive expr :  type -> Type :=
     | Evar : forall t (v : Var t), expr t
     | Ebuiltin : forall args res (f : builtin args res), 
-                   dlist  (fun j => expr (Tlift j)) (args) -> 
+                   DList.T  (fun j => expr (Tlift j)) (args) -> 
                    expr  (Tlift res)
     | Econstant : forall  ty (c : constant0 ty), expr (Tlift ty)
                                                  
@@ -55,7 +55,7 @@ Section s.
     | Efst : forall l t , expr (Ttuple (t::l)) -> expr t
     | Esnd : forall l t , expr (Ttuple (t::l)) -> expr (Ttuple l)
     | Enth : forall l t (m : var l t), expr (Ttuple l) -> expr t
-    | Etuple : forall l (exprs : dlist (expr) l), expr (Ttuple l). 
+    | Etuple : forall l (exprs : DList.T (expr) l), expr (Ttuple l). 
     
     Inductive action : type -> Type :=
     | Return : forall t (exp : expr t), action t
@@ -67,7 +67,7 @@ Section s.
     | Assert : forall (e : expr Bool), action Unit
     | Primitive : 
       forall args res (p : primitive Phi args res)
-        (exprs : dlist (expr) args),
+        (exprs : DList.T (expr) args),
         action res 
     | Try : forall (a : action Unit), action Unit.
   End t. 
@@ -83,7 +83,7 @@ Section s.
             | Evar t v => v
             | Ebuiltin args res f exprs => 
                 let exprs := 
-                    to_tuple  
+                    DList.to_tuple  
                       (fun (x : type0) (X : expr eval_type (Tlift x)) =>
                          eval_expr (Tlift x) X)
                       exprs
@@ -91,7 +91,7 @@ Section s.
                   builtin_denotation args res f exprs                            
             | Econstant ty c => c
             | Etuple l exprs => 
-                to_etuple eval_expr exprs
+                DList.to_etuple eval_expr exprs
             | Enth l t v e => 
                 ETuple.get l t v (eval_expr (Ttuple l) e)
             | Efst l t  e => 
@@ -128,16 +128,16 @@ Arguments Primitive {Phi Var} args res _ _%expr.
 
 (** * Primitives *)
 Arguments register_read {Phi t} _. 
-Notation "'read' [: v ]" := (Primitive nil _ (register_read v) dlist_nil) (no associativity).
+Notation "'read' [: v ]" := (Primitive nil _ (register_read v) DList.nil) (no associativity).
 
 Arguments register_write {Phi t} _. 
-Notation "'write' [: v <- w ]" := (Primitive (cons _ nil) Unit (register_write v) (dlist_cons (w)%expr (dlist_nil))) (no associativity). 
+Notation "'write' [: v <- w ]" := (Primitive (cons _ nil) Unit (register_write v) (DList.cons (w)%expr (DList.nil))) (no associativity). 
 
 Arguments regfile_read {Phi n t} _ p. 
-Notation "'read' M [: v ]" := (Primitive ([Tlift (W _)])%list _ (regfile_read M _ ) (dlist_cons (v)%expr (dlist_nil))) (no associativity). 
+Notation "'read' M [: v ]" := (Primitive ([Tlift (W _)])%list _ (regfile_read M _ ) (DList.cons (v)%expr (DList.nil))) (no associativity). 
 
 Arguments regfile_write {Phi n t} _ p. 
-Notation "'write' M [: x <- v ]" := (Primitive ([Tlift (W _); _])%list _ (regfile_write M _ ) (dlist_cons (x)%expr (dlist_cons (v)%expr (dlist_nil)))) (no associativity). 
+Notation "'write' M [: x <- v ]" := (Primitive ([Tlift (W _); _])%list _ (regfile_write M _ ) (DList.cons (x)%expr (DList.cons (v)%expr (DList.nil)))) (no associativity). 
 
 (** * Expressions  *)
 Arguments Enth  {Var l t} m _%expr. 
@@ -145,8 +145,8 @@ Arguments Evar  {Var t} _.
 Notation "! x" := (Evar x) (at level  10) : expr_scope . 
 
 Arguments Ebuiltin {Var} {args res} _ _%expr. 
-Notation "{< f ; x ; y >}" := (Ebuiltin f (dlist_cons  (x)%expr (dlist_cons (y)%expr dlist_nil))).
-Notation "{< f ; x >}" := (Ebuiltin f (dlist_cons (x)%expr dlist_nil)).
+Notation "{< f ; x ; y >}" := (Ebuiltin f (DList.cons  (x)%expr (DList.cons (y)%expr DList.nil))).
+Notation "{< f ; x >}" := (Ebuiltin f (DList.cons (x)%expr DList.nil)).
 
 Notation "~ x" :=  ({< BI_negb ; x >}) : expr_scope. 
 Notation "a || b" := ({< BI_orb ; a ; b >}) : expr_scope. 
@@ -293,7 +293,7 @@ Module Sem.
                       | false => Dyn.Fail  Phi
                     end
               | Primitive args res p exprs => 
-                  Dyn.primitive_denote Phi args res p (to_tuple eval_expr  exprs)
+                  Dyn.primitive_denote Phi args res p (DList.to_tuple eval_expr  exprs)
               | Try a => 
                   let a := eval_action _ a in 
                     Dyn.Try Phi a                    

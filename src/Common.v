@@ -448,5 +448,149 @@ Definition builtin_denotation (dom : list type0) ran (f : builtin dom ran) :
 Definition relation A := A -> A -> Prop. 
 Definition union {A} (R S : relation A) := fun x y => R x y \/ S x y. 
 
-
 Delimit Scope dlist_scope with dlist. 
+
+Module DList. 
+  Section t. 
+  
+  Variable X : Type. 
+  Variable P : X -> Type. 
+  Inductive T  : list X -> Type := 
+      | nil : T nil
+      | cons : forall (t : X) q, P t -> T q -> T (cons t q).  
+
+  (** * Head and tail *)
+  Arguments cons t q _ _%dlist. 
+  Arguments T _%list. 
+  Definition hd t q (x : T (t::q)): P t :=
+    match x as y in T l return
+       (match l return (T l -> Type) with 
+         | [] => fun _ : T [] => ID
+         | a::b => fun _ : T (a :: b) => P a
+        end%list y)
+    with 
+      | nil => @id
+      | cons _ _ t q => t
+    end.
+
+  Definition tl t q (x : T (t::q)): T q :=
+    match x as y in T l return
+       (match l return (T l -> Type) with 
+         | [] => fun _ : T [] => ID
+         | a::b => fun _ : T (a :: b) => T b
+        end%list y)
+    with 
+      | nil => @id
+      | cons _ _ t q => q
+    end.
+
+  (** * Concatenation of T (append)  *)
+  Definition app : forall (l1 l2 : list X), 
+                         T l1 -> T l2 -> T (List.app l1 l2).   
+  refine (
+      (fix app (l1 l2 : list X) {struct l1} :
+       T l1 -> T l2 -> T (l1 ++ l2) :=
+       match l1 as l3 return (T l3 -> T l2 -> T (l3 ++ l2)) with
+         | [] => fun (_ : T []) (dl2 : T l2) => dl2
+         | (t :: q)%list =>
+             fun (dl1 : T (t :: q)) (dl2 : T l2) =>
+               cons t (q ++ l2)%list (hd t q dl1)
+                          (app q l2 (tl t q dl1) dl2)
+      end%list)). 
+  Defined. 
+  
+
+  (** * Other functions operating on tuples like things *)
+  Variable E : X -> Type.
+  
+  Section foldo. 
+    Variable F : forall (t : X), P t -> E t -> option (E t). 
+    Fixpoint fold (l : list X) (d : T l) : Tuple.of_list E l -> option (Tuple.of_list E l):=
+      match d with
+          nil => fun v => Some v
+        | cons t q pt dlq => fun v =>
+            do x <- F t pt (fst v);
+            do y <- fold q dlq (snd v);
+            Some (x,y)
+      end.
+  End foldo. 
+
+  Section s2. 
+    Variable F : forall (t : X), P t -> E t. 
+
+    Definition fold' (l : list X) (dl : T l) : Tuple.of_list E l. 
+    induction dl. simpl. apply tt. 
+    simpl. destruct q. auto. split. auto. auto. 
+    Defined. 
+  End s2. 
+
+End t. 
+
+Arguments T {X} P _%list. 
+Arguments nil {X P}. 
+Arguments cons {X P} {t q} _ _.  
+(* Arguments fold' {X P E} _ _ _.  *)
+Arguments app {X P l1 l2} _ _ . 
+
+Definition to_tuple X (l : list X) F G  (Trans : forall x, F x -> G x): T F l -> Tuple.of_list G l. 
+Proof. 
+  induction 1. simpl. apply tt. 
+  simpl. split. auto. auto. 
+Defined. 
+
+Arguments to_tuple {X l F G} Trans _%dlist. 
+
+Definition to_etuple X (l : list X) F G  (Trans : forall x, F x -> G x): T F l -> ETuple.of_list G l. 
+Proof. 
+  induction 1. simpl. apply tt. 
+  simpl. destruct q. auto. split.  auto. auto. 
+Defined. 
+
+Arguments to_etuple {X l F G} Trans _%dlist. 
+
+
+  
+Definition map  {X P Q} :
+  forall (f : forall (x : X), P x -> Q x), 
+  forall l, 
+    @T X P l -> 
+    @T X Q l. 
+intros f. 
+refine (fix F l (hl : T P l) : T Q l := 
+        match hl with 
+          | nil => nil
+          | cons t q T Q => cons (f _ T) (F _ Q)
+        end). 
+Defined. 
+
+Definition hmap :
+  forall (X Y : Type) (P : Y -> Type) (Q : X -> Type)
+    (F :  X -> Y), 
+    (forall x : X, P (F x) -> Q x) -> forall l : list X, T P (List.map F l) -> T Q l. 
+induction l. simpl. constructor. 
+simpl. intros. inversion X1.   subst. constructor. auto. auto. 
+Defined. 
+ (*
+Definition fold2 :
+  forall (S T : Type) (P : T -> Type) (E : S -> Type)
+    (F : S -> T),
+    (forall t : S, P (F t) -> E t) -> forall l : list S, T P (List.map F l) -> Tuple.of_list E l. intros S T P E F f.
+refine (let fix fold (l : list S) (dl : T P (List.map F l)) : Tuple.of_list E l :=
+              match l return T P (List.map F l) -> Tuple.of_list E l with
+                | nil =>  fun _ => tt
+                | cons t q => fun x : T P (F t :: List.map F q) =>
+                    (f  _ (hd _ _ _ _ x),  fold _ (tl _ _ _ _ x))
+              end dl
+          in fold).
+Defined.
+*)
+Definition dmap {A B} (F : A -> Type) (G: B -> Type) (C : A -> B) (D : forall x, F x -> G ( C x)) (l: list  A) (dl : T F l) : T G (List.map C l). 
+  induction dl. simpl. constructor. 
+  simpl. constructor. apply D.  auto. 
+  apply IHdl. 
+Defined. 
+End DList. 
+
+Notation "[ ]" := DList.nil : dlist_scope.
+Notation "t :: q" := (DList.cons t q) : dlist_scope.
+Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)%dlist : dlist_scope.

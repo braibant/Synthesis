@@ -1,6 +1,6 @@
 #SymEvalTests
 
-MODULES := DList Common Vector Core RTL TaggedUnions
+MODULES := Common Vector Core RTL TaggedUnions
 TESTS := 
 VS         := $(MODULES:%=%.v)
 TVS        := $(TESTS:%=%.v)
