@@ -1,5 +1,5 @@
 Require Import Common. 
-Require Import DList. 
+(* Require Import DList.  *)
 
 Inductive type : Type :=
 | Tlift : type0 -> type
@@ -34,8 +34,8 @@ Inductive primitive (Phi : state) : list type -> type -> Type:=
   | register_read : forall t, var Phi (Treg t) ->  primitive Phi nil t
   | register_write : forall t, var Phi (Treg t) -> primitive Phi (t:: nil) Unit
   (* register file primitives *)
-  | regfile_read : forall n t (v : var Phi (Tregfile n t)) p, primitive Phi ([Tlift (Tint p)])%list  t
-  | regfile_write : forall n t (v : var Phi (Tregfile n t)) p, primitive Phi ([Tlift (Tint p); t])%list  Unit.
+  | regfile_read : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([Tlift (Tfin n)])%list  t
+  | regfile_write : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([Tlift (Tfin n); t])%list  Unit.
 
 
 Section s.
@@ -50,7 +50,9 @@ Section s.
                    DList.T  (fun j => expr (Tlift j)) (args) -> 
                    expr  (Tlift res)
     | Econstant : forall  ty (c : constant0 ty), expr (Tlift ty)
-                                                 
+                          
+    | Emux : forall t, expr Bool -> expr t -> expr t -> expr t 
+
     (* Tuple operations *)
     | Efst : forall l t , expr (Ttuple (t::l)) -> expr t
     | Esnd : forall l t , expr (Ttuple (t::l)) -> expr (Ttuple l)
@@ -69,7 +71,8 @@ Section s.
       forall args res (p : primitive Phi args res)
         (exprs : DList.T (expr) args),
         action res 
-    | Try : forall (a : action Unit), action Unit.
+    (* | Try : forall (a : action Unit), action Unit *)
+    | OrElse : forall t, action t -> action t -> action t.
   End t. 
   Definition Action t := forall Var, action Var t.
   Definition Expr t := forall Var, expr Var t. 
@@ -89,6 +92,7 @@ Section s.
                       exprs
                 in
                   builtin_denotation args res f exprs                            
+            | Emux t b x y => if eval_expr _ b then eval_expr t x else eval_expr t y
             | Econstant ty c => c
             | Etuple l exprs => 
                 DList.to_etuple eval_expr exprs
@@ -106,14 +110,16 @@ Section s.
 End s. 
 
 
+(** * Actions *)
 Delimit Scope expr_scope with expr. 
 Delimit Scope action_scope with action. 
   
 
-(** * Actions *)
-  
 Arguments Bind {Phi Var t u} _%action _%action. 
 Notation "'DO' X <- A ; B" := (Bind A (fun X => B)) (at level 200, X ident, A at level 100, B at level 200) : action_scope. 
+
+(* Arguments Try {Phi%list Var} _%action.   *)
+(* Notation "'TRY' A " := (Try A) (at level 40) : action_scope.  *)
 
 Arguments Assert {Phi Var} e%expr. 
 
@@ -133,11 +139,11 @@ Notation "'read' [: v ]" := (Primitive nil _ (register_read v) DList.nil) (no as
 Arguments register_write {Phi t} _. 
 Notation "'write' [: v <- w ]" := (Primitive (cons _ nil) Unit (register_write v) (DList.cons (w)%expr (DList.nil))) (no associativity). 
 
-Arguments regfile_read {Phi n t} _ p. 
-Notation "'read' M [: v ]" := (Primitive ([Tlift (W _)])%list _ (regfile_read M _ ) (DList.cons (v)%expr (DList.nil))) (no associativity). 
+Arguments regfile_read {Phi n t} _. 
+Notation "'read' M [: v ]" := (Primitive ([Tlift (_)])%list _ (regfile_read M _ ) (DList.cons (v)%expr (DList.nil))) (no associativity). 
 
-Arguments regfile_write {Phi n t} _ p. 
-Notation "'write' M [: x <- v ]" := (Primitive ([Tlift (W _); _])%list _ (regfile_write M _ ) (DList.cons (x)%expr (DList.cons (v)%expr (DList.nil)))) (no associativity). 
+Arguments regfile_write {Phi n t} _ . 
+Notation "'write' M [: x <- v ]" := (Primitive ([Tlift (_); _])%list _ (regfile_write M _ ) (DList.cons (x)%expr (DList.cons (v)%expr (DList.nil)))) (no associativity). 
 
 (** * Expressions  *)
 Arguments Enth  {Var l t} m _%expr. 
@@ -145,16 +151,17 @@ Arguments Evar  {Var t} _.
 Notation "! x" := (Evar x) (at level  10) : expr_scope . 
 
 Arguments Ebuiltin {Var} {args res} _ _%expr. 
-Notation "{< f ; x ; y >}" := (Ebuiltin f (DList.cons  (x)%expr (DList.cons (y)%expr DList.nil))).
-Notation "{< f ; x >}" := (Ebuiltin f (DList.cons (x)%expr DList.nil)).
+Notation "{< f ; x ; y ; z >}" := (Ebuiltin f (x :: y :: z :: [])%dlist) : expr_scope. 
+Notation "{< f ; x ; y >}" := (Ebuiltin f (x :: y :: [])%dlist) : expr_scope. 
+Notation "{< f ; x >}" := (Ebuiltin f (x :: [])%dlist) : expr_scope. 
 
-Notation "~ x" :=  ({< BI_negb ; x >}) : expr_scope. 
-Notation "a || b" := ({< BI_orb ; a ; b >}) : expr_scope. 
-Notation "a && b" := ({< BI_andb ; a ; b >}) : expr_scope. 
-Notation "a - b" := ({< BI_minus _ ; a ; b >}) : expr_scope. 
-Notation "a + b" := ({< BI_plus _ ; a ; b >}) : expr_scope. 
-Notation "a = b" := ({< BI_eq _ ; a ; b >}) : expr_scope. 
-Notation "a < b" := ({< BI_lt _ ; a ; b >}) : expr_scope. 
+Notation "~ x" :=  ({< BI_negb ; x >})%expr : expr_scope. 
+Notation "a || b" := ({< BI_orb ; a ; b >})%expr : expr_scope. 
+Notation "a && b" := ({< BI_andb ; a ; b >})%expr : expr_scope. 
+Notation "a - b" := ({< BI_minus _ ; a ; b >})%expr : expr_scope. 
+Notation "a + b" := ({< BI_plus _ ; a ; b >})%expr : expr_scope. 
+Notation "a = b" := ({< BI_eq _ ; a ; b >})%expr : expr_scope. 
+Notation "a < b" := ({< BI_lt _ ; a ; b >})%expr : expr_scope. 
 Notation "x <= y" := ((x < y) || (x = y))%expr : expr_scope. 
 Notation "x <> y" := (~(x = y))%expr : expr_scope. 
 
@@ -175,10 +182,11 @@ Module Diff.
   Section t. 
     Variable Phi : state. 
     Definition T := Tuple.of_list (option ∘ eval_sync) Phi. 
-    Definition add (Delta : T) t (v : var Phi t) w : option T :=
+    (* first *)
+    Definition add (Delta : T) t (v : var Phi t) w :  T :=
       match Tuple.get Phi t v Delta  with 
-        | None =>  Some  (Tuple.set _ _ Phi t v (Some w) Delta)
-        | Some _ => None 
+        | None =>  (Tuple.set _ _ Phi t v (Some w) Delta)
+        | Some x => Delta
       end.
     
   End t. 
@@ -212,22 +220,32 @@ Module Sem.
     Section t. 
       Variable Phi : state. 
       (* semantics :  Action Phi t -> T t  *)
+      
       Definition T t := eval_state Phi -> Diff.T Phi -> option (t * Diff.T Phi). 
+
       Definition Return {t} (e : t) : T t  := fun st d => Some (e, d).
+
       Definition Bind {s t} : T s -> (s -> T t) -> T t :=
         fun (x : T s) (f : s -> T t) (st : eval_state Phi) (d : Diff.T Phi) => 
           match x st d with 
               Some (e, d') =>  f e st d' 
             | None => None
           end. 
-      Definition Fail {t} : T t := fun _ _ => None. 
+
+      Definition Retry {t} : T t := fun _ _ => None. 
+
+      Definition OrElse {t} : T t -> T t -> T t :=
+        fun a b st Delta => match a st Delta with 
+                         | None => b st Delta
+                         | Some Delta => Some Delta
+                       end. 
       
-      Definition Try : T unit -> T unit := 
-        fun a st Delta => 
-          match a st Delta with 
-            | None => Some (tt, Delta)
-            | x =>  x
-          end. 
+      (* Definition Try : T unit -> T unit :=  *)
+      (*   fun a st Delta =>  *)
+      (*     match a st Delta with  *)
+      (*       | None => Some (tt, Delta) *)
+      (*       | x =>  x *)
+      (*     end.  *)
                                           
         
       Definition Run (CMD : T unit) (st : eval_state Phi) := 
@@ -245,24 +263,23 @@ Module Sem.
                   (Delta : Diff.T Phi) => Some (Tuple.get Phi (Treg t) v st, Delta)
           | register_write t v =>
               fun (exprs : Tuple.of_list eval_type [t]) (_ : eval_state Phi) (Delta : Diff.T Phi) =>
-                let (w, _) := exprs in
-                  do Delta2 <- Diff.add Phi Delta (Treg t) v w; 
-                  Some (tt, Delta2)
-          | regfile_read n t v p =>
-              fun (exprs : Tuple.of_list eval_type [Tlift (W p)]) 
+                let (w, _) := exprs in                   
+                  Some (tt, Diff.add Phi Delta (Treg t) v w)
+          | regfile_read n t v  =>
+              fun (exprs : Tuple.of_list eval_type [Tlift (Tfin n)]) 
                   (st : eval_state Phi) (Delta : Diff.T Phi) =>
                 let rf := Tuple.get Phi (Tregfile n t) v st in
                 let adr := fst exprs in
-                  let v := Regfile.get rf (Word.unsigned adr) in Some (v, Delta)
-          | regfile_write n t v p =>
-              fun (exprs : Tuple.of_list eval_type [Tlift (W p); t]) 
+                let v := Regfile.get rf (adr) in Some (v, Delta)
+          | regfile_write n t v =>
+              fun (exprs : Tuple.of_list eval_type [Tlift (Tfin n); t]) 
                   (st : eval_state Phi) (Delta : Diff.T Phi) =>
                 let rf := Tuple.get Phi (Tregfile n t) v st in
                 let rf := match exprs with 
-                              (adr, (w, _)) => Regfile.set rf (Word.unsigned adr) w
+                              (adr, (w, _)) => Regfile.set rf adr w
                           end
                 in
-                  do Delta2 <- Diff.add Phi Delta (Tregfile n t) v rf; Some (tt, Delta2)
+                  Some (tt, Diff.add Phi Delta (Tregfile n t) v rf)
         end exprs). 
       Defined. 
     End t. 
@@ -290,18 +307,52 @@ Module Sem.
                   let g := eval_expr _ e in 
                     match g with 
                       | true => Dyn.Return Phi tt
-                      | false => Dyn.Fail  Phi
+                      | false => Dyn.Retry  Phi
                     end
               | Primitive args res p exprs => 
                   Dyn.primitive_denote Phi args res p (DList.to_tuple eval_expr  exprs)
-              | Try a => 
-                  let a := eval_action _ a in 
-                    Dyn.Try Phi a                    
-          end                
-      in  eval_action t a). 
+              (* | Try a =>  *)
+              (*     let a := eval_action _ a in  *)
+              (*       Dyn.Try Phi a                     *)
+              | OrElse t a b => Dyn.OrElse Phi (eval_action _ a) (eval_action _ b)  
+          end                 
+        in  eval_action t a). 
+
     Defined.
   End t. 
   Arguments eval_action {Phi} {t} _%action _ _.  
+  
+  (* Lemma sanity Phi a (st : eval_state Phi) Delta x:  *)
+  (*   eval_action  a st Delta = Some (x, Delta) ->  *)
+  (*   eval_action (Try a) st Delta = Some (x, Delta). *)
+  (* Proof.  *)
+  (*   intros. simpl. unfold Dyn.Try. rewrite H.  reflexivity. *)
+  (* Qed.  *)
+
+  Definition eval_rule {Phi} (R : Action Phi Unit) := 
+    fun st st' => match Sem.Dyn.Run _ (Sem.eval_action (R eval_type)) st  with
+                      | None => False
+                      | Some st'' => st' = st''
+       end. 
+                     
+                      
+  Module FSM. 
+
+    Record T (state : Type):= mk_T
+      {
+        delta : relation state
+      }.
+
+  End FSM.
+
+  Inductive star {A} (R : relation A) : relation A :=
+  | star_step : forall x y, R x y -> star R x y
+  | star_trans : forall x y z, star R x y -> R y z -> star R x z. 
+ 
+  Definition eval_TRS (T : TRS) : FSM.T (eval_state (Phi T)) :=
+    let delta := List.fold_left (fun acc t => union (eval_rule t) acc) (rules T) (fun _ _  => False) in
+    FSM.mk_T _ (star delta). 
+
 End Sem.           
 
 Section run. 
@@ -340,28 +391,46 @@ Section run.
 
 End run. 
 
+Module Ops. 
+  Notation rule Phi := (Action Phi Unit). 
 
-(* Open Scope action_scope.  *)
+  (** * A simple round-robin scheduler 
 
-(* Section Fifo.  *)
-(*   Variable t : type.  *)
+      The simplest scheduler one could imagine _try_ to fire one rule
+      each cycle; but the rule may fail. This is a (weakly) fair
+      scheduler, that applies rules one by one in a given order, if
+      possible, and moving to the next rule if not. 
+
+  *)
+  Definition round_robin (Phi : state) (l : list (rule Phi)) : {Phi' : state & rule Phi'}. 
+  refine 
+    (
+      let n := List.length l in 
+      let c := Treg (Tlift (Tfin n)) in 
+      let Phi' := (Phi ++ [c])%list  in _
+    ). 
+   exists Phi'. 
+   intros Var. 
+   Definition lift Var Phi Psi t : action Phi Var t -> action (Phi ++ Psi)%list Var t. Admitted. 
+   assert (v : var Phi' c ). clear. admit. 
+   (* refine ( *)
+   (*    let fold := fix fold v' n l := *)
+   (*        match l with  *)
+   (*          | nil => Return (#Ctt) *)
+   (*          | cons t q =>  *)
+   (*              let t := lift _ _ _ _ (t Var) in  *)
+   (*              OrElse _ _ _ ( _ ) (fold v' (S n) q) *)
+   (*        end *)
+   (*    in  *)
+   (*      DO v' <- read [: v ];   *)
+   (*      DO _ <- fold v' 0 l;  *)
+   (*      write [: v <- {< BI_next _ ; !v' >}   ] *)
+   (*  )%action.  *)
+   (* (* refine (TRY *) *)
+   (* (*           ( *) *)
+   (* (*             WHEN (!v' = # (Finite.repr n0 : constant0 (Tfin n)));  *) *)
+   (* (*             (TRY t0) *) *)
+   (* (*        ))%action.  *) *)
+   Abort. 
   
-(*   Notation tb := (Ttuple ([t ; Bool]%list)).  *)
-(*   Definition FIFO := Treg tb.  *)
-
-(*   Definition full {V} (I : expr V tb) : expr V Bool.  *)
-(*   eapply Enth. 2: apply I. apply var_S. apply var_0.  *)
-(*   Defined.  *)
-(*   Arguments full {V} I%expr.  *)
-(*   Definition data {V} (I : expr V tb) : expr V t.  *)
-(*   eapply Enth. 2: apply I. apply var_0.  *)
-(*   Defined.  *)
-(*   Arguments data {V} I%expr.  *)
-
-(*   Definition deq {Phi} (v : var Phi FIFO) : Action Phi Unit. intros V.  *)
-(*   refine (DO X <- read [: v];  *)
-(*           WHEN (full (!X)%expr); *)
-(*           write [: v <- _] *)
-(*          ).  *)
-(*   Admitted.  *)
-(* End Fifo.  *)
+End Ops.   

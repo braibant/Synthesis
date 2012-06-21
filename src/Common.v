@@ -79,11 +79,11 @@ Module Tuple.
         | var_0 _ _ => fun x e => (x, snd e)
         | var_S _ _ _ v => fun x e => (fst e, set _ _ v x (snd e))
       end. 
-  Definition init (el : forall t, F t) l : of_list l. 
-  induction l. simpl. apply tt. 
-  destruct l. simpl. auto. simpl. 
-  split; auto. 
-  Defined. 
+  Fixpoint init (el : forall t, F t) l : of_list l :=
+    match l with 
+      | nil => tt
+      | cons t q => (el t, init el q)
+    end. 
   End t. 
   
   Section map2. 
@@ -95,6 +95,16 @@ Module Tuple.
     apply IHl; auto. 
     Defined. 
   End map2. 
+
+  Section map3. 
+    Context {T : Type} {F F' F'': T -> Type}.
+    Variable (up : forall a,  F a -> F' a -> F'' a -> F'' a). 
+    Definition map3 l : of_list T F l -> of_list T F' l -> of_list T F'' l -> of_list T F'' l. 
+    induction l. simpl. auto. 
+    simpl. intros [x xs] [y ys] [z zs]. split. apply up; auto.  
+    apply IHl; auto. 
+    Defined. 
+  End map3. 
   
   Definition fst {T F l} {t: T} : (Tuple.of_list _ F (t::l)%list) -> F t. apply fst. Defined. 
   Definition snd {T F l} {t: T} : (Tuple.of_list _ F (t::l)%list) -> Tuple.of_list _ F l. apply snd. Defined. 
@@ -273,7 +283,7 @@ End FIFO.
 
 
 Module Finite. 
-  Record T ( n : nat) :Type :=
+  Record T ( n : nat) :Type := mk
     {
       val : nat;
       range : val < n
@@ -285,14 +295,23 @@ Module Finite.
 
   Definition ltb {n} (x y : T n) :=
     NPeano.Nat.ltb (val x) (val y). 
-
+  Require NPeano. 
+  Definition repr {n} (v : nat) : T (S n). 
+  refine (mk (S n)  (NPeano.modulo v (S n)) _).
+  abstract (apply NPeano.Nat.mod_upper_bound; discriminate). 
+  Defined.
+ 
+  Definition next {n} (x : T (S n)) :  T (S n) :=
+    repr (S (val x)).  
+                                
 End Finite. 
 
-Module Regfile. 
+Module Regfile2. 
     
   Record T (size : nat) (X : Type) := mk 
     {content : Vector.vector X size; 
      default : X}. 
+
   Arguments mk {size X} _ _. 
   Arguments content {size X} _. 
 
@@ -316,8 +335,48 @@ Module Regfile.
   Definition of_list_pad {X} n (default : X) (l : list X) : T n X := 
     mk (Vector.of_list_pad _ n default l) default.  
 
-End Regfile. 
+End Regfile2. 
 
+Module Regfile. 
+
+  Record T (size : nat) (X : Type) : Type := mk
+    {
+      content : list X;
+      hyp : List.length content = size
+    }. 
+  Arguments content {size X} t. 
+  Arguments mk {size X} _ _. 
+  Arguments hyp {size X} t. 
+  Definition empty size {X} (el : X) : T size X.
+  refine (  let l := (fix f n := match n with 0 => nil | S n => cons el (f n) end) size in  
+              mk l _ ). 
+  induction size. reflexivity. simpl in *. rewrite IHsize; reflexivity. 
+  Defined. 
+  
+  Definition get {size X} (v : T size X) (n : Finite.T size) : X. 
+  refine (let x := List.nth_error (content v)   (Finite.val n)  in _). 
+  case_eq x; auto.
+  destruct n as [n H]; destruct v as [l Hl]. simpl in *; subst x.    
+  intros H'. exfalso. 
+  revert H'. 
+  admit. 
+  Defined. 
+
+  Fixpoint pt {A} (l : list A) n x :=
+    match l with 
+      | nil => nil
+      | cons t q => match n with 
+                       | 0 => cons x q
+                       | S n => pt q n x
+                   end
+    end. 
+  Definition set {size X} (v : T size X) (n : Finite.T size) (x : X) : (T size X). 
+  destruct v as [l Hl]; destruct n as [n Hn].  
+  apply (mk (pt l n x) ). 
+  admit. 
+  Defined. 
+End Regfile. 
+ 
 (* The base types, that exist in every language. These types should have:
    - decidable equality; 
    - default element (to initialize the arrays)
@@ -414,10 +473,19 @@ Inductive builtin : list type0 -> type0 -> Type :=
 (* "type-classes" *)
 | BI_eq   : forall t, builtin (t :: t :: nil)%list B
 | BI_lt   : forall t, builtin (t :: t :: nil)%list B
-                         
+| BI_mux : forall t, builtin (B :: t :: t :: nil)%list t                         
+
 (* integer operations *)
 | BI_plus  : forall n, builtin (W n :: W n :: nil)%list (W n)
-| BI_minus : forall n, builtin (W n :: W n :: nil)%list (W n). 
+| BI_minus : forall n, builtin (W n :: W n :: nil)%list (W n)
+
+| BI_next : forall n, builtin (Tfin (S n) :: nil) (Tfin (S n)). 
+
+
+(* applies a ternary function to three arguments *)
+Definition tri_op {a b c d } (f : eval_type0 a -> eval_type0 b -> eval_type0 c -> eval_type0 d) 
+  : eval_type0_list (a :: b :: c :: nil)%list -> eval_type0 d :=
+  fun X => match X with (x,(y,(z, tt))) => f x y z end. 
 
 (* applies a binary function to two arguments *)
 Definition bin_op {a b c} (f : eval_type0 a -> eval_type0 b -> eval_type0 c) 
@@ -440,8 +508,10 @@ Definition builtin_denotation (dom : list type0) ran (f : builtin dom ran) :
     | BI_negb =>  @un_op B B negb
     | BI_eq t => @bin_op t t B (type0_eq t)
     | BI_lt t => @bin_op t t B (type0_lt t)
+    | BI_mux t => @tri_op B t t t (fun b x y => if b then x else y) 
     | BI_plus n => @bin_op (W n) (W n) (W n) (@Word.add n)
     | BI_minus n => @bin_op (W n) (W n) (W n) (@Word.minus n)
+    | BI_next n => @un_op (Tfin (S n)) (Tfin (S n)) (@Finite.next n)
   end. 
 
 
