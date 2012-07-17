@@ -314,36 +314,31 @@ Section t.
     end. 
     
     
-
+    Arguments Tuple.set {T F l t} v _ _. 
     Definition eval_effects (e : effects eval_type) (Delta : updates) : updates.  
     unfold effects in e. 
-    
-    refine (Tuple.map3 _ Phi e st  Delta).
+    refine (Tuple.fold Phi _ e Delta). 
     Definition eval_effect (a : sync) :   
       (option ∘ effect eval_type) a ->
-      eval_sync a -> (option ∘ eval_sync) a -> (option ∘ eval_sync) a. 
+      var Phi a -> updates -> updates. 
     
     refine (fun  eff => 
               match eff with 
                   | Some eff =>  
-                      match eff in effect _ s return eval_sync s -> (option ∘ eval_sync) s -> (option ∘ eval_sync) s  with 
-                        |  effect_reg_write t val we =>  fun _ old => 
-                             match old with 
-                               | Some _ => old
-                               | None => if we then Some val else None
-                             end
-                        |  effect_regfile_write n t val adr we => fun rf old =>
-                             match old with 
-                               | Some _ => old 
-                               | None => 
-                                   if we then 
-                                     let rf := Regfile.set rf adr val in 
-                                       Some rf
-                                   else 
-                                     None                                       
-                             end
+                      match eff in effect _ s return var Phi s -> updates -> updates with   
+                        |  effect_reg_write t val we =>  
+                             fun v Delta =>
+                               if we then Tuple.set v (Some val) Delta else Delta
+                        |  effect_regfile_write n t val adr we => 
+                             fun v Delta => 
+                               if we then 
+                                 let rf := Tuple.get Phi (Tregfile n t) v st in                    
+                                   let rf := Regfile.set rf adr val in 
+                                     Diff.add Phi Delta (Tregfile n t) v rf            
+                               else
+                                 Delta
                       end
-                  | None => fun _ old => old
+                  | None => fun v Delta => Delta
               end). 
     Defined. 
     apply eval_effect. 
@@ -489,48 +484,51 @@ Section t.
     Variable st : eval_state Phi. 
 
     Lemma eval_effect_init Delta :eval_effects st (init_effects eval_type) Delta = Delta. 
-    Proof. Admitted. 
-    
-
-        Lemma foo {R A B C} (T: telescope R A) (f : A -> telescope R B)  (g : B -> telescope R C) :
-          (X :- (Y :- T; f Y); (g X) )= (Y :- T; X :- f Y; g X).
-        Proof.
-          induction T. reflexivity. simpl.
-          f_equal.
-          Require Import  FunctionalExtensionality.
-          apply functional_extensionality.
-          apply H.
-        Qed.
-        
-        
-        
-        
-        Lemma my_ind (R : type -> Type) (P : neffect  R -> Prop) :
-          (forall (guard : expr R Bool) ,
-             P (neffect_guard R guard [])) ->
-          (forall (guard : expr R Bool) a l ,
-             P a -> P (neffect_guard  R guard l) ->
-             P (neffect_guard  R guard (a :: l))) ->
-          (forall (t : type) (v : var Phi (Treg t)) (r : R t),
-             P (neffect_reg_write R t v r)) ->
-          (forall (n : nat) (t : type) (v : var Phi (Tregfile n t))
-             (r : R (Tlift (Tfin n))) (r0 : R t),
-             P (neffect_regfile_write  R n t v r r0)) ->
-          forall n : neffect  R, P n. 
+    Proof. 
     Admitted. 
-    Lemma correspondance l e : forall g1 g2, 
-                                 compile_neffect eval_type g1 (neffect_guard  eval_type g2 l) e =
-                                                 (compile_neffects eval_type (g1 && g2)%expr l e).                  
-    induction l. simpl. reflexivity. 
-    simpl. 
-    intros. reflexivity. 
-    Qed. 
     
+    
+    Lemma foo {R A B C} (T: telescope R A) (f : A -> telescope R B)  (g : B -> telescope R C) :
+      (X :- (Y :- T; f Y); (g X) )= (Y :- T; X :- f Y; g X).
+    Proof.
+      induction T. reflexivity. simpl.
+      f_equal.
+      Require Import  FunctionalExtensionality.
+      apply functional_extensionality.
+      apply H.
+    Qed.
+    
+        
+        
+    
+    Lemma my_ind (R : type -> Type) (P : neffect  R -> Prop) :
+      (forall (guard : expr R Bool) ,
+         P (neffect_guard R guard [])) ->
+      (forall (guard : expr R Bool) a l ,
+         P a -> P (neffect_guard  R guard l) ->
+         P (neffect_guard  R guard (a :: l))) ->
+      (forall (t : type) (v : var Phi (Treg t)) (r : R t),
+         P (neffect_reg_write R t v r)) ->
+      (forall (n : nat) (t : type) (v : var Phi (Tregfile n t))
+         (r : R (Tlift (Tfin n))) (r0 : R t),
+         P (neffect_regfile_write  R n t v r r0)) ->
+      forall n : neffect  R, P n. 
+    Proof. 
+    Admitted. 
+
+    Lemma correspondance l e : forall g1 g2, 
+                                 compile_neffect eval_type g1 (neffect_guard  eval_type g2 l) e = (compile_neffects eval_type (g1 && g2)%expr l e).
+    Proof.                                                                                        
+      induction l; reflexivity.
+    Qed. 
+
     Lemma eval_neffect_cons  guard a l Delta: 
       eval_neffect st (neffect_guard  eval_type guard (a :: l)) Delta = 
                    (if eval_expr Bool guard
                     then eval_neffects st l (eval_neffect st a Delta)
-                    else Delta). reflexivity. 
+                    else Delta).
+    Proof. 
+      reflexivity. 
     Qed.
 
     Fixpoint eval_telescope {A B} (F : A -> B) (T : telescope eval_type A) :=
@@ -578,220 +576,59 @@ Section t.
         case_eq (inversion_effect_Treg eval_type t e0); intros; simpl.         
         Arguments Tuple.set {T F l t} _ _ _.
         Arguments Tuple.get {T F l t} _ _. 
-        Lemma k t (v : var Phi (Treg t)) x e Delta : 
-          let E := eval_effects st e Delta in 
-          eval_effects st (Tuple.set v x e) Delta = 
-                  Tuple.set v (eval_effect _ x (Tuple.get v st) (Tuple.get v Delta)) E.
-        Proof. 
 
-        Lemma tuple_map3_upd_1 {T F F' F''} (C : forall a : T, F a -> F' a -> F'' a -> F'' a) 
-                               e T1 T2 T3 (t : T) (v : var e t) x: 
-          Tuple.map3 C e (Tuple.set v x T1) T2 T3 = 
-               Tuple.set v (C t x (Tuple.get v T2) (Tuple.get v T3) ) (Tuple.map3 C e T1 T2 T3). 
-        Proof. 
-        Admitted.
-        simpl. unfold eval_effects. rewrite tuple_map3_upd_1. f_equal. 
-        Qed. 
-        rewrite k. simpl.
+        Lemma rew_1 Delta t (v : var Phi (Treg t)) x e : 
+          eval_effects st (Tuple.set v (Some x) e) Delta =
+          eval_effect st (Treg t) (Some x) v (eval_effects st e Delta).  
+        Proof.
+        Admitted. 
+        rewrite rew_1. 
+        case_eq (e2); intros; simpl. 
+          * destruct ([[g]]). 
+            Lemma inversion_1 : forall t (v : var Phi (Treg t)) e Delta x, Tuple.get v e = Some x ->
+                                       exists y, Tuple.get v (eval_effects st e Delta) = Some y. 
+            Proof. 
+            Admitted. 
+            destruct (inversion_1 _ _ _ Delta _ H). 
+            unfold Diff.add.  setoid_rewrite H2. 
+            subst. clear - H  H0. 
+            Lemma admit_1 t (v : var Phi (Treg t)) Delta e e0 e1: 
+              Tuple.get v e = Some e0 ->
+              inversion_effect_Treg eval_type t e0 = (e1, true) -> 
+              Tuple.set v (Some e1) (eval_effects st e Delta) = eval_effects st e Delta. 
+            Proof. 
+            Admitted. 
+            subst. eapply admit_1; eauto. 
+            subst. eapply admit_1; eauto. 
+            
 
-        unfold Diff.add.
-        
-        Notation tuple_update v r T := (match Tuple.get v T with 
-                                            | Some _ => T
-                                            | None => Tuple.set v r T end). 
-        
-        match goal with 
-            |- Tuple.set ?v  ?l = ?r =>
-              transitivity (tuple_update v x l)
-        end.
-        
+          * subst.
+            destruct ([[g]]). 
+            simpl. 
+            Lemma admit_2 t (v : var Phi (Treg t)) Delta e e0 e1: 
+              Tuple.get v e = Some e0 ->
+              inversion_effect_Treg eval_type t e0 = (e1, false) -> 
+              Tuple.get v (eval_effects st e Delta) = None. 
+            Proof. 
+            Admitted.             
+            unfold Diff.add. erewrite admit_2. reflexivity. eauto. eauto. 
+            reflexivity. 
+            
+        + rewrite rew_1. simpl. 
 
-        Lemma set_get  t (v : var Phi (Treg t)) (T : updates) x :  
-          Tuple.set v (match Tuple.get v T with Some _ => Tuple.get v T | None => x end) T =
-               match Tuple.get v T with 
-                   | Some _ => T 
-                   | None => Tuple.set v x T
-         end. 
-    Admitted. 
-     rewrite (set_get t v (eval_effects st e Delta)). 
-    Qed. 
-        
-        simpl. 
-        rewrite tuple_map3_upd_1.
-        match goal with 
-          | |- context [Tuple.map3 ?F ?l ?T1 ?T2 ?T3] => 
-              change (Tuple.map3 F l T1 T2 T3) with (eval_effects T2 T1 T3)	      
-          end.
-          
           unfold Diff.add. 
-          destruct ([[g]]). 
-          case_eq (Tuple.get v Delta). intros.
-          Lemma prop_effect_1 e t (v : var Phi t) x Delta : Tuple.get v e = Some x -> 
-                                            exists y, Tuple.get v  (eval_effects st e Delta) = Some y. 
+          Lemma inversion_2 : forall t (v : var Phi (Treg t)) e Delta , 
+                                Tuple.get v e = None ->
+                                Tuple.get v (eval_effects st e Delta) = None. 
           Proof. 
-          Admitted. 
-          destruct (prop_effect_1 _ _ _ _  Delta H).
-          Set Printing All. rewrite H2. 
-        destruct ([[g]]). simpl. reflexivity. 
-        simpl. 
-        
-        unfold eval_effects. simpl. 
-        rewrite tuple_map3_upd_1. 
-        match goal with 
-            |- context [Tuple.map3 ?f _ _ _ _] => set (F := f)
-        end. 
-        generalize (Tuple.map3 F Phi e st Delta). intros o. 
-        case_eq b. intros. 
-        unfold Diff.add. destruct (Tuple.get v Delta). 
-        unfold eval_effects. rewrite tuple_map3_upd_1. 
-        Lemma eval_effect_upd : 
-          eval_effects st (Tuple.set v ) Delta
-        
-          unfold eval_effects. 
-          simpl. 
-        admit. 
+            Admitted. 
+          rewrite inversion_2; auto.  
 
       - admit. 
     Qed. 
-
-                                 
-        
-    Lemma zoby es : forall Delta e g, eval_telescope (eval_effects st) (Cs g es e) Delta 
-                               =  if [[g]] then eval_neffects st es (Ev (&e) Delta) else Ev (&e) Delta. 
-    Proof. 
-      induction es. 
-      intros; simpl.  destruct ([[g]]); reflexivity.  
-      simpl. intros. 
-      pose (H := zob a Delta e g).
-      clearbody H. revert H. 
-      induction (C g a e). 
-      - simpl.       intros H. 
-      rewrite IHes. simpl. rewrite H. destruct ([[g]]); reflexivity.
-      - simpl. intros. apply H. simpl. auto. 
-
-    Qed. 
-
-    Theorem nblock_compile_correct t (nb : nblock eval_type t)  Delta:
-      eval_block st t (nblock_to_block eval_type nb) Delta =  eval_nblock st _ nb Delta. 
-    Proof. 
-      unfold nblock in nb. 
-      induction nb as [ [ [rA gA] eA]|]. 
-      2: simpl; rewrite <- H; reflexivity. 
-      
-      {
-        unfold nblock_to_block. unfold compose_block. simpl.
-        pose (H := zoby eA Delta (init_effects eval_type) gA). 
-        clearbody H. 
-        case_eq ([[gA]]).
-        {
-          intros. rewrite H0 in H. simpl in H. 
-          rewrite eval_effect_init in H. 
-          rewrite <- H. clear H.  
-          induction (Cs gA eA (init_effects eval_type)). simpl. rewrite H0. reflexivity. 
-          simpl. rewrite <- H. reflexivity. 
-        }
-        {
-          intros.
-          induction (Cs gA eA (init_effects eval_type)). simpl. rewrite H0. reflexivity. 
-          simpl. apply H1. auto.          
-        }
-      }
-
-    Qed. 
-    Print Assumptions nblock_compile_correct. 
-  
-  
-
-  End correctness2. 
-  End t. 
-Notation "e :- t1 ; t2 " := (@compose _ _ _ _ t1 (fun e => t2)) (right associativity, at level 80, t1 at next level).
-
-Notation Psi := (init_effects _ _). 
-
-Theorem nblock_compile_correct Phi (st : eval_state Phi) t (nb : nblock Phi eval_type t)  Delta:
-  eval_block Phi st _  (nblock_to_block Phi eval_type nb) Delta =  eval_nblock Phi st _ nb Delta. 
-unfold nblock in nb. 
-induction nb as [[[rA gA] eA]|]. unfold nblock_to_block. unfold compose_block. simpl.
-revert Delta t rA gA st . induction eA. simpl.
-intros. case_eq (eval_expr Bool gA); try reflexivity. intros. 
-f_equal. f_equal. 
-clear. 
-Lemma eval_effect_init Phi st Delta :   eval_effect Phi st (init_effects Phi eval_type) Delta = Delta. 
-Proof. 
-  induction Phi. reflexivity.
-destruct st as [hd tl].
-destruct Delta as [delta Delta].
-simpl.   
-f_equal.  apply IHPhi.  
-Qed. 
-now (apply eval_effect_init). 
-intros.  simpl eval_neffects. rewrite <- IHeA.  clear IHeA.
-simpl compile_neffects.
-
-Lemma foo {Phi R A B C} (T: telescope Phi R A) (f : A -> telescope Phi R B)  (g : B -> telescope Phi R C) : 
-  (X :- (Y :- T; f Y); (g X) )= (Y :- T; X :- f Y; g X). 
-Proof. 
-  induction T. reflexivity. simpl.
-  f_equal. 
-  Require Import  FunctionalExtensionality. 
-  apply functional_extensionality. 
-  apply H. 
-Qed. 
-rewrite foo.
-Lemma my_ind (Phi : state) (R : type -> Type) (P : neffect Phi R -> Prop) :
-  (forall (guard : expr R Bool) ,
-        P (neffect_guard Phi R guard [])) ->
-  (forall (guard : expr R Bool) a l ,
-        P a -> P (neffect_guard Phi R guard l) ->
-        P (neffect_guard Phi R guard (a :: l))) ->
-  (forall (t : type) (v : var Phi (Treg t)) (r : R t),
-     P (neffect_reg_write Phi R t v r)) ->
-  (forall (n : nat) (t : type) (v : var Phi (Tregfile n t))
-          (r : R (Tlift (Tfin n))) (r0 : R t),
-     P (neffect_regfile_write Phi R n t v r r0)) ->
-  forall n : neffect Phi R, P n. 
-Admitted. 
-Lemma correspondance Phi l : forall g1 g2, 
-  compile_neffect Phi eval_type g1 (neffect_guard Phi eval_type g2 l) Psi =
-  (compile_neffects Phi eval_type (g1 && g2)%expr l Psi).                  
-induction l. simpl. reflexivity. 
-simpl. 
-intros. reflexivity. 
-Qed. 
-Lemma eval_neffect_cons Phi st guard a l Delta: 
-  eval_neffect Phi st (neffect_guard Phi eval_type guard (a :: l)) Delta = 
- (if eval_expr Bool guard
-  then eval_neffects Phi st l (eval_neffect Phi st a Delta)
-else Delta). reflexivity. 
-Qed.
-
-Lemma update_init Phi t v x : update Phi eval_type t v x Psi = & (Tuple.set _ _ Phi t v (Some x) Psi). Admitted.
-
-Definition lr Phi st  (e : effects Phi eval_type) (Delta: Tuple.of_list (comp option eval_sync) Phi) :=
-  eval_effect Phi st e Delta = Delta. 
-admit. 
-
-{simpl. rewrite <- H. clear H. reflexivity. }
-
-Inductive correct Phi  st t f  := 
-  test : forall Delta t0 v g r, 
-  eval_block Phi st t
-     (X
-      :- &
-         Tuple.set sync (option ∘ effect eval_type) Phi 
-           (Treg t0) v
-           (Some (effect_reg_write eval_type t0 r g))
-           Psi; f X) Delta =
-   eval_block Phi st t (f Psi)
-     (if g
-      then
-       match Tuple.get Phi (Treg t0) v Delta with
-       | Some _ => Delta
-       | None =>
-           Tuple.set sync (option ∘ eval_sync) Phi (Treg t0) v (Some r) Delta
-       end
-      else Delta) -> correct Phi st t f.   
-
+End correctness2. 
+End t. 
+(*
 Lemma eval_block_cons  Phi st t a : forall Delta guard f (H : correct Phi st t f), 
   eval_block Phi st t (X :- C guard a Psi; f X) Delta = 
   eval_block Phi st t (f Psi) (if eval_expr _  guard then eval_neffect Phi st a Delta else Delta). 
@@ -1167,3 +1004,4 @@ Notation "[: v ]" := (bind_reg_read _ _ _ v).
 
 (* End test2.  *)
 
+*)

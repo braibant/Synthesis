@@ -140,10 +140,10 @@ Arguments register_write {Phi t} _.
 Notation "'write' [: v <- w ]" := (Primitive (cons _ nil) Unit (register_write v) (DList.cons (w)%expr (DList.nil))) (no associativity). 
 
 Arguments regfile_read {Phi n t} _. 
-Notation "'read' M [: v ]" := (Primitive ([Tlift (_)])%list _ (regfile_read M _ ) (DList.cons (v)%expr (DList.nil))) (no associativity). 
+Notation "'read' M [: v ]" := (Primitive ([Tlift (_)])%list _ (regfile_read M ) (DList.cons (v)%expr (DList.nil))) (no associativity). 
 
 Arguments regfile_write {Phi n t} _ . 
-Notation "'write' M [: x <- v ]" := (Primitive ([Tlift (_); _])%list _ (regfile_write M _ ) (DList.cons (x)%expr (DList.cons (v)%expr (DList.nil)))) (no associativity). 
+Notation "'write' M [: x <- v ]" := (Primitive ([Tlift (_); _])%list _ (regfile_write M ) (DList.cons (x)%expr (DList.cons (v)%expr (DList.nil)))) (no associativity). 
 
 (** * Expressions  *)
 Arguments Enth  {Var l t} m _%expr. 

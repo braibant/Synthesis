@@ -1,6 +1,6 @@
 Require Import Common. 
-Require TaggedUnions Core. 
-
+Require (* TaggedUnions *) Core. 
+(*
 Module Ex1. 
   Section t. 
   Import TaggedUnions. 
@@ -137,7 +137,7 @@ Module Ex1.
                                            store_rule :: nil). 
 End t. 
 End Ex1. 
-
+*)
 Module Ex2. 
   Section t. 
   Import Core. 
@@ -145,7 +145,7 @@ Module Ex2.
   Notation OPCODE := (Tlift (Tint 3)). 
   Notation REG := (Tlift (Tint 2)). 
   Notation CONST := (Tlift (Tint n)). 
-  
+
   Open Scope list_scope. 
   Definition INSTR := Ttuple (OPCODE :: REG :: REG :: REG :: CONST :: nil). 
   

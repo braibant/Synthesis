@@ -106,6 +106,20 @@ Module Tuple.
     Defined. 
   End map3. 
   
+  Section fold. 
+    Context {T B : Type} {F : T -> Type}. 
+    Definition fold l (up : forall a, F a -> var l a -> B -> B): of_list T F l -> B -> B. 
+    refine (let fold :=
+                fix fold l  : ( forall a, F a -> var l a -> B -> B) -> of_list T F l -> B -> B :=
+                match l as l' return  ( forall a, F a -> var l' a -> B -> B) -> of_list T F l' -> B -> B with
+                    | nil => fun f _ acc => acc
+                    | cons t q => fun f  (X : F t * of_list T F q) acc => 
+                                   let (x,xs) := X in 
+                                   let f' := (fun b (fb : F b) (v : var q b) => f b fb (var_S v)) in
+                                     fold q f' xs (f t x var_0 acc)
+                end in fold l up). 
+    Defined. 
+  End fold. 
   Definition fst {T F l} {t: T} : (Tuple.of_list _ F (t::l)%list) -> F t. apply fst. Defined. 
   Definition snd {T F l} {t: T} : (Tuple.of_list _ F (t::l)%list) -> Tuple.of_list _ F l. apply snd. Defined. 
 
