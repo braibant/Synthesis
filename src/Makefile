@@ -1,6 +1,6 @@
 #SymEvalTests
 
-MODULES := Common Vector Core RTL TaggedUnions
+MODULES := Common Vector Core RTL 
 TESTS := 
 VS         := $(MODULES:%=%.v)
 TVS        := $(TESTS:%=%.v)
@@ -12,6 +12,9 @@ ARGS :=-R . Synthesis
 
 coq: Makefile.coq
 	$(MAKE) -f Makefile.coq
+
+html: Makefile.coq
+	$(MAKE) -f Makefile.coq html
 
 Makefile.coq: Makefile $(VS)
 	coq_makefile $(ARGS) $(VS) -o Makefile.coq

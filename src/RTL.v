@@ -58,7 +58,6 @@ Section t.
       | _, _ => (a && b)%expr
     end. 
   
-  (**  The compilation function itself *)
   Variable varunit : R Unit. 
   
   Definition convert  l : DList.T (expr R) l -> Tuple.of_list (expr R) l := 
@@ -72,13 +71,8 @@ Section t.
     end. 
 
   Arguments map {T F F'} G l _. 
-  (*  fst (DList.T_fold' eval_expr [t] exprs) =
-   eval_expr t
-     (fst
-        (DList.T_fold' (fun (t0 : type) (X : expr eval_type t0) => X) [t] exprs))
 
-*)
-  
+  (**  The compilation function itself *)  
   Definition compile  t (a : action Phi R t) : telescope (R t * expr R Bool * list neffect).  
   refine (
       let f := fix compile t (a : action Phi R t) : telescope (R t * expr R Bool * list neffect):= 
@@ -151,64 +145,62 @@ Section t.
                                                 effect (Tregfile n t). 
   
   Definition effects := Tuple.of_list (option ∘ effect) Phi. 
-  Definition init_effects : effects. 
-  apply Tuple.init. intros.  apply None.     
-  Defined. 
+  
+  Definition init_effects : effects := Tuple.init sync (option ∘ effect) (fun t : sync => None) Phi. 
 
   Definition block t := telescope (R t * expr R Bool *  effects). 
-  
-  
+    
   Notation "e :-- t1 ; t2 " := (compose t1 (fun e => t2)) (right associativity, at level 80, e1 at next level).
   Arguments Tuple.set {T F l t} _ _ _.  
 
   Definition nblock_to_block {t} (B : nblock t) : block t. 
   unfold block, nblock in *. 
   
-
-  Definition update_Treg t (v : var Phi (Treg t)) (guard : R Bool) (val : R t) (acc : effects) : telescope effects. 
-  refine (match  Tuple.get _  _ v acc
-             with 
-               | Some old => _
-               | None =>       
-                   we <- bind_expr _  (!guard)%expr ; 
-                   w <- bind_expr _  (!val )%expr ; 
-                   & (Tuple.set v (Some (effect_reg_write _ w we)) acc )
-          end). 
-  refine (match old in effect s return match s with 
-                                   | Treg t =>  var Phi s -> R t -> telescope effects 
-                                   | _ => ID
-                               end
-  with
-    | effect_reg_write t' val' guard' => 
-        fun v val => 
-          we <- bind_expr  _ (!guard' || !guard)%expr ;
-          w <- bind_expr  _ (Emux _ _ (!guard') (!val') (!val) )%expr ;
-          & (Tuple.set v (Some (effect_reg_write  _ w we)) acc)
-    | _ => @id
-  end v val). 
+  Definition inversion_effect_Treg : forall t, effect (Treg t) -> (R t * R Bool). 
+  Proof. 
+    intros. inversion X. subst. auto. 
   Defined. 
 
-  Definition update_Tregfile n t (v : var Phi (Tregfile n t)) (guard : R Bool) (adr : R (Tlift (Tfin n)) ) (val : R t) (acc : effects) : telescope effects. 
-  
-  refine (match Tuple.get _ _ v acc with 
-              | Some old => _
-              | None =>       
-                  we <- bind_expr _  (!guard)%expr; 
-                  wadr <- bind_expr _  ((!adr)); 
-                  wdata <- bind_expr _ ((!val)); 
-                  & (Tuple.set v (Some (effect_regfile_write _ _ wdata wadr we)) acc)
-          end%expr
-         )%expr. 
-  
-  inversion old. subst.   
-  refine 
-    (
-      we <- bind_expr  _ (!X1 || !guard)%expr; 
-      wadr <- bind_expr _ (Emux _ _ (!X1) (!X0) (!adr)); 
-      wdata <- bind_expr _ (Emux _ _ (!X1) (!X) (!val)); 
-      & (Tuple.set v (Some (effect_regfile_write _ _ wdata wadr we)) acc)
-    )%expr. 
+  Definition inversion_effect_Tregfile : forall t n, effect (Tregfile n t) -> 
+                                                (R t * R (Tlift (Tfin n)) *R Bool). 
+  Proof. 
+    intros; inversion X. subst. auto. 
   Defined. 
+
+  Definition merge s (a b : effect s) : telescope (effect s). 
+  refine (match s as s'  return effect s' -> effect s' -> telescope (effect s') with 
+              | Treg t => fun a b => 
+                           let (va,ga) := inversion_effect_Treg t a in 
+                           let (vb,gb) := inversion_effect_Treg t b in 
+                             (
+                               we <- bind_expr  _ (!ga || !gb)%expr ;
+                               w <- bind_expr  _ (Emux _ _ (!ga) (!va) (!vb) )%expr ;
+                               & (effect_reg_write  _ w we))
+              | Tregfile n t => fun a b => 
+                           match inversion_effect_Tregfile t n a with 
+                             | (va,adra,ga) =>
+                                 match inversion_effect_Tregfile t n b with 
+                                   | (vb,adrb,gb) =>
+                                       (
+                                         we <- bind_expr  _ (!ga || !gb)%expr; 
+                                         wadr <- bind_expr _ (Emux _ _ (!ga) (!adra) (!adrb))%expr; 
+                                         wdata <- bind_expr _ (Emux _ _ (!ga) (!va) (!vb))%expr; 
+                                         &  (effect_regfile_write _ _ wdata wadr we))
+                                 end
+                           end
+          end a b). 
+  Defined. 
+
+    (** We give the priority to the old write here  *)
+  Definition update t (v : var Phi t) (e : effect t)  (acc: effects) : telescope effects. 
+  refine ( match Tuple.get _  _ v acc with 
+               | Some old => 
+                   e :-- merge t old e ; & (Tuple.set v (Some e) acc)
+               | None => 
+                   & (Tuple.set v (Some e) acc)
+           end). 
+  Defined. 
+                                                                       
 
   Fixpoint compile_neffect (G : expr R Bool) (E : neffect) (B : effects) : telescope effects :=
     match E with               
@@ -223,10 +215,10 @@ Section t.
                       compile_neffects (G && guard)%expr L B
       | neffect_reg_write t v val => 
           G <- bind_expr _  G;
-          update_Treg t v G val B
+          update (Treg t) v (effect_reg_write t val G) B
       | neffect_regfile_write n t v adr val => 
           G <- bind_expr _  G;
-          update_Tregfile n t v G adr val B
+          update (Tregfile n t) v (effect_regfile_write n t val adr G) B
     end.  
 
     
@@ -239,14 +231,14 @@ Section t.
                   (compile_neffects G q)
     end. 
 
- 
+  (* guard was replaced by true  *)
   refine (compose_block B (fun res guard neffects => 
-                             compose (compile_neffects (#b true ) neffects (init_effects))
+                             compose (compile_neffects (guard ) neffects (init_effects))
                              (fun effects => &(res, guard, effects)))). 
   Defined. 
 
 
-End defs. 
+  End defs. 
   
   (** * Semantics *)
   Section sem. 
@@ -320,12 +312,18 @@ End defs.
                                         Some (p, eval_neffects e Delta)
                                       else None
     end. 
+    
+    
 
-    Definition eval_effect (e : effects eval_type) (Delta : updates) : updates.  
+    Definition eval_effects (e : effects eval_type) (Delta : updates) : updates.  
     unfold effects in e. 
     
     refine (Tuple.map3 _ Phi e st  Delta).
-    refine (fun a eff => 
+    Definition eval_effect (a : sync) :   
+      (option ∘ effect eval_type) a ->
+      eval_sync a -> (option ∘ eval_sync) a -> (option ∘ eval_sync) a. 
+    
+    refine (fun  eff => 
               match eff with 
                   | Some eff =>  
                       match eff in effect _ s return eval_sync s -> (option ∘ eval_sync) s -> (option ∘ eval_sync) s  with 
@@ -348,6 +346,8 @@ End defs.
                   | None => fun _ old => old
               end). 
     Defined. 
+    apply eval_effect. 
+    Defined. 
 
     Fixpoint eval_block t  (T : block eval_type t) :
       updates -> option (eval_type t * updates) := 
@@ -359,7 +359,7 @@ End defs.
         | telescope_end (p, g, e) => fun Delta =>
                                       let g := eval_expr _ g  in             
                                       if g then                                         
-                                        Some (p, eval_effect e Delta)
+                                        Some (p, eval_effects e Delta)
                                       else None
     end. 
   
@@ -373,7 +373,6 @@ End defs.
   
   Section correctness. 
   
-    
     
     Notation C := (compile eval_type tt). 
     Lemma eval_andb_true x y : (eval_expr Bool (andb eval_type x y)) = (eval_expr Bool x && eval_expr Bool y)%bool.
@@ -398,7 +397,6 @@ End defs.
       + intros Delta.
         
         simpl. rewrite IHe. reflexivity.  
-
     Qed. 
 
     Variable st : eval_state Phi. 
@@ -477,15 +475,237 @@ End defs.
         simpl. unfold compose_block in *. simpl in *.  rewrite H. reflexivity. 
 
     Qed.
+     
+ 
+  End correctness.     
+  Section correctness2. 
+    Notation Cs  := (compile_neffects  _ ). 
+    Notation C  := (compile_neffect  _). 
+    Notation "x <- e1 ; e2" := (@telescope_bind _ _ _ e1 (fun x => e2)) (right associativity, at level 80, e1 at next level).  
+    Notation " & e " := (@telescope_end _ _  e) (at level 71). 
+
+    Notation "e :- t1 ; t2 " := (@compose  _ _ _ t1 (fun e => t2)) (right associativity, at level 80, t1 at next level).
+
+    Variable st : eval_state Phi. 
+
+    Lemma eval_effect_init Delta :eval_effects st (init_effects eval_type) Delta = Delta. 
+    Proof. Admitted. 
     
-End correctness.     
-End t. 
-Notation "x <- e1 ; e2" := (@telescope_bind _ _ _ _ e1 (fun x => e2)) (right associativity, at level 80, e1 at next level).  
-Notation " & e " := (@telescope_end _ _ _ e) (at level 71). 
+
+        Lemma foo {R A B C} (T: telescope R A) (f : A -> telescope R B)  (g : B -> telescope R C) :
+          (X :- (Y :- T; f Y); (g X) )= (Y :- T; X :- f Y; g X).
+        Proof.
+          induction T. reflexivity. simpl.
+          f_equal.
+          Require Import  FunctionalExtensionality.
+          apply functional_extensionality.
+          apply H.
+        Qed.
+        
+        
+        
+        
+        Lemma my_ind (R : type -> Type) (P : neffect  R -> Prop) :
+          (forall (guard : expr R Bool) ,
+             P (neffect_guard R guard [])) ->
+          (forall (guard : expr R Bool) a l ,
+             P a -> P (neffect_guard  R guard l) ->
+             P (neffect_guard  R guard (a :: l))) ->
+          (forall (t : type) (v : var Phi (Treg t)) (r : R t),
+             P (neffect_reg_write R t v r)) ->
+          (forall (n : nat) (t : type) (v : var Phi (Tregfile n t))
+             (r : R (Tlift (Tfin n))) (r0 : R t),
+             P (neffect_regfile_write  R n t v r r0)) ->
+          forall n : neffect  R, P n. 
+    Admitted. 
+    Lemma correspondance l e : forall g1 g2, 
+                                 compile_neffect eval_type g1 (neffect_guard  eval_type g2 l) e =
+                                                 (compile_neffects eval_type (g1 && g2)%expr l e).                  
+    induction l. simpl. reflexivity. 
+    simpl. 
+    intros. reflexivity. 
+    Qed. 
+    
+    Lemma eval_neffect_cons  guard a l Delta: 
+      eval_neffect st (neffect_guard  eval_type guard (a :: l)) Delta = 
+                   (if eval_expr Bool guard
+                    then eval_neffects st l (eval_neffect st a Delta)
+                    else Delta). reflexivity. 
+    Qed.
+
+    Fixpoint eval_telescope {A B} (F : A -> B) (T : telescope eval_type A) :=
+      match T with 
+        | telescope_end X => F X
+        | telescope_bind arg bind cont =>
+            let res := eval_bind st arg bind in 
+              eval_telescope F (cont res)
+      end. 
+
+    Lemma folder guard l Delta: eval_neffect st (neffect_guard eval_type guard l) Delta 
+                                         = if eval_expr Bool guard then eval_neffects st l Delta else Delta.
+    Proof. 
+      reflexivity. 
+    Qed. 
+    
+
+    Notation Ev := (eval_telescope (eval_effects st)). 
+    Notation "[[ x ]]" := (eval_expr Bool x). 
+    
+    Lemma compile_effect_correct a  : forall Delta e g , eval_telescope (eval_effects st) (C g a e) Delta 
+                               =  if [[g]] then eval_neffect st a (Ev (&e) Delta) else (Ev (&e)Delta). 
+    Proof. 
+      induction a using my_ind. 
+      - intros. simpl. destruct ([[guard]]); destruct ([[g]]); reflexivity.
+      - intros. rewrite correspondance. rewrite eval_neffect_cons. 
+        simpl compile_neffects. simpl.
+        setoid_rewrite correspondance in IHa0.
+        
+        revert IHa IHa0.
+        intros H. specialize (H Delta e (g && guard)%expr). revert H. 
+        induction (C (g && guard)%expr a e); intros. 
+         {simpl. rewrite IHa0. rewrite folder. simpl. simpl in H. rewrite H. 
+         destruct ([[g]]); destruct ([[guard]]); simpl; try reflexivity. }
+         {
+         simpl. rewrite H. reflexivity. 
+         simpl. simpl in *. rewrite H0. reflexivity.
+         apply IHa0.          
+         }
+      - intros. simpl.
+        unfold update. 
+        case_eq (Tuple.get Phi (Treg t) v e); intros; simpl. 
+        +               
+        (* case: there was a previous effect on this register *)
+        case_eq (inversion_effect_Treg eval_type t e0); intros; simpl.         
+        Arguments Tuple.set {T F l t} _ _ _.
+        Arguments Tuple.get {T F l t} _ _. 
+        Lemma k t (v : var Phi (Treg t)) x e Delta : 
+          let E := eval_effects st e Delta in 
+          eval_effects st (Tuple.set v x e) Delta = 
+                  Tuple.set v (eval_effect _ x (Tuple.get v st) (Tuple.get v Delta)) E.
+        Proof. 
+
+        Lemma tuple_map3_upd_1 {T F F' F''} (C : forall a : T, F a -> F' a -> F'' a -> F'' a) 
+                               e T1 T2 T3 (t : T) (v : var e t) x: 
+          Tuple.map3 C e (Tuple.set v x T1) T2 T3 = 
+               Tuple.set v (C t x (Tuple.get v T2) (Tuple.get v T3) ) (Tuple.map3 C e T1 T2 T3). 
+        Proof. 
+        Admitted.
+        simpl. unfold eval_effects. rewrite tuple_map3_upd_1. f_equal. 
+        Qed. 
+        rewrite k. simpl.
+
+        unfold Diff.add.
+        
+        Notation tuple_update v r T := (match Tuple.get v T with 
+                                            | Some _ => T
+                                            | None => Tuple.set v r T end). 
+        
+        match goal with 
+            |- Tuple.set ?v  ?l = ?r =>
+              transitivity (tuple_update v x l)
+        end.
+        
+
+        Lemma set_get  t (v : var Phi (Treg t)) (T : updates) x :  
+          Tuple.set v (match Tuple.get v T with Some _ => Tuple.get v T | None => x end) T =
+               match Tuple.get v T with 
+                   | Some _ => T 
+                   | None => Tuple.set v x T
+         end. 
+    Admitted. 
+     rewrite (set_get t v (eval_effects st e Delta)). 
+    Qed. 
+        
+        simpl. 
+        rewrite tuple_map3_upd_1.
+        match goal with 
+          | |- context [Tuple.map3 ?F ?l ?T1 ?T2 ?T3] => 
+              change (Tuple.map3 F l T1 T2 T3) with (eval_effects T2 T1 T3)	      
+          end.
+          
+          unfold Diff.add. 
+          destruct ([[g]]). 
+          case_eq (Tuple.get v Delta). intros.
+          Lemma prop_effect_1 e t (v : var Phi t) x Delta : Tuple.get v e = Some x -> 
+                                            exists y, Tuple.get v  (eval_effects st e Delta) = Some y. 
+          Proof. 
+          Admitted. 
+          destruct (prop_effect_1 _ _ _ _  Delta H).
+          Set Printing All. rewrite H2. 
+        destruct ([[g]]). simpl. reflexivity. 
+        simpl. 
+        
+        unfold eval_effects. simpl. 
+        rewrite tuple_map3_upd_1. 
+        match goal with 
+            |- context [Tuple.map3 ?f _ _ _ _] => set (F := f)
+        end. 
+        generalize (Tuple.map3 F Phi e st Delta). intros o. 
+        case_eq b. intros. 
+        unfold Diff.add. destruct (Tuple.get v Delta). 
+        unfold eval_effects. rewrite tuple_map3_upd_1. 
+        Lemma eval_effect_upd : 
+          eval_effects st (Tuple.set v ) Delta
+        
+          unfold eval_effects. 
+          simpl. 
+        admit. 
+
+      - admit. 
+    Qed. 
+
+                                 
+        
+    Lemma zoby es : forall Delta e g, eval_telescope (eval_effects st) (Cs g es e) Delta 
+                               =  if [[g]] then eval_neffects st es (Ev (&e) Delta) else Ev (&e) Delta. 
+    Proof. 
+      induction es. 
+      intros; simpl.  destruct ([[g]]); reflexivity.  
+      simpl. intros. 
+      pose (H := zob a Delta e g).
+      clearbody H. revert H. 
+      induction (C g a e). 
+      - simpl.       intros H. 
+      rewrite IHes. simpl. rewrite H. destruct ([[g]]); reflexivity.
+      - simpl. intros. apply H. simpl. auto. 
+
+    Qed. 
+
+    Theorem nblock_compile_correct t (nb : nblock eval_type t)  Delta:
+      eval_block st t (nblock_to_block eval_type nb) Delta =  eval_nblock st _ nb Delta. 
+    Proof. 
+      unfold nblock in nb. 
+      induction nb as [ [ [rA gA] eA]|]. 
+      2: simpl; rewrite <- H; reflexivity. 
+      
+      {
+        unfold nblock_to_block. unfold compose_block. simpl.
+        pose (H := zoby eA Delta (init_effects eval_type) gA). 
+        clearbody H. 
+        case_eq ([[gA]]).
+        {
+          intros. rewrite H0 in H. simpl in H. 
+          rewrite eval_effect_init in H. 
+          rewrite <- H. clear H.  
+          induction (Cs gA eA (init_effects eval_type)). simpl. rewrite H0. reflexivity. 
+          simpl. rewrite <- H. reflexivity. 
+        }
+        {
+          intros.
+          induction (Cs gA eA (init_effects eval_type)). simpl. rewrite H0. reflexivity. 
+          simpl. apply H1. auto.          
+        }
+      }
+
+    Qed. 
+    Print Assumptions nblock_compile_correct. 
+  
+  
+
+  End correctness2. 
+  End t. 
 Notation "e :- t1 ; t2 " := (@compose _ _ _ _ t1 (fun e => t2)) (right associativity, at level 80, t1 at next level).
 
-Notation Cs  := (compile_neffects _ _ ). 
-Notation C  := (compile_neffect _ _). 
 Notation Psi := (init_effects _ _). 
 
 Theorem nblock_compile_correct Phi (st : eval_state Phi) t (nb : nblock Phi eval_type t)  Delta:
@@ -543,9 +763,36 @@ Lemma eval_neffect_cons Phi st guard a l Delta:
  (if eval_expr Bool guard
   then eval_neffects Phi st l (eval_neffect Phi st a Delta)
 else Delta). reflexivity. 
-Qed. 
+Qed.
 
-Lemma eval_block_cons  Phi st t a : forall Delta guard f, 
+Lemma update_init Phi t v x : update Phi eval_type t v x Psi = & (Tuple.set _ _ Phi t v (Some x) Psi). Admitted.
+
+Definition lr Phi st  (e : effects Phi eval_type) (Delta: Tuple.of_list (comp option eval_sync) Phi) :=
+  eval_effect Phi st e Delta = Delta. 
+admit. 
+
+{simpl. rewrite <- H. clear H. reflexivity. }
+
+Inductive correct Phi  st t f  := 
+  test : forall Delta t0 v g r, 
+  eval_block Phi st t
+     (X
+      :- &
+         Tuple.set sync (option ∘ effect eval_type) Phi 
+           (Treg t0) v
+           (Some (effect_reg_write eval_type t0 r g))
+           Psi; f X) Delta =
+   eval_block Phi st t (f Psi)
+     (if g
+      then
+       match Tuple.get Phi (Treg t0) v Delta with
+       | Some _ => Delta
+       | None =>
+           Tuple.set sync (option ∘ eval_sync) Phi (Treg t0) v (Some r) Delta
+       end
+      else Delta) -> correct Phi st t f.   
+
+Lemma eval_block_cons  Phi st t a : forall Delta guard f (H : correct Phi st t f), 
   eval_block Phi st t (X :- C guard a Psi; f X) Delta = 
   eval_block Phi st t (f Psi) (if eval_expr _  guard then eval_neffect Phi st a Delta else Delta). 
 
@@ -557,30 +804,25 @@ rewrite foo.
 rewrite IHa. clear IHa. simpl. setoid_rewrite correspondance in IHa0.
 simpl compose in IHa0. simpl eval_block in IHa0 at 1. rewrite IHa0. clear IHa0. 
 case_eq (eval_expr Bool guard); intros; case_eq (eval_expr _ guard0); intros. 
-simpl Datatypes.andb. cbv iota. f_equal. admit. 
+simpl Datatypes.andb. cbv iota. f_equal. simpl. rewrite H. 
+reflexivity. 
 simpl. reflexivity. 
 intros. unfold Datatypes.andb.
-f_equal. admit. 
+f_equal. simpl. rewrite H. reflexivity. 
 
 intros. simpl.  reflexivity. 
-- intros. simpl. unfold Diff.add. clear.
-unfold update_Treg. 
-case_eq (Tuple.get Phi (Treg t0) v Delta);
-case_eq (Tuple.get Phi (Treg t0) v (init_effects Phi eval_type)). intros. simpl. 
- 
-unfold eval_block. 
+- intros. simpl.
+unfold Diff.add.
+rewrite update_init.
+simpl. 
 Admitted. 
-rewrite eval_block_cons. 
+Admitted. rewrite eval_block_cons. 
 simpl. reflexivity.  
 simpl. rewrite <- H. clear H. reflexivity. 
 Qed. 
 
 Print Assumptions nblock_compile_correct. 
 
-
-
-    
-End correctness. 
 
   
   Section defs2. 
