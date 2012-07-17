@@ -1,6 +1,7 @@
 Require Import Common. 
-Require Core TaggedUnions. 
+Require Core (* TaggedUnions *). 
 
+(*
 Module Ex1. 
   Import TaggedUnions. 
   
@@ -66,7 +67,7 @@ Module Ex1.
   
   Eval compute in finish' 16 (run_unfair (This 16) 10 (st0 16 17 3)). 
 End Ex1. 
-
+*)
 Module  Ex2. 
   Import Core. 
   
