@@ -11,7 +11,7 @@ Section t.
   Inductive bind (t : type) : Type := 
   | bind_expr :  expr R t ->  bind t
   | bind_reg_read : var Phi (Treg t) -> bind t
-  | bind_regfile_read : forall n, var Phi (Tregfile n t) -> R (Tlift (Tfin n)) -> bind t. 
+  | bind_regfile_read : forall n, var Phi (Tregfile n t) -> R (Tlift (Tint n)) -> bind t. 
     
   Inductive telescope (A : Type): Type :=
   | telescope_end : A -> telescope A
@@ -21,7 +21,7 @@ Section t.
   Inductive neffect  : Type :=
   | neffect_guard : forall (guard : expr R Bool), list (neffect) -> neffect 
   | neffect_reg_write : forall t, var Phi (Treg t) -> R t -> neffect
-  | neffect_regfile_write : forall n t, var Phi (Tregfile n t) -> R (Tlift (Tfin n)) -> R t -> neffect. 
+  | neffect_regfile_write : forall n t, var Phi (Tregfile n t) -> R (Tlift (Tint n)) -> R t -> neffect. 
 
   Definition nblock t := telescope (R t * expr R Bool * list neffect)%type. 
   
@@ -140,7 +140,7 @@ Section t.
   
   Inductive effect  : sync -> Type :=
   | effect_reg_write : forall t,  R t -> R Bool -> effect (Treg t)
-  | effect_regfile_write : forall n t,  R t -> R (Tlift (Tfin n)) -> R Bool -> 
+  | effect_regfile_write : forall n t,  R t -> R (Tlift (Tint n)) -> R Bool -> 
                                                 effect (Tregfile n t). 
   
   Definition effects := Tuple.of_list (option ∘ effect) Phi. 
@@ -161,7 +161,7 @@ Section t.
     end. 
 
   Definition inversion_effect_Tregfile t n (e: effect (Tregfile n t)): 
-    (R t * R (Tlift (Tfin n)) *R Bool) :=
+    (R t * R (Tlift (Tint n)) *R Bool) :=
     match e with 
       | effect_regfile_write _ _ x y z => (x,y,z)
     end. 
@@ -486,7 +486,7 @@ Section t.
           rewrite <- convert_commute. simpl. reflexivity.
         + simpl. 
           rewrite <- convert_commute. simpl. 
-          case_eq (convert eval_type ([Tlift (Tfin n); t])%list exprs). 
+          case_eq (convert eval_type ([Tlift (Tint n); t])%list exprs). 
           intros adr [value tt] H.  simpl. simpl in tt.           
           reflexivity. 
 
@@ -566,7 +566,7 @@ Section correctness2.
     (forall (t : type) (v : var Phi (Treg t)) (r : R t),
        P (neffect_reg_write  Phi R t v r)) ->
     (forall (n : nat) (t : type) (v : var Phi (Tregfile n t))
-       (r : R (Tlift (Tfin n))) (r0 : R t),
+       (r : R (Tlift (Tint n))) (r0 : R t),
        P (neffect_regfile_write Phi R n t v r r0)) ->
     forall n : neffect Phi R, P n. 
   Proof.
@@ -828,7 +828,6 @@ Section correctness2.
 
           }
     Qed. 
-    Print Assumptions compile_effect_correct. 
 
     Lemma eval_telescope_neffects Phi st es : forall Delta e g, eval_telescope Phi st (eval_effects Phi st) (Cs g es e) Delta 
                                =  if [[g]] then eval_neffects Phi st es (Ev Phi st (&e) Delta) else Ev Phi st (&e) Delta. 
@@ -870,7 +869,6 @@ Section correctness2.
       }
 
     Qed. 
-  Print Assumptions nblock_compile_correct. 
   
 (*
   

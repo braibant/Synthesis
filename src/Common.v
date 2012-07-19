@@ -233,47 +233,7 @@ Module Abstract.
     }. 
 End Abstract. 
 
-Require Export ZArith. 
-
-(** Implementation of parametric size machine words.  *)
-Module Word. 
-  
-  Record T n := mk { val :> Z ; 
-                     range : (0 <= val < two_power_nat n)%Z}. 
-  Arguments val {n} _. 
-  Arguments range {n} _. 
-  
-  Definition unsigned {n} (x : T n) : nat := Zabs_nat (val x).
-  Notation "[2^ n ]" := (two_power_nat n). 
-  
-  Open Scope Z_scope. 
-  
-  Lemma mod_in_range n:
-    forall x, 0 <= Zmod x [2^ n] < [2^ n] .
-  Proof.
-    intro.
-    apply (Z_mod_lt x).
-    reflexivity. 
-  Qed.
-  
-  Definition repr n (x: Z)  : T n := 
-    mk n (Zmod x [2^ n]) (mod_in_range n x ).
-  
-
-  Definition add {n} : T n -> T n -> T n := fun x y => repr n (x + y ). 
-  Definition minus {n} : T n -> T n -> T n := fun x y => repr n (x - y). 
-  Definition mult {n} : T n -> T n -> T n := fun x y => repr n (x * y).  
-  Definition eq {n} : T n -> T n -> bool := 
-    fun x y => 
-      (match val x ?= val y with Eq => true | _ => false end) .
-
-  Definition lt {n} : T n -> T n -> bool :=
-    fun x y => 
-      (match val x ?= val y with Lt => true | _ => false end) .
-
-End Word. 
-
-Notation "<: val 'as' 'int' n :>" := (Word.mk n val _). 
+(* Notation "<: val 'as' 'int' n :>" := (Word.mk n val _).  *)
 
 Fixpoint lt_nat_bool n m : bool :=
   match n,m with 
@@ -340,77 +300,8 @@ Module Finite.
     repr (S (val x)).  
                                 
 End Finite. 
-
-Module Regfile2. 
-    
-  Record T (size : nat) (X : Type) := mk 
-    {content : Vector.vector X size; 
-     default : X}. 
-
-  Arguments mk {size X} _ _. 
-  Arguments content {size X} _. 
-
-  Notation "! x" := (content x) (at level 70).
-  
-  Definition empty size X (el : X ): T size X := 
-    mk (Vector.empty X size el) el. 
- 
-  (* Definition get {size X} (v : T size X) (n : nat) :=  *)
-  (*   Vector.get _ _ (!v) n.  *)
-
-  Definition get {size X} (v : T size X) (n : nat) : X :=
-    match Vector.get _ _ (!v) n with 
-      | Some x => x
-      | None => default _ _ v
-    end. 
-
-  Definition set  {size X} (v : T size X) (addr : nat) (el : X) : T size X :=
-    mk (Vector.set _ _ (!v) (addr)%nat el) (default _ _ v). 
-
-  Definition of_list_pad {X} n (default : X) (l : list X) : T n X := 
-    mk (Vector.of_list_pad _ n default l) default.  
-
-End Regfile2. 
-
-Module Regfile. 
-
-  Record T (size : nat) (X : Type) : Type := mk
-    {
-      content : list X;
-      hyp : List.length content = size
-    }. 
-  Arguments content {size X} t. 
-  Arguments mk {size X} _ _. 
-  Arguments hyp {size X} t. 
-  Definition empty size {X} (el : X) : T size X.
-  refine (  let l := (fix f n := match n with 0 => nil | S n => cons el (f n) end) size in  
-              mk l _ ). 
-  induction size. reflexivity. simpl in *. rewrite IHsize; reflexivity. 
-  Defined. 
-  
-  Definition get {size X} (v : T size X) (n : Finite.T size) : X. 
-  refine (let x := List.nth_error (content v)   (Finite.val n)  in _). 
-  case_eq x; auto.
-  destruct n as [n H]; destruct v as [l Hl]. simpl in *; subst x.    
-  intros H'. exfalso. 
-  revert H'. 
-  admit. 
-  Defined. 
-
-  Fixpoint pt {A} (l : list A) n x :=
-    match l with 
-      | nil => nil
-      | cons t q => match n with 
-                       | 0 => cons x q
-                       | S n => pt q n x
-                   end
-    end. 
-  Definition set {size X} (v : T size X) (n : Finite.T size) (x : X) : (T size X). 
-  destruct v as [l Hl]; destruct n as [n Hn].  
-  apply (mk (pt l n x) ). 
-  admit. 
-  Defined. 
-End Regfile. 
+Require Array. 
+Module Regfile := Array. 
  
 (* The base types, that exist in every language. These types should have:
    - decidable equality; 

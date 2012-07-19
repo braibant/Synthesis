@@ -1,6 +1,6 @@
 #SymEvalTests
 
-MODULES := Common Vector Core RTL 
+MODULES := Word Array Common Vector Core RTL Compiler
 TESTS := 
 VS         := $(MODULES:%=%.v)
 TVS        := $(TESTS:%=%.v)

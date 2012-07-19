@@ -14,3 +14,6 @@ clean:
 
 dist:
 	git archive --format=tar --prefix=synthesis/ master | gzip > synthesis.tar.gz
+
+admit:
+	$(MAKE) -C src admit

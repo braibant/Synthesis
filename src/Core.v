@@ -20,7 +20,7 @@ Definition state := list sync.
 Definition eval_sync (s : sync) := 
   match s with
     | Treg t => eval_type t 
-    | Tregfile n t => Regfile.T n (eval_type t)
+    | Tregfile n t => Regfile.T n (eval_type t) 
   end. 
 
 Definition eval_state := Tuple.of_list eval_sync. 
@@ -34,8 +34,8 @@ Inductive primitive (Phi : state) : list type -> type -> Type:=
   | register_read : forall t, var Phi (Treg t) ->  primitive Phi nil t
   | register_write : forall t, var Phi (Treg t) -> primitive Phi (t:: nil) Unit
   (* register file primitives *)
-  | regfile_read : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([Tlift (Tfin n)])%list  t
-  | regfile_write : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([Tlift (Tfin n); t])%list  Unit.
+  | regfile_read : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([Tlift (Tint n)])%list  t
+  | regfile_write : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([Tlift (Tint n); t])%list  Unit.
 
 
 Section s.
@@ -266,13 +266,13 @@ Module Sem.
                 let (w, _) := exprs in                   
                   Some (tt, Diff.add Phi Delta (Treg t) v w)
           | regfile_read n t v  =>
-              fun (exprs : Tuple.of_list eval_type [Tlift (Tfin n)]) 
+              fun (exprs : Tuple.of_list eval_type [Tlift (Tint n)]) 
                   (st : eval_state Phi) (Delta : Diff.T Phi) =>
                 let rf := Tuple.get Phi (Tregfile n t) v st in
                 let adr := fst exprs in
                 let v := Regfile.get rf (adr) in Some (v, Delta)
           | regfile_write n t v =>
-              fun (exprs : Tuple.of_list eval_type [Tlift (Tfin n); t]) 
+              fun (exprs : Tuple.of_list eval_type [Tlift (Tint n); t]) 
                   (st : eval_state Phi) (Delta : Diff.T Phi) =>
                 let rf := Tuple.get Phi (Tregfile n t) v st in
                 let rf := match exprs with 
