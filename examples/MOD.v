@@ -68,6 +68,7 @@ Module Ex1.
   Eval compute in finish' 16 (run_unfair (This 16) 10 (st0 16 17 3)). 
 End Ex1. 
 *)
+Require ZArith. Open Scope Z_scope.
 Module  Ex2. 
   Import Core. 
   

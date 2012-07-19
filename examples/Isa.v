@@ -138,6 +138,8 @@ Module Ex1.
 End t. 
 End Ex1. 
 *)
+
+Open Scope Z_scope. 
 Module Ex2. 
   Section t. 
   Import Core. 
@@ -149,14 +151,13 @@ Module Ex2.
   Open Scope list_scope. 
   Definition INSTR := Ttuple (OPCODE :: REG :: REG :: REG :: CONST :: nil). 
   
-  Notation "[2^n]" := (128). 
-  Definition Phi : state := Treg CONST :: Tregfile 4 CONST  :: Tregfile [2^n] INSTR :: Tregfile [2^n] CONST :: nil. 
+  Definition Phi : state := Treg CONST :: Tregfile 2 CONST  :: Tregfile n INSTR :: Tregfile n CONST :: nil. 
   
   Ltac set_env := 
     set (PC := var_0 : var Phi (Treg CONST));
-    set (RF := var_S (var_0) : var Phi (Tregfile 4 CONST));
-    set (IMEM := var_S (var_S (var_0)) : var Phi (Tregfile [2^n] INSTR));
-    set (DMEM := var_S (var_S (var_S (var_0))) : var Phi (Tregfile [2^n] CONST)). 
+    set (RF := var_S (var_0) : var Phi (Tregfile 2 CONST));
+    set (IMEM := var_S (var_S (var_0)) : var Phi (Tregfile n INSTR));
+    set (DMEM := var_S (var_S (var_S (var_0))) : var Phi (Tregfile n CONST)). 
   
   Ltac fvar n := 
     match n with 
