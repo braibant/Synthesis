@@ -99,16 +99,36 @@ Module Tuple.
   Section map3. 
     Context {T : Type} {F F' F'': T -> Type}.
     Variable (up : forall a,  F a -> F' a -> F'' a -> F'' a). 
-    Definition map3 l : of_list T F l -> of_list T F' l -> of_list T F'' l -> of_list T F'' l. 
-    induction l. simpl. auto. 
-    simpl. intros [x xs] [y ys] [z zs]. split. apply up; auto.  
-    apply IHl; auto. 
-    Defined. 
+    Fixpoint map3 l : of_list T F l -> of_list T F' l -> of_list T F'' l -> of_list T F'' l :=
+      match l with 
+        | nil => fun _ _ x => x
+        | cons t q => fun xs ys zs => 
+                       let (x,xs) := xs in 
+                        let (y,ys) := ys in 
+                          let (z,zs) := zs in 
+                            (up t x y z, map3 q xs ys zs)
+      end. 
   End map3. 
   
   Section fold. 
     Context {T B : Type} {F : T -> Type}. 
-    Definition fold l (up : forall a, F a -> var l a -> B -> B): of_list T F l -> B -> B. 
+    Section inner. 
+      Variable l : list T. 
+      Variable up : forall a, F a -> var l a -> B -> B.
+      
+      Fixpoint prefold   s :
+        (forall x, var s x -> var l x) -> of_list T F s -> B -> B :=
+        match s as s' return  (forall x, var s' x -> var l x) -> of_list T F s' -> B -> B with
+          | nil => fun  _ _ acc => acc
+          | cons t q => fun f  (X : F t * of_list T F q) acc => 
+                     let (x,xs) := X in 
+                       let f' := fun x v => f x (var_S v) in
+                         (up t x (f t var_0) (prefold q f' xs  acc))
+                              
+        end.  
+      Definition fold   : of_list T F l -> B -> B := (prefold  l (fun x v => v)). 
+
+    (*
     refine (let fold :=
                 fix fold l  : ( forall a, F a -> var l a -> B -> B) -> of_list T F l -> B -> B :=
                 match l as l' return  ( forall a, F a -> var l' a -> B -> B) -> of_list T F l' -> B -> B with
@@ -117,8 +137,9 @@ Module Tuple.
                                    let (x,xs) := X in 
                                    let f' := (fun b (fb : F b) (v : var q b) => f b fb (var_S v)) in
                                      fold q f' xs (f t x var_0 acc)
-                end in fold l up). 
-    Defined. 
+                end in fold l up).  *)
+    End inner. 
+    Notation lift f := (fun x v => f x (var_S v)). 
   End fold. 
   Definition fst {T F l} {t: T} : (Tuple.of_list _ F (t::l)%list) -> F t. apply fst. Defined. 
   Definition snd {T F l} {t: T} : (Tuple.of_list _ F (t::l)%list) -> Tuple.of_list _ F l. apply snd. Defined. 
