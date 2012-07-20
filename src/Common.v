@@ -85,7 +85,19 @@ Module Tuple.
       | cons t q => (el t, init el q)
     end. 
   End t. 
-  
+
+  Section map. 
+    Context {T : Type} {F F': T -> Type}.
+    Variable (up : forall a,  F a -> F' a ).
+    Fixpoint map l : of_list T F l -> of_list T F' l :=
+      match l with 
+        | nil => fun x => x
+        | cons t q => fun xs =>
+                       let (x,xs) := xs in 
+                         (up t x, map q xs)
+      end. 
+  End map. 
+
   Section map2. 
     Context {T : Type} {F : T -> Type} {F' : T -> Type}. 
     Variable (up : forall a,  F a -> F' a -> F' a). 
@@ -454,7 +466,13 @@ Module DList.
   Inductive T  : list X -> Type := 
       | nil : T nil
       | cons : forall (t : X) q, P t -> T q -> T (cons t q).  
-
+  
+  Fixpoint Forall (Q: forall (x : X), P x -> Prop) l (dl : T l) :=
+    match dl with 
+        | nil => True
+        | cons t q dt dq => Q t dt /\ Forall Q q dq
+    end. 
+  
   (** * Head and tail *)
   Arguments cons t q _ _%dlist. 
   Arguments T _%list. 
