@@ -142,11 +142,11 @@ End Ex1.
 Open Scope Z_scope. 
 Module Ex2. 
   Section t. 
-  Import Core. 
+    Require Import Core Front. 
   Variable n : nat. 
-  Notation OPCODE := (Tlift (Tint 3)). 
-  Notation REG := (Tlift (Tint 2)). 
-  Notation CONST := (Tlift (Tint n)). 
+  Notation OPCODE := (Tint 3). 
+  Notation REG := (Tint 2). 
+  Notation CONST := (Tint n). 
 
   Open Scope list_scope. 
   Definition INSTR := Ttuple (OPCODE :: REG :: REG :: REG :: CONST :: nil). 
@@ -188,98 +188,133 @@ Module Ex2.
     Open Scope action_scope. 
   (* (pc,rf,imem,dmem) where LOADI(rd,const) = imem[pc]
      –> (pc+1, rf[rd <- const], imem, dmem) *)
-  Definition loadi_rule  : Action Phi Unit.  intros V; set_env. 
-  refine (DO PC' <- read [: PC ]; 
-          DO I <- read IMEM [: (! PC') ]; 
-          WHEN (opcode (!I) =  (#i 0) ) ; 
-          DO _ <- (write [: PC <-  (!PC' + #i 1)]);  
-          DO _ <- (write RF [: rd (!I) <- const (!I) ]);
-          RETURN (#Ctt)). 
-  Defined. 
+    Section code. 
+      Variable V : type -> Type. 
+       Let PC := var_0 : var Phi (Treg CONST). 
+       Let RF := var_S (var_0) : var Phi (Tregfile 2 CONST). 
+       Let IMEM := var_S (var_S (var_0)) : var Phi (Tregfile n INSTR). 
+       Let DMEM := var_S (var_S (var_S (var_0))) : var Phi (Tregfile n CONST). 
+       
+       Definition loadi_rule  : action Phi V Tunit. 
+       refine (DO PC' <- read [: PC ]; 
+               DO I <- read IMEM [: (! PC') ]; 
+               WHEN (opcode (!I) =  (#i 0) ) ; 
+               DO _ <- (write [: PC <-  (!PC' + #i 1)]);  
+               DO _ <- (write RF [: rd (!I) <- const (!I) ]);
+               RETURN (#Ctt)). 
+      Defined. 
   
   (* (pc,rf,imem,dmem) where LOADPC(rd) = imem[pc]
      –> (pc+1, rf[rd <- pc], imem, dmem) *)
-  Definition loadpc_rule : Action Phi Unit.   intros V; set_env. 
-  refine (DO PC' <- read [: PC ]; 
-          DO I <- read IMEM [: (! PC') ]; 
-          WHEN (opcode (!I) =  (#i 1) ) ; 
-          DO _ <- (write [: PC <-  (!PC' + #i 1)]);  
-          DO _ <- (write RF [: rd (!I) <- (!PC') ]);
-          RETURN (#Ctt)). 
-  Defined.
-  
-  (* (pc,rf,imem,dmem) where ADD(rd,r1,r2) = imem[pc]
+      Definition loadpc_rule : action Phi V Tunit. 
+      refine (DO PC' <- read [: PC ]; 
+              DO I <- read IMEM [: (! PC') ]; 
+              WHEN (opcode (!I) =  (#i 1) ) ; 
+              DO _ <- (write [: PC <-  (!PC' + #i 1)]);  
+              DO _ <- (write RF [: rd (!I) <- (!PC') ]);
+              RETURN (#Ctt)). 
+      Defined.
+      
+      (* (pc,rf,imem,dmem) where ADD(rd,r1,r2) = imem[pc]
      –> (pc+1, rf[rd <- rf[r1] + rf[r2]], imem, dmem) *)
-  Definition add_rule : Action Phi Unit.   intros V; set_env. 
-  refine (DO PC' <- read [: PC ]; 
-          DO I <- read IMEM [: (! PC') ]; 
-          WHEN (opcode (!I) =  (#i 2) ) ; 
-          DO _ <- (write [: PC <-  (!PC' + #i 1)]);
-          DO R1 <- read RF [: r1 (!I) ];
-          DO R2 <- read RF [: r2 (!I) ];
-          DO _ <- (write RF [: rd (!I) <- (!R1 + !R2) ]);
-          RETURN (#Ctt)). 
-  Defined. 
-  
-  (* (pc,rf,imem,dmem) where BZ(r1,r2) = imem[pc] 
+      Definition add_rule : action Phi V Tunit.
+      refine (DO PC' <- read [: PC ]; 
+              DO I <- read IMEM [: (! PC') ]; 
+              WHEN (opcode (!I) =  (#i 2) ) ; 
+              DO _ <- (write [: PC <-  (!PC' + #i 1)]);
+              DO R1 <- read RF [: r1 (!I) ];
+              DO R2 <- read RF [: r2 (!I) ];
+              DO _ <- (write RF [: rd (!I) <- (!R1 + !R2) ]);
+              RETURN (#Ctt)). 
+      Defined. 
+      
+      (* (pc,rf,imem,dmem) where BZ(r1,r2) = imem[pc] 
      –> (rf[r2], rf , imem, dmem) when rf[r1] = 0 *)
-  Definition bztaken_rule : Action Phi Unit. intros V; set_env. 
-  refine (DO PC' <- read [: PC ]; 
-          DO I <- read IMEM [: (! PC') ]; 
-          WHEN (opcode (!I) =  (#i 3) );
-          DO R1 <- read RF [: r1 (!I) ];
-          DO R2 <- read RF [: r2 (!I) ];
-          WHEN ( !R1 = #i 0 ); 
-          DO _ <- (write [: PC <-  (!R2)]);
-          RETURN (#Ctt)). 
-  Defined. 
-  
-  (* (pc,rf,imem,dmem) where BZ(r1,r2) = imem[pc] 
+      Definition bztaken_rule : action Phi V Tunit. 
+      refine (DO PC' <- read [: PC ]; 
+              DO I <- read IMEM [: (! PC') ]; 
+              WHEN (opcode (!I) =  (#i 3) );
+              DO R1 <- read RF [: r1 (!I) ];
+              DO R2 <- read RF [: r2 (!I) ];
+              WHEN ( !R1 = #i 0 ); 
+              DO _ <- (write [: PC <-  (!R2)]);
+              RETURN (#Ctt)). 
+      Defined. 
+      
+      (* (pc,rf,imem,dmem) where BZ(r1,r2) = imem[pc] 
      –> (pc+1, rf , imem, dmem) when rf[r1] <> 0 *)
-  Definition bznottaken_rule : Action Phi Unit. intros V; set_env. 
-  refine (DO PC' <- read [: PC ]; 
-          DO I <- read IMEM [: (! PC') ]; 
-          WHEN (opcode (!I) =  (#i 3) );
-          DO R1 <- read RF [: r1 (!I) ];
-          DO R2 <- read RF [: r2 (!I) ];
-          WHEN ( !R1 <> #i 0 ); 
-          DO _ <- (write [: PC <-  (!PC' + #i 1)]);
-          RETURN (#Ctt)). 
-  Defined. 
-  
-  (* (pc,rf,imem,dmem) where LOAD(r1,r2) = imem[pc] 
+      Definition bznottaken_rule : action Phi V Tunit.
+      refine (DO PC' <- read [: PC ]; 
+              DO I <- read IMEM [: (! PC') ]; 
+              WHEN (opcode (!I) =  (#i 3) );
+              DO R1 <- read RF [: r1 (!I) ];
+              DO R2 <- read RF [: r2 (!I) ];
+              WHEN ( !R1 <> #i 0 ); 
+              DO _ <- (write [: PC <-  (!PC' + #i 1)]);
+              RETURN (#Ctt)). 
+      Defined. 
+      
+      (* (pc,rf,imem,dmem) where LOAD(r1,r2) = imem[pc] 
      –> (pc+1, rf[r1 := dmem[rf [r2 ]]], imem, dmem) *)
-  Definition load_rule : Action Phi Unit. intros V; set_env. 
-  refine (DO PC' <- read [: PC ]; 
-          DO I <- read IMEM [: (! PC') ]; 
-          WHEN (opcode (!I) =  (#i 4) );
-          DO R2 <- read RF [: r2 (!I) ];
-          DO D <- read DMEM [: (!R2)];
-          DO _ <- (write RF [: r1 (!I) <-  (!D)]);
-          DO _ <- (write [: PC <-  (!PC' + #i 1)]);
-          RETURN (#Ctt)). 
-  Defined. 
-
-  (* (pc,rf,imem,dmem) where STORE(r1,r2) = imem[pc] 
+      Definition load_rule : action Phi V Tunit. 
+      refine (DO PC' <- read [: PC ]; 
+              DO I <- read IMEM [: (! PC') ]; 
+              WHEN (opcode (!I) =  (#i 4) );
+              DO R2 <- read RF [: r2 (!I) ];
+              DO D <- read DMEM [: (!R2)];
+              DO _ <- (write RF [: r1 (!I) <-  (!D)]);
+              DO _ <- (write [: PC <-  (!PC' + #i 1)]);
+              RETURN (#Ctt)). 
+      Defined. 
+      
+      (* (pc,rf,imem,dmem) where STORE(r1,r2) = imem[pc] 
      –> (pc+1, rf, imem, dmem (rf[r1] := rf[r2])) *)
-  Definition store_rule : Action Phi Unit. intros V; set_env. 
-  refine (DO PC' <- read [: PC ]; 
-          DO I <- read IMEM [: (! PC') ]; 
-          WHEN (opcode (!I) =  (#i 5) );
-          DO R1 <- read RF [: r1 (!I) ];
-          DO R2 <- read RF [: r2 (!I) ];
-          DO _ <- (write DMEM [: (!R1) <-  (!R2)]);
-          DO _ <- (write [: PC <-  (!PC' + #i 1)]);
-          RETURN (#Ctt)). 
-  Defined. 
-  
-  Definition T : TRS := mk_TRS Phi 
-                               (loadi_rule ::
-                                           loadpc_rule ::
-                                           add_rule ::
-                                           bztaken_rule ::
-                                           bznottaken_rule ::
-                                           load_rule ::
-                                           store_rule :: nil). 
-End t. 
+      Definition store_rule : action Phi V Tunit. 
+      refine (DO PC' <- read [: PC ]; 
+              DO I <- read IMEM [: (! PC') ]; 
+              WHEN (opcode (!I) =  (#i 5) );
+              DO R1 <- read RF [: r1 (!I) ];
+              DO R2 <- read RF [: r2 (!I) ];
+              DO _ <- (write DMEM [: (!R1) <-  (!R2)]);
+              DO _ <- (write [: PC <-  (!PC' + #i 1)]);
+              RETURN (#Ctt)). 
+      Defined. 
+    
+    Notation "x + y" := (OrElse _ _ _ x y). 
+    Definition code :=
+      loadi_rule + loadpc_rule + add_rule + bztaken_rule + bznottaken_rule +
+                 load_rule + store_rule . 
+    End code. 
+    Definition Code := fun V => code V.  
+  End t. 
 End Ex2. 
+
+Require Compiler. 
+
+Check Compiler.compile _ _ (Ex2.Code 4). 
+
+Notation "[ e : t ]" := (existT _ t e). 
+Notation "[ 'read' v : t ]" := (existT _ _ (Flat.Eread _ _ t v)).
+Notation "[ 'read' v @ a : t ]" := (existT _ _ (Flat.Eread_rf _ _ _ t  v a)).
+Notation W n:= (Core.Tint n). 
+Notation "< >" := (Core.Ttuple nil). 
+Notation "< a ; .. ; b >" := (Core.Ttuple (a :: .. (b :: []) ..))%list. 
+Notation "# a " := (FirstOrder.box _ a) (no associativity, at level 71). 
+Notation "f @@ args" := (Flat.Ebuiltin _ _ _ _ f args) (no associativity, at level 71). 
+Notation "$ x" := (Flat.Econstant _ _ _ x) (no associativity, at level 71). 
+Notation nth v e := (Flat.Enth _ _ _ _ v e). 
+
+Notation "[: x < 2^ n ]" := (Word.mk n x _). 
+
+Eval vm_compute in 
+     let x := Compiler.fo_compile _ _ (Ex2.Code 4) in 
+       List.length (FirstOrder.bindings _ _ x). 
+
+Eval vm_compute in 
+     let x := Compiler.fo_cse_compile _ _ (Ex2.Code 4) in 
+       List.length (FirstOrder.bindings _ _ x). 
+
+Eval vm_compute in
+      Compiler.fo_cse_compile _ _ (Ex2.Code 4).
+
+

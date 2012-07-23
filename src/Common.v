@@ -36,13 +36,23 @@ Section var.
         var_0 E' t'=> var_0 (E' ++ F) t'
       | var_S E' s' s'' v' => var_S (E' ++ F ) s' s'' (var_lift E' F s'' v') 
     end. 
-
+  
+  Fixpoint var_to_nat {l t} (v : var l t) : nat :=
+    match v with 
+      | var_0 _ _ => 0 
+      | var_S _ _ _ v => S (var_to_nat v)
+    end. 
+  
+  Definition var_eqb l t t' (v : var l t) (v' : var l t') :=
+    NPeano.Nat.eqb (var_to_nat v) (var_to_nat v').  
+  
 End var. 
 
 Arguments var {T} _ _. 
 Arguments var_0 {T} {E} {t}. 
 Arguments var_S {T} {E} {t} {t'} _. 
 Arguments var_lift {T E F t} v. 
+Arguments var_eqb {T l t t'} _ _. 
 
 Definition var_map {A B: Type} (F : A -> B) (l : list A) t (v : var l t) : var (List.map F l) (F t). 
 induction v. apply var_0. 
@@ -121,6 +131,22 @@ Module Tuple.
                             (up t x y z, map3 q xs ys zs)
       end. 
   End map3. 
+
+  Section map3o. 
+    Context {T : Type} {F F' F'': T -> Type}.
+    Variable (up : forall a,  F a -> F' a -> F'' a -> option (F'' a)). 
+    Fixpoint map3o l : of_list T F l -> of_list T F' l -> of_list T F'' l -> option (of_list T F'' l) :=
+      match l with 
+        | nil => fun _ _ x => Some x
+        | cons t q => fun xs ys zs => 
+                       let (x,xs) := xs in 
+                       let (y,ys) := ys in 
+                       let (z,zs) := zs in 
+                         do t <- up t x y z;
+                         do q <- map3o q xs ys zs;
+                         Some (t,q) 
+      end. 
+  End map3o. 
   
   Section fold. 
     Context {T B : Type} {F : T -> Type}. 
@@ -156,6 +182,13 @@ Module Tuple.
   Definition fst {T F l} {t: T} : (Tuple.of_list _ F (t::l)%list) -> F t. apply fst. Defined. 
   Definition snd {T F l} {t: T} : (Tuple.of_list _ F (t::l)%list) -> Tuple.of_list _ F l. apply snd. Defined. 
 
+  Inductive pointwise {A} F G (R : forall a, F a -> G a -> Prop): forall (l : list A), Tuple.of_list _ F l -> Tuple.of_list _ G l -> Prop :=
+  | pointwise_nil : pointwise F G R List.nil tt tt
+  | pointwise_cons : forall t q dt1 dt2 dq1 dq2,
+                       R t dt1 dt2 -> 
+                       pointwise F G R q dq1 dq2 ->
+                       pointwise F G R (t::q) (dt1,dq1) (dt2,dq2). 
+  
 
 End Tuple. 
 
@@ -236,6 +269,7 @@ Arguments ETuple.get {T F} l t _ _.
 Arguments ETuple.app {T F} l1 l2 _ _. 
 Arguments ETuple.of_list {T} _ _ .  
 
+
 Module Abstract. 
   Record T :=
     {
@@ -244,6 +278,34 @@ Module Abstract.
       lt  : carrier -> carrier -> bool
     }. 
 End Abstract. 
+
+Module Finite. 
+  Record T ( n : nat) :Type := mk
+    {
+      val : nat;
+      range : val < n
+    }. 
+  Arguments val {n} _. 
+
+  Definition eqb {n} (x y : T n) :=
+    NPeano.Nat.eqb (val x) (val y). 
+
+  Definition ltb {n} (x y : T n) :=
+    NPeano.Nat.ltb (val x) (val y). 
+  Require NPeano. 
+  Definition repr {n} (v : nat) : T (S n). 
+  refine (mk (S n)  (NPeano.modulo v (S n)) _).
+  abstract (apply NPeano.Nat.mod_upper_bound; discriminate). 
+  Defined.
+ 
+  Definition next {n} (x : T (S n)) :  T (S n) :=
+    repr (S (val x)).  
+                                
+End Finite. 
+Require Array. 
+Module Regfile := Array. 
+
+(*
 
 (* Notation "<: val 'as' 'int' n :>" := (Word.mk n val _).  *)
 
@@ -289,31 +351,6 @@ Module FIFO.
 End FIFO. 
 
 
-Module Finite. 
-  Record T ( n : nat) :Type := mk
-    {
-      val : nat;
-      range : val < n
-    }. 
-  Arguments val {n} _. 
-
-  Definition eqb {n} (x y : T n) :=
-    NPeano.Nat.eqb (val x) (val y). 
-
-  Definition ltb {n} (x y : T n) :=
-    NPeano.Nat.ltb (val x) (val y). 
-  Require NPeano. 
-  Definition repr {n} (v : nat) : T (S n). 
-  refine (mk (S n)  (NPeano.modulo v (S n)) _).
-  abstract (apply NPeano.Nat.mod_upper_bound; discriminate). 
-  Defined.
- 
-  Definition next {n} (x : T (S n)) :  T (S n) :=
-    repr (S (val x)).  
-                                
-End Finite. 
-Require Array. 
-Module Regfile := Array. 
  
 (* The base types, that exist in every language. These types should have:
    - decidable equality; 
@@ -452,7 +489,7 @@ Definition builtin_denotation (dom : list type0) ran (f : builtin dom ran) :
     | BI_next n => @un_op (Tfin (S n)) (Tfin (S n)) (@Finite.next n)
   end. 
 
-
+*)
 Definition relation A := A -> A -> Prop. 
 Definition union {A} (R S : relation A) := fun x y => R x y \/ S x y. 
 
@@ -473,6 +510,7 @@ Module DList.
         | cons t q dt dq => Q t dt /\ Forall Q q dq
     end. 
   
+
   (** * Head and tail *)
   Arguments cons t q _ _%dlist. 
   Arguments T _%list. 
@@ -497,6 +535,12 @@ Module DList.
       | nil => @id
       | cons _ _ t q => q
     end.
+
+  Fixpoint get l t (v: var l t): T l -> P t :=
+    match v with 
+      | var_0  _ _ => fun e => hd _ _ e
+      | var_S _ _ _ v => fun e => get _ _ v  (tl _ _ e)
+      end. 
 
   (** * Concatenation of T (append)  *)
   Definition app : forall (l1 l2 : list X), 
@@ -530,6 +574,7 @@ Module DList.
   End foldo. 
 
   Section s2. 
+
     Variable F : forall (t : X), P t -> E t. 
 
     Definition fold' (l : list X) (dl : T l) : Tuple.of_list E l. 
@@ -546,37 +591,59 @@ Arguments cons {X P} {t q} _ _.
 (* Arguments fold' {X P E} _ _ _.  *)
 Arguments app {X P l1 l2} _ _ . 
 
-Definition to_tuple X (l : list X) F G  (Trans : forall x, F x -> G x): T F l -> Tuple.of_list G l. 
-Proof. 
-  induction 1. simpl. apply tt. 
-  simpl. split. auto. auto. 
-Defined. 
+Section ops. 
+  Variable X : Type. 
+  Variable (F G : X -> Type). 
+  Variable (Op : forall x, F x -> G x). 
+  Definition to_tuple (l : list X) : T F l -> Tuple.of_list G l. 
+  refine ((fix F l (hl : T F l) : Tuple.of_list G l :=
+           match hl in T _ l return Tuple.of_list G l with 
+                                  | nil => tt
+                                  | cons t q T Q =>  ((Op t T),(F q Q))
+           end) l).
+  Defined. 
 
-Arguments to_tuple {X l F G} Trans _%dlist. 
-
-Definition to_etuple X (l : list X) F G  (Trans : forall x, F x -> G x): T F l -> ETuple.of_list G l. 
-Proof. 
-  induction 1. simpl. apply tt. 
-  simpl. destruct q. auto. split.  auto. auto. 
-Defined. 
-
-Arguments to_etuple {X l F G} Trans _%dlist. 
-
-
+  Definition to_etuple (l : list X) : T F l -> ETuple.of_list G l. 
+  refine ((fix F l (hl : T F l) : ETuple.of_list G l :=
+           match hl in T _ l return ETuple.of_list G l with 
+                                  | nil => tt
+                                  | cons t q T Q =>  ETuple.pair X G (Op t T) (F q Q)
+           end) l).
+  Defined. 
   
-Definition map  {X P Q} :
-  forall (f : forall (x : X), P x -> Q x), 
-  forall l, 
-    @T X P l -> 
-    @T X Q l. 
-intros f. 
-refine (fix F l (hl : T P l) : T Q l := 
-        match hl with 
-          | nil => nil
-          | cons t q T Q => cons (f _ T) (F _ Q)
-        end). 
-Defined. 
+  Definition map ( l : list X) : T F l -> T G l. 
+  refine ((fix F l (hl : T F l) : T G l := 
+          match hl in T _ l return T G l with 
+            | nil => nil
+            | cons t q T Q => cons (Op _ T) (F _ Q)
+          end) l). 
+  Defined. 
+End ops. 
+Arguments to_tuple {X F G} Op {_} _%dlist. 
+Arguments to_etuple {X F G} Op {_} _%dlist. 
+Arguments map {X F G} Op {_} _%dlist. 
 
+Lemma map_to_tuple_commute {X} (F G H : X -> Type)
+                            (Op : forall x, F x -> G x) (Op' : forall x : X, G x -> H x)
+                            (l : list X) (dl : T F l) :
+  to_tuple Op' (map Op dl) = 
+  to_tuple (fun x dx => Op' x (Op x dx)) dl. 
+Proof.
+  induction dl. reflexivity.
+  simpl. f_equal. apply IHdl. 
+Qed. 
+
+
+Lemma map_to_etuple_commute {X} (F G H : X -> Type)
+                            (Op : forall x, F x -> G x) (Op' : forall x : X, G x -> H x)
+                            (l : list X) (dl : T F l) :
+  to_etuple Op' (map Op dl) = 
+  to_etuple (fun x dx => Op' x (Op x dx)) dl. 
+Proof.
+  induction dl. reflexivity.
+  simpl. f_equal. apply IHdl. 
+Qed. 
+  
 Definition hmap :
   forall (X Y : Type) (P : Y -> Type) (Q : X -> Type)
     (F :  X -> Y), 
@@ -603,8 +670,17 @@ Definition dmap {A B} (F : A -> Type) (G: B -> Type) (C : A -> B) (D : forall x,
   simpl. constructor. apply D.  auto. 
   apply IHdl. 
 Defined. 
+
+Inductive pointwise {A} F G (R : forall a, F a -> G a -> Prop): forall (l : list A), T F l -> T G l -> Prop :=
+| pointwise_nil : pointwise F G R List.nil nil nil
+| pointwise_cons : forall t q dt1 dt2 dq1 dq2,
+                     R t dt1 dt2 -> 
+                     pointwise F G R q dq1 dq2 ->
+                     pointwise F G R (t::q) (cons dt1 dq1) (cons dt2 dq2). 
 End DList. 
 
 Notation "[ ]" := DList.nil : dlist_scope.
 Notation "t :: q" := (DList.cons t q) : dlist_scope.
 Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)%dlist : dlist_scope.
+
+Arguments DList.pointwise {A F G} _ l%list _%dlist _%dlist. 
