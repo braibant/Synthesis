@@ -2,7 +2,7 @@ Require Common Core Flat.
 
 Section t. 
   Variable Phi : Core.state. 
-  Notation updates := (Common.Tuple.of_list (Common.comp option  Core.eval_sync) Phi). 
+  Notation updates := (Common.DList.T (Common.comp option  Core.eval_sync) Phi). 
   
   Section defs. 
     Import Core Common.
@@ -17,7 +17,7 @@ Section t.
         bindings : list ({t : type & expr t});
         value : Var t;
         guard : Var B;
-        effects :  Tuple.of_list (option ∘ effect) Phi
+        effects : DList.T (option ∘ effect) Phi
       }. 
               
     Definition compile t (b : Flat.block Phi Var t) : block t. 
@@ -100,8 +100,8 @@ Section t.
               end). 
     Defined. 
     
-    Definition eval_effects (env : Env) (e : Tuple.of_list (option ∘ effect) Phi) (Delta : updates) : option updates.  
-    refine (Common.Tuple.map3o _ Phi e st Delta).
+    Definition eval_effects (env : Env) (e : DList.T (option ∘ effect) Phi) (Delta : updates) : option updates.  
+    refine (Common.DList.map3o _ Phi e st Delta).
     apply (eval_effect env). 
     Defined. 
     

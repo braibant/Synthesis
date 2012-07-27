@@ -4,7 +4,7 @@ Require Import Front.
   
 Section t. 
   Variable Phi : state. 
-  Notation updates := (Tuple.of_list (option ∘ eval_sync) Phi). 
+  Notation updates := (DList.T (option ∘ eval_sync) Phi). 
   
   Section defs. 
   Variable R : type -> Type. 
@@ -144,9 +144,9 @@ Section t.
   | effect_regfile_write : forall n t,  R t -> R ( (Tint n)) -> R Tbool -> 
                                                 effect (Tregfile n t). 
   
-  Definition effects := Tuple.of_list (option ∘ effect) Phi. 
+  Definition effects := DList.T (option ∘ effect) Phi. 
   
-  Definition init_effects : effects := Tuple.init sync (option ∘ effect) (fun t : sync => None) Phi. 
+  Definition init_effects : effects := DList.init sync (option ∘ effect) (fun t : sync => None) Phi. 
 
   Definition block t := telescope (R t * expr R Tbool *  effects). 
     
@@ -193,11 +193,11 @@ Section t.
 
     (** We give the priority to the old write here  *)
   Definition update t (v : var Phi t) (e : effect t)  (acc: effects) : telescope effects. 
-  refine ( match Tuple.get _  _ v acc with 
+  refine ( match DList.get  v acc with 
                | Some old => 
-                   e :-- merge t old e ; & (Tuple.set v (Some e) acc)
+                   e :-- merge t old e ; & (DList.set v (Some e) acc)
                | None => 
-                   & (Tuple.set v (Some e) acc)
+                   & (DList.set v (Some e) acc)
            end). 
   Defined. 
                                                                        
@@ -246,9 +246,9 @@ Section t.
     Definition eval_bind t (b : bind eval_type t) : (eval_type t).
     refine (match b with
               | bind_expr x =>  (eval_expr _ x)
-              | bind_reg_read v => (Tuple.get _ _ v st)
+              | bind_reg_read v => (DList.get v st)
               | bind_regfile_read n v adr => 
-                  let rf := Tuple.get Phi (Tregfile n t) v st in
+                  let rf := DList.get  v st in
                     Regfile.get rf (adr)                
             end
            ). 
@@ -273,7 +273,7 @@ Section t.
       | neffect_reg_write t v w =>                                               
           Front.Diff.add Phi Delta (Treg t) v w 
       | neffect_regfile_write  n t v adr w  =>  
-          let rf := Tuple.get Phi (Tregfile n t) v st in                          
+          let rf := DList.get v st in                          
             let rf := Regfile.set rf adr  w in 
               Front.Diff.add Phi Delta (Tregfile n t) v rf            
     end. 
@@ -319,7 +319,7 @@ Section t.
     unfold effects in e. 
 
     (* refine (Tuple.fold Phi _ e Delta).  *)
-    refine (Tuple.map3 _ Phi e st Delta). 
+    refine (DList.map3 _ Phi e st Delta). 
 
     Definition eval_effect (a : sync) :   
       (option ∘ effect eval_type) a ->
@@ -443,24 +443,12 @@ Section t.
               
           set (x := DList.to_tuple eval_expr exprs). 
           replace (x) with (fst x, snd x) by (destruct x; reflexivity).
-
-          Lemma convert_commute  l (dl : DList.T (expr eval_type) l): map  _ _ _ (eval_expr) l (convert _ l dl) = DList.to_tuple (eval_expr) dl. 
-          Proof. 
-            induction dl. simpl. reflexivity. 
-            simpl. f_equal. apply IHdl. 
-          Qed. 
-          simpl. 
-    
-          replace (eval_expr t (fst (convert eval_type [t] exprs))) with (fst x). reflexivity. 
-          subst x. rewrite <- convert_commute. simpl. reflexivity.  
+          simpl.
+          DList.inversion. simpl. reflexivity. 
 
         + simpl. 
-          rewrite <- convert_commute. simpl. reflexivity.
-        + simpl. 
-          rewrite <- convert_commute. simpl. 
-          case_eq (convert eval_type ([ (Tint n); t])%list exprs). 
-          intros adr [value tt] H.  simpl. simpl in tt.           
-          reflexivity. 
+          DList.inversion; reflexivity.
+        + simpl. repeat DList.inversion. simpl. reflexivity.
 
       - intros. simpl.   unfold Sem.Dyn.OrElse. 
         rewrite <- IHa1, <- IHa2 . clear IHa1 IHa2. 
@@ -496,7 +484,7 @@ Section correctness2.
   Proof.
     unfold eval_effects. 
     induction Phi. simpl. reflexivity. 
-    simpl. destruct st. destruct Delta. f_equal. apply IHPhi. 
+    simpl. repeat DList.inversion. simpl. f_equal. apply IHPhi. 
   Qed. 
 
   Lemma foo {Phi R A B C} (T: telescope Phi R A) (f : A -> telescope  Phi R B)  (g : B -> telescope Phi R C) :
@@ -584,8 +572,8 @@ Section correctness2.
               end. 
 
   Lemma rew_1 Phi st Delta t (v : var Phi t ) x e : 
-    eval_effects Phi st (Tuple.set v (Some x) e) Delta =
-                 Tuple.set v (eval_effect t (Some x) (Tuple.get v st) (Tuple.get v Delta))  (eval_effects Phi st e Delta).  
+    eval_effects Phi st (DList.set v (Some x) e) Delta =
+                 DList.set v (eval_effect t (Some x) (DList.get v st) (DList.get v Delta))  (eval_effects Phi st e Delta).  
   Proof. 
     induction Phi; [dependent destruction v|]. 
     dependent destruction v. 
@@ -596,12 +584,13 @@ Section correctness2.
 
   Lemma inversion_1 Phi st : forall t (v : var Phi (Treg t)) e Delta x x', 
                              inversion_effect_Treg eval_type t x = (x', true) ->
-                             Tuple.get v e = Some x ->
-                             exists y, Tuple.get v (eval_effects Phi st e Delta) = Some y.
+                             DList.get v e = Some x ->
+                             exists y, DList.get v (eval_effects Phi st e Delta) = Some y.
   Proof. 
     induction Phi; [dependent destruction v|]. 
     dependent destruction v; simpl; intros. 
     repeat v; dependent destruction x; simpl in *; inversion H; subst; clear H; simpl.
+    repeat DList.inversion.  simpl in H0. subst. simpl.
     d; eauto.
 
     simpl in *. repeat v. simpl. edestruct IHPhi; eauto.
@@ -631,7 +620,7 @@ Section correctness2.
          }
       - intros. simpl.
         unfold update. 
-        case_eq (Tuple.get  v e); intros; simpl. 
+        case_eq (DList.get  v e); intros; simpl. 
         +               
         (* case: there was a previous effect on this register *)
         case_eq (inversion_effect_Treg eval_type t e0); intros; simpl.       
@@ -643,11 +632,11 @@ Section correctness2.
             subst. 
             {
               Lemma hint_1 Phi : forall st t (v : var Phi (Treg t)) r Delta e  e0, 
-                                 Tuple.get v e = Some e0 -> 
+                                 DList.get v e = Some e0 -> 
                                  forall e1, inversion_effect_Treg eval_type t e0 = (e1, true) -> 
-                                       Tuple.set v
-                                            match Tuple.get v Delta with
-                                                | Some _ => Tuple.get v Delta
+                                       DList.set v
+                                            match DList.get v Delta with
+                                                | Some _ => DList.get v Delta
                                                 | None => Some e1
               end (eval_effects Phi st e Delta) =
                                           Diff.add Phi (eval_effects Phi st e Delta) (Treg t) v r. 
@@ -656,6 +645,7 @@ Section correctness2.
                 induction Phi; [dependent destruction v|].
                 simpl. intros; repeat v. 
                  dependent destruction v; simpl; intros. 
+                 unfold eval_state in *; repeat DList.inversion.  
                  unfold Diff.add;  simpl; repeat d; simpl in *; subst;
                  simpl in H1; dependent destruction e0; f_equal; auto.
                  discriminate. 
@@ -673,8 +663,9 @@ Section correctness2.
               induction Phi; [dependent destruction v|]. 
               simpl; repeat v. 
               dependent destruction v; simpl in *; subst. unfold Diff.add.
+              unfold eval_state in *; unfold effects in *.  repeat DList.inversion. simpl in *.
               repeat d; clear IHPhi; dependent destruction e0;subst; f_equal; auto. 
-              simpl in H0. inversion H0. auto.
+              simpl in H0. inversion H0; subst. auto.
               simpl. rewrite IHPhi. auto. auto. 
             }
          
@@ -688,6 +679,8 @@ Section correctness2.
             induction Phi; [dependent destruction v|]. 
               simpl; repeat v. 
               dependent destruction v; simpl in *; subst. unfold Diff.add.
+              unfold eval_state in *; unfold effects in *.  repeat DList.inversion. simpl in *.
+
               repeat d; clear IHPhi; dependent destruction e0;subst; f_equal; auto. 
               discriminate. simpl in *; inversion H0; subst; auto. 
               simpl in *; inversion H0; subst; auto. 
@@ -702,6 +695,8 @@ Section correctness2.
             induction Phi; [dependent destruction v|]. 
               simpl; repeat v. 
               dependent destruction v; simpl in *; subst. unfold Diff.add.
+              unfold eval_state in *; unfold effects in *.  repeat DList.inversion. simpl in *.
+
               repeat d; clear IHPhi; dependent destruction e0;subst; f_equal; auto. 
               simpl in *. inversion H0; auto. 
               
@@ -719,13 +714,14 @@ Section correctness2.
             induction Phi; [dependent destruction v|]. 
               simpl; repeat v. 
               dependent destruction v; simpl in *; subst. unfold Diff.add.
-              repeat d; repeat f_equal. 
+              unfold eval_state in *; unfold effects in *.  repeat DList.inversion. simpl in *.
+repeat d; repeat f_equal. 
               
               setoid_rewrite IHPhi. clear IHPhi. unfold Diff.add. simpl. repeat d; f_equal. auto. 
           }
 
       - intros. simpl.         unfold update. 
-        case_eq (Tuple.get v e); intros; simpl. 
+        case_eq (DList.get v e); intros; simpl. 
         +               
         case_eq (inversion_effect_Tregfile eval_type t n e0); intros [w adr we H']; simpl.         
         rewrite rew_1.
@@ -736,7 +732,10 @@ Section correctness2.
           {
             induction Phi; [dependent destruction v|].
             simpl; repeat v. 
-            dependent destruction v; simpl in *; subst. 
+            dependent destruction v; simpl in *; subst.
+            unfold eval_state in *; unfold effects in *.  repeat DList.inversion. simpl in *; subst. 
+            
+
             unfold Diff.add; repeat d; repeat f_equal; dependent destruction e0; simpl in H'; inversion H'; subst;  try congruence; try simpl in *; try auto.
             rewrite IHPhi; clear IHPhi;  auto. 
             unfold Diff.add; repeat d; repeat f_equal; dependent destruction e0; simpl in H'; inversion H'; subst;  try congruence; try simpl in *; try auto.
@@ -746,6 +745,8 @@ Section correctness2.
             induction Phi; [dependent destruction v|].
             simpl; repeat v. 
             dependent destruction v; simpl in *; subst. 
+            unfold eval_state in *; unfold effects in *.  repeat DList.inversion. simpl in *; subst. 
+
             unfold Diff.add; repeat d; repeat f_equal; dependent destruction e0; simpl in H'; inversion H'; subst;  try congruence; try simpl in *; try auto.
             rewrite IHPhi; clear IHPhi;  auto. 
           }
@@ -756,7 +757,8 @@ Section correctness2.
               induction Phi; [dependent destruction v|].
             simpl; repeat v. 
             dependent destruction v; simpl in *; subst. 
-            unfold Diff.add; repeat d; repeat f_equal; dependent destruction e0; simpl in H'; inversion H'; subst;  try congruence; try simpl in *; try auto.
+                        unfold eval_state in *; unfold effects in *.  repeat DList.inversion. simpl in *; subst. 
+unfold Diff.add; repeat d; repeat f_equal; dependent destruction e0; simpl in H'; inversion H'; subst;  try congruence; try simpl in *; try auto.
             rewrite IHPhi; clear IHPhi;  auto. 
             repeat d; repeat f_equal; dependent destruction e0; simpl in H'; inversion H'; subst;  try congruence; try simpl in *; try auto.          
           }
@@ -764,7 +766,8 @@ Section correctness2.
             induction Phi; [dependent destruction v|].
             simpl; repeat v. 
             dependent destruction v; simpl in *; subst. unfold Diff.add.
-            repeat d; repeat f_equal; dependent destruction e0; simpl in H'; inversion H'; subst;  try congruence; try simpl in *; try auto.
+                        unfold eval_state in *; unfold effects in *.  repeat DList.inversion. simpl in *; subst. 
+repeat d; repeat f_equal; dependent destruction e0; simpl in H'; inversion H'; subst;  try congruence; try simpl in *; try auto.
             rewrite IHPhi; clear IHPhi; auto. }
           
           
@@ -774,6 +777,8 @@ Section correctness2.
             induction Phi; [dependent destruction v|].
             simpl; repeat v. 
             dependent destruction v; simpl in *; subst. unfold Diff.add.
+            unfold eval_state in *; unfold effects in *.  repeat DList.inversion. simpl in *; subst. 
+
             repeat d; repeat f_equal; dependent destruction e0; simpl in H'; inversion H'; subst;  try congruence; try simpl in *; try auto.
             rewrite IHPhi; clear IHPhi; auto. 
             repeat d; repeat f_equal; dependent destruction e0; simpl in H'; inversion H'; subst;  try congruence; try simpl in *; try auto. 

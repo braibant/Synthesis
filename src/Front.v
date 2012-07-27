@@ -198,30 +198,27 @@ Record TRS : Type := mk_TRS
 Module Diff. 
   Section t. 
     Variable Phi : state. 
-    Definition T := Tuple.of_list (option ∘ eval_sync) Phi. 
+    Definition T := DList.T (option ∘ eval_sync) Phi. 
     (* first *)
     Definition add (Delta : T) t (v : var Phi t) w :  T :=
-      match Tuple.get Phi t v Delta  with 
-        | None =>  (Tuple.set _ _ Phi t v (Some w) Delta)
+      match DList.get v Delta  with 
+        | None =>  (DList.set v (Some w) Delta)
         | Some x => Delta
       end.
     
   End t. 
-  Fixpoint init (Phi : state ): T Phi := 
-    match Phi with 
-      | nil => tt
-      | cons t Phi => (None, init Phi)
-    end. 
   
-  Fixpoint apply (Phi : state) : T Phi -> Tuple.of_list eval_sync Phi -> Tuple.of_list eval_sync Phi :=
-    match Phi with 
-      | nil => fun _ _ => tt
-      | cons t Phi => fun Delta E => 
-                     match fst Delta with 
-                       | None => (fst E, apply Phi (snd Delta) (snd E))
-                       | Some d => (d, apply Phi (snd Delta) (snd E))
-                     end
-    end. 
+  Definition init (Phi : state ): T Phi := DList.init _ _ (fun _ => None) Phi. 
+  
+  (* Fixpoint apply (Phi : state) : T Phi -> Tuple.of_list eval_sync Phi -> Tuple.of_list eval_sync Phi := *)
+  (*   match Phi with  *)
+  (*     | nil => fun _ _ => tt *)
+  (*     | cons t Phi => fun Delta E =>  *)
+  (*                    match fst Delta with  *)
+  (*                      | None => (fst E, apply Phi (snd Delta) (snd E)) *)
+  (*                      | Some d => (d, apply Phi (snd Delta) (snd E)) *)
+  (*                    end *)
+  (*   end.  *)
   
 End Diff. 
 
@@ -265,36 +262,35 @@ Module Sem.
       (*     end.  *)
                                           
         
-      Definition Run (CMD : T unit) (st : eval_state Phi) := 
-        match CMD st (Diff.init Phi) with 
-          | None => None 
-          | Some Delta => Some (Diff.apply Phi (snd Delta) st)
-        end. 
+      (* Definition Run (CMD : T unit) (st : eval_state Phi) :=  *)
+      (*   match CMD st (Diff.init Phi) with  *)
+      (*     | None => None  *)
+      (*     | Some Delta => Some (Diff.apply Phi (snd Delta) st) *)
+      (*   end.  *)
 
-      Definition primitive_denote  args res (p : primitive Phi args res) (exprs : Tuple.of_list eval_type args) : T (eval_type res). 
+      Definition primitive_denote  args res (p : primitive Phi args res) (exprs : DList.T eval_type args) : T (eval_type res). 
       refine (match
-          p in (primitive _ l t) return (Tuple.of_list eval_type l -> T (eval_type t))
+          p in (primitive _ l t) return (DList.T eval_type l -> T (eval_type t))
         with
           | register_read t v =>
               fun _ (st : eval_state Phi)
-                  (Delta : Diff.T Phi) => Some (Tuple.get Phi (Treg t) v st, Delta)
+                  (Delta : Diff.T Phi) => Some (DList.get v st, Delta)
           | register_write t v =>
-              fun (exprs : Tuple.of_list eval_type [t]) (_ : eval_state Phi) (Delta : Diff.T Phi) =>
-                let (w, _) := exprs in                   
+              fun (exprs : DList.T eval_type [t]) (_ : eval_state Phi) (Delta : Diff.T Phi) =>
+                let w := DList.hd exprs in 
                   Some (tt, Diff.add Phi Delta (Treg t) v w)
           | regfile_read n t v  =>
-              fun (exprs : Tuple.of_list eval_type [ (Tint n)]) 
+              fun (exprs : DList.T eval_type [ (Tint n)]) 
                   (st : eval_state Phi) (Delta : Diff.T Phi) =>
-                let rf := Tuple.get Phi (Tregfile n t) v st in
-                let adr := fst exprs in
+                let rf := DList.get  v st in
+                let adr := DList.hd exprs in
                 let v := Regfile.get rf (adr) in Some (v, Delta)
           | regfile_write n t v =>
-              fun (exprs : Tuple.of_list eval_type [ (Tint n); t]) 
+              fun (exprs : DList.T eval_type [ (Tint n); t]) 
                   (st : eval_state Phi) (Delta : Diff.T Phi) =>
-                let rf := Tuple.get Phi (Tregfile n t) v st in
-                let rf := match exprs with 
-                              (adr, (w, _)) => Regfile.set rf adr w
-                          end
+                let rf := DList.get  v st in
+                let (adr, w) := (DList.hd exprs, DList.hd (DList.tl exprs)) in
+                let rf :=  Regfile.set rf adr w                         
                 in
                   Some (tt, Diff.add Phi Delta (Tregfile n t) v rf)
         end exprs). 
@@ -327,7 +323,7 @@ Module Sem.
                       | false => Dyn.Retry  Phi
                     end
               | Primitive args res p exprs => 
-                  Dyn.primitive_denote Phi args res p (DList.to_tuple eval_expr  exprs)
+                  Dyn.primitive_denote Phi args res p (DList.map eval_expr  exprs)
               (* | Try a =>  *)
               (*     let a := eval_action _ a in  *)
               (*       Dyn.Try Phi a                     *)
@@ -346,11 +342,11 @@ Module Sem.
   (*   intros. simpl. unfold Dyn.Try. rewrite H.  reflexivity. *)
   (* Qed.  *)
 
-  Definition eval_rule {Phi} (R : Action Phi Tunit) := 
-    fun st st' => match Sem.Dyn.Run _ (Sem.eval_action (R eval_type)) st  with
-                      | None => False
-                      | Some st'' => st' = st''
-       end. 
+  (* Definition eval_rule {Phi} (R : Action Phi Tunit) :=  *)
+  (*   fun st st' => match Sem.Dyn.Run _ (Sem.eval_action (R eval_type)) st  with *)
+  (*                     | None => False *)
+  (*                     | Some st'' => st' = st'' *)
+  (*      end.  *)
                      
                       
   Module FSM. 
@@ -366,88 +362,88 @@ Module Sem.
   | star_step : forall x y, R x y -> star R x y
   | star_trans : forall x y z, star R x y -> R y z -> star R x z. 
  
-  Definition eval_TRS (T : TRS) : FSM.T (eval_state (Phi T)) :=
-    let delta := List.fold_left (fun acc t => union (eval_rule t) acc) (rules T) (fun _ _  => False) in
-    FSM.mk_T _ (star delta). 
+  (* Definition eval_TRS (T : TRS) : FSM.T (eval_state (Phi T)) := *)
+  (*   let delta := List.fold_left (fun acc t => union (eval_rule t) acc) (rules T) (fun _ _  => False) in *)
+  (*   FSM.mk_T _ (star delta).  *)
 
 End Sem.           
 
-Section run. 
+(* Section run.  *)
 
-  Variable T : TRS. 
-  Notation rule := (Action (Phi T) Tunit). 
+(*   Variable T : TRS.  *)
+(*   Notation rule := (Action (Phi T) Tunit).  *)
 
-  Definition run_rule (R : rule) := 
-    fun st => Sem.Dyn.Run _ (Sem.eval_action (R eval_type)) st. 
+(*   Definition run_rule (R : rule) :=  *)
+(*     fun st => Sem.Dyn.Run _ (Sem.eval_action (R eval_type)) st.  *)
                         
-  Fixpoint first_rule (l : list rule) x :=
-    match l with 
-      | nil => Some x
-      | cons R q => 
-          match run_rule R x with 
-            | None => first_rule q x
-            | Some x => Some x 
-          end
-    end. 
+(*   Fixpoint first_rule (l : list rule) x := *)
+(*     match l with  *)
+(*       | nil => Some x *)
+(*       | cons R q =>  *)
+(*           match run_rule R x with  *)
+(*             | None => first_rule q x *)
+(*             | Some x => Some x  *)
+(*           end *)
+(*     end.  *)
   
-  Fixpoint iter_option {A} n (f : A -> option A) x :=
-    match n with 
-      | 0 => Some x
-      | S n => match f x with | None => Some x | Some x => iter_option n f x end 
-    end. 
+(*   Fixpoint iter_option {A} n (f : A -> option A) x := *)
+(*     match n with  *)
+(*       | 0 => Some x *)
+(*       | S n => match f x with | None => Some x | Some x => iter_option n f x end  *)
+(*     end.  *)
 
-  Fixpoint run_unfair n x :=
-    match n with 
-      | 0 => Some x
-    | S n => 
-        match first_rule (rules T) x with 
-          | None => Some x
-          | Some x => run_unfair n x
-        end
-  end. 
+(*   Fixpoint run_unfair n x := *)
+(*     match n with  *)
+(*       | 0 => Some x *)
+(*     | S n =>  *)
+(*         match first_rule (rules T) x with  *)
+(*           | None => Some x *)
+(*           | Some x => run_unfair n x *)
+(*         end *)
+(*   end.  *)
 
-End run. 
+(* End run.  *)
 
-Module Ops. 
-  Notation rule Phi := (Action Phi Tunit). 
+(* Module Ops.  *)
+(*   Notation rule Phi := (Action Phi Tunit).  *)
 
-  (** * A simple round-robin scheduler 
+(*   (** * A simple round-robin scheduler  *)
 
-      The simplest scheduler one could imagine _try_ to fire one rule
-      each cycle; but the rule may fail. This is a (weakly) fair
-      scheduler, that applies rules one by one in a given order, if
-      possible, and moving to the next rule if not. 
+(*       The simplest scheduler one could imagine _try_ to fire one rule *)
+(*       each cycle; but the rule may fail. This is a (weakly) fair *)
+(*       scheduler, that applies rules one by one in a given order, if *)
+(*       possible, and moving to the next rule if not.  *)
 
-  *)
-  Definition round_robin (Phi : state) (l : list (rule Phi)) : {Phi' : state & rule Phi'}. 
-  refine 
-    (
-      let n := List.length l in 
-      let c := Treg ( (Tfin n)) in 
-      let Phi' := (Phi ++ [c])%list  in _
-    ). 
-   exists Phi'. 
-   intros Var. 
-   Definition lift Var Phi Psi t : action Phi Var t -> action (Phi ++ Psi)%list Var t. Admitted. 
-   assert (v : var Phi' c ). clear. admit. 
-   (* refine ( *)
-   (*    let fold := fix fold v' n l := *)
-   (*        match l with  *)
-   (*          | nil => Return (#Ctt) *)
-   (*          | cons t q =>  *)
-   (*              let t := lift _ _ _ _ (t Var) in  *)
-   (*              OrElse _ _ _ ( _ ) (fold v' (S n) q) *)
-   (*        end *)
-   (*    in  *)
-   (*      DO v' <- read [: v ];   *)
-   (*      DO _ <- fold v' 0 l;  *)
-   (*      write [: v <- {< BI_next _ ; !v' >}   ] *)
-   (*  )%action.  *)
-   (* (* refine (TRY *) *)
-   (* (*           ( *) *)
-   (* (*             WHEN (!v' = # (Finite.repr n0 : constant0 (Tfin n)));  *) *)
-   (* (*             (TRY t0) *) *)
-   (* (*        ))%action.  *) *)
-   Abort. 
+(*   *) *)
+(*   Definition round_robin (Phi : state) (l : list (rule Phi)) : {Phi' : state & rule Phi'}.  *)
+(*   refine  *)
+(*     ( *)
+(*       let n := List.length l in  *)
+(*       let c := Treg ( (Tfin n)) in  *)
+(*       let Phi' := (Phi ++ [c])%list  in _ *)
+(*     ).  *)
+(*    exists Phi'.  *)
+(*    intros Var.  *)
+(*    Definition lift Var Phi Psi t : action Phi Var t -> action (Phi ++ Psi)%list Var t. Admitted.  *)
+(*    assert (v : var Phi' c ). clear. admit.  *)
+(*    (* refine ( *) *)
+(*    (*    let fold := fix fold v' n l := *) *)
+(*    (*        match l with  *) *)
+(*    (*          | nil => Return (#Ctt) *) *)
+(*    (*          | cons t q =>  *) *)
+(*    (*              let t := lift _ _ _ _ (t Var) in  *) *)
+(*    (*              OrElse _ _ _ ( _ ) (fold v' (S n) q) *) *)
+(*    (*        end *) *)
+(*    (*    in  *) *)
+(*    (*      DO v' <- read [: v ];   *) *)
+(*    (*      DO _ <- fold v' 0 l;  *) *)
+(*    (*      write [: v <- {< BI_next _ ; !v' >}   ] *) *)
+(*    (*  )%action.  *) *)
+(*    (* (* refine (TRY *) *) *)
+(*    (* (*           ( *) *) *)
+(*    (* (*             WHEN (!v' = # (Finite.repr n0 : constant0 (Tfin n)));  *) *) *)
+(*    (* (*             (TRY t0) *) *) *)
+(*    (* (*        ))%action.  *) *) *)
+(*    Abort.  *)
   
-End Ops.   
+(* End Ops.    *)

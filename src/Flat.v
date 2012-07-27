@@ -1,10 +1,10 @@
 Require Common Core Front RTL.
-
+Import Common. 
 Require Equality. 
 Section t. 
   Variable Phi : Core.state. 
   
-  Notation updates := (Common.Tuple.of_list (Common.comp option  Core.eval_sync) Phi). 
+  Notation updates := (DList.T (Common.comp option  Core.eval_sync) Phi). 
   
   Section defs. 
     Import Core Common. 
@@ -48,7 +48,7 @@ Section t.
     | effect_regfile_write : forall n t,  Var t -> Var (Tint n) -> Var Tbool -> 
                                      effect (Tregfile n t). 
     
-    Definition effects := Tuple.of_list (option ∘ effect) Phi. 
+    Definition effects := DList.T (option ∘ effect) Phi. 
     
     Definition block t := telescope (Var t * Var Tbool *  effects). 
     Notation "x :- e1 ; e2" := (telescope_bind  _ _  e1 (fun x => e2)) (right associativity, at level 80, e1 at next level).  
@@ -124,7 +124,7 @@ Section t.
     Proof. reflexivity. Qed. 
     
     Definition compile_effects (e : RTL.effects Phi Var)  : effects. 
-    unfold effects. refine  (Tuple.map _ Phi e).
+    unfold effects. refine  (DList.map _  e).
     intros a x.
     refine (match x with
               | None => None
@@ -166,9 +166,9 @@ Section t.
     refine ( 
         let fix eval_expr t (e : expr Core.eval_type t) {struct e} : Core.eval_type t:=
             match e with
-              | Eread t v => (Common.Tuple.get _ _ v st)
+              | Eread t v => (Common.DList.get v st)
               | Eread_rf n t v adr =>  
-                  let rf := Common.Tuple.get Phi (Core.Tregfile n t) v st in
+                  let rf := Common.DList.get  v st in
                     Common.Regfile.get rf (adr)                
 
               | Ebuiltin args res f exprs => 
@@ -183,7 +183,7 @@ Section t.
               | Etuple l exprs => 
                   Common.DList.to_tuple (fun _ X => X) exprs
               | Enth l t v e => 
-                  Common.Tuple.get l t v e
+                  Common.Tuple.get _ _ v e
               | Efst l t  e => 
                   Common.Tuple.fst e
               | Esnd l t  e => 
@@ -195,8 +195,8 @@ Section t.
     Definition eval_effects (e : effects Core.eval_type) (Delta : updates) : updates.  
     unfold effects in e. 
     
-    (* refine (Tuple.fold Phi _ e Delta).  *)
-    refine (Common.Tuple.map3 _ Phi e st Delta). 
+    (* refine (DList.fold Phi _ e Delta).  *)
+    refine (Common.DList.map3 _ Phi e st Delta). 
     Import Common Core.
     Definition eval_effect (a : Core.sync) :   
       (Common.comp option (effect Core.eval_type)) a ->
@@ -261,12 +261,17 @@ Section correctness.
                  RTL.eval_effects Phi st e Delta. 
   Proof. 
     induction Phi. simpl. auto. 
-    simpl; intros. destruct e. destruct st. destruct Delta. case_eq c; intros. 
-    dependent destruction e2. simpl. 
-    destruct c0.    f_equal. apply IHPhi. 
-    f_equal. auto. 
-    f_equal. auto. 
-    f_equal. auto. 
+    simpl; intros. unfold RTL.effects in e. repeat DList.inversion. 
+    case_eq c; intros; simpl; subst;
+    destruct x1.
+    dependent destruction e0. simpl. 
+    rewrite IHPhi; reflexivity.
+    simpl; f_equal; auto. 
+    simpl; f_equal; auto. 
+    simpl; f_equal; auto.
+    destruct e. simpl. reflexivity.
+    simpl. reflexivity. 
+    simpl. f_equal. auto. 
   Qed. 
   
   Hint Resolve compile_effects_correct. 
@@ -408,7 +413,7 @@ Section equiv.
                                   where "x ==e y" := (effect_equiv _ x y). 
  
   Definition effects_equiv : effects Phi U -> effects Phi V -> Prop := 
-    Common.Tuple.pointwise _ _ effect_equiv Phi. 
+    Common.DList.pointwise  effect_equiv Phi. 
     
   End inner_equiv. 
  
@@ -419,9 +424,9 @@ Section equiv.
   Inductive In t (x : U t) (y : V t) : Gamma -> Prop :=
   | In_ok : forall Gamma x' y', x' = x -> y' = y ->
               In t x y (cons t x' y' Gamma )
-  | In_skip : forall Gamma x' y', 
+  | In_skip : forall Gamma t' x' y', 
                 In t x y Gamma -> 
-                In t x y (cons t x' y' Gamma ). 
+                In t x y (cons t' x' y' Gamma ). 
 
   Definition R G := fun t x y => In t x y G.  
 
@@ -434,7 +439,7 @@ Section equiv.
                G |- telescope_end Phi U _ (v1, g1, e1) ==b telescope_end Phi V _ (v2,g2, e2 ) 
   | Eq_bind : forall G a (e1 : expr Phi U a) e2 (k1 : U a -> block Phi U t) k2,
                 expr_equiv (R G) _ e1 e2 -> 
-                (forall v1 v2, G |- v1 -- v2 -> cons _ v1 v2 G |- k1 v1 ==b k2 v2) ->
+                (forall v1 v2, (* G |- v1 -- v2 ->  *)cons _ v1 v2 G |- k1 v1 ==b k2 v2) ->
                 G |- telescope_bind Phi U _ a e1 k1 ==b telescope_bind Phi V _ a e2 k2                
                  where "G |- x ==b y" := (block_equiv _ G x y). 
 End equiv. 

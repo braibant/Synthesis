@@ -236,6 +236,6 @@ Definition eval_sync (s : sync) :=
     | Tregfile n t => Regfile.T n (eval_type t) 
   end. 
 
-Definition eval_state := Tuple.of_list eval_sync. 
+Definition eval_state := DList.T eval_sync. 
 
 (* Notation updates := (Common.Tuple.of_list (Common.comp option  Core.eval_sync) _).  *)

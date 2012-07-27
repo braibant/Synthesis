@@ -7,11 +7,36 @@ Definition bind {A B: Type} (f: option A) (g: A -> option B) : option B :=
     | None => None
   end.
 
+Remark bind_inversion:
+  forall (A B: Type) (f: option A) (g: A -> option B) (y: B),
+  bind f g = Some y ->
+  exists x, f = Some x /\ g x = Some y.
+Proof. 
+  intros; destruct f.  simpl in H.
+  exists a; auto. 
+  discriminate. 
+Qed. 
+
 Notation "'do' X <- A ; B" := (bind A (fun X => B) )
   (at level 200, X ident, A at level 100, B at level 200). 
 Notation "'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200). 
 
+Ltac invert_do H :=
+  match type of H with
+    | (Some _ = Some _) =>
+        inversion H; clear H; try subst
+    | (None = Some _) =>
+        discriminate
+    | (bind ?F ?G = Some ?X) => 
+        let x := fresh "x" in
+          let EQ1 := fresh "EQ" in
+            let EQ2 := fresh "EQ" in
+              destruct (bind_inversion _ _ F G _ H) as [x [EQ1 EQ2]];
+        clear H;
+        try (invert_do EQ2)
+  end. 
+  
 Axiom admit : forall {X} , X. 
 
 Definition ident := string. 
@@ -510,6 +535,13 @@ Module DList.
         | cons t q dt dq => Q t dt /\ Forall Q q dq
     end. 
   
+  Fixpoint init (el : forall t, P t) l : T l :=
+    match l with 
+      | List.nil => nil
+      | List.cons t q => cons _ _ (el t) (init el q)
+    end. 
+
+
 
   (** * Head and tail *)
   Arguments cons t q _ _%dlist. 
@@ -541,6 +573,12 @@ Module DList.
       | var_0  _ _ => fun e => hd _ _ e
       | var_S _ _ _ v => fun e => get _ _ v  (tl _ _ e)
       end. 
+
+  Fixpoint set l t (v : var l t) : P t ->  T l -> T l:=
+    match v  with 
+        | var_0 _ _ => fun x e => cons _ _  x (tl _ _ e)
+        | var_S _ _ _ v => fun x e => cons _ _  (hd _ _ e) (set _ _ v x (tl _ _ e))
+    end. 
 
   (** * Concatenation of T (append)  *)
   Definition app : forall (l1 l2 : list X), 
@@ -590,6 +628,8 @@ Arguments nil {X P}.
 Arguments cons {X P} {t q} _ _.  
 (* Arguments fold' {X P E} _ _ _.  *)
 Arguments app {X P l1 l2} _ _ . 
+Arguments get {X P l t} _ _%dlist.  
+Arguments set {X P l t} _ _ _%dlist.  
 
 Section ops. 
   Variable X : Type. 
@@ -677,6 +717,67 @@ Inductive pointwise {A} F G (R : forall a, F a -> G a -> Prop): forall (l : list
                      R t dt1 dt2 -> 
                      pointwise F G R q dq1 dq2 ->
                      pointwise F G R (t::q) (cons dt1 dq1) (cons dt2 dq2). 
+Arguments hd {X P t q} _%dlist.  
+Arguments tl {X P t q} _%dlist.  
+Section map3. 
+  Context {X : Type} {F F' F'': X -> Type}.
+  Variable (up : forall a,  F a -> F' a -> F'' a -> F'' a). 
+  Fixpoint map3 l : T F l -> T F' l -> T F'' l -> T F'' l :=
+    match l with 
+      | List.nil => fun _ _ x => x
+      | List.cons t q => fun xs ys zs => 
+                         let (x,xs) := (hd xs, tl xs) in 
+                         let (y,ys) := (hd ys, tl ys) in 
+                         let (z,zs) := (hd zs, tl zs) in 
+                           cons (up t x y z)  (map3 q xs ys zs)
+    end. 
+End map3. 
+
+Section map3o. 
+  Context {X : Type} {F F' F'': X -> Type}.
+  Variable (up : forall a,  F a -> F' a -> F'' a -> option (F'' a)). 
+  Fixpoint map3o l :  T F l ->  T F' l ->  T F'' l -> option (T F'' l) :=
+    match l with 
+        | List.nil => fun _ _ x => Some x
+        | List.cons t q => fun xs ys zs => 
+                         let (x,xs) := (hd xs, tl xs) in 
+                         let (y,ys) := (hd ys, tl ys) in 
+                         let (z,zs) := (hd zs, tl zs) in 
+                           do t <- up t x y z;
+                           do q <- map3o q xs ys zs;
+                           Some (cons t q) 
+    end. 
+End map3o. 
+
+Lemma inversion_dlist_cons {A F} : forall (t : A) q (dl : DList.T F (t :: q)), 
+                              exists hd tl, dl = (cons hd tl)%dlist. 
+Admitted. 
+
+Lemma inversion_dlist_nil {A} {F : A -> Type}  (dl : DList.T F []) :
+                              dl = (nil)%dlist. 
+Admitted. 
+
+Require Import Equality.
+Lemma inversion_pointwise {A F G} P (t : A) q dt dq dt' dq':
+  pointwise F G P (t :: q)%list (cons dt dq) (cons dt'  dq') ->
+  pointwise F G P q dq dq' /\ P t dt dt'. 
+Proof. 
+  intros H.  
+  inversion H;
+    repeat match goal with 
+               H : existT _ _ _ = existT _ _ _ |- _ => apply Eqdep.EqdepTheory.inj_pair2 in H
+           end; subst; auto. 
+Qed. 
+
+Ltac inversion :=
+  match goal with 
+    | H : DList.T _ (_ :: _) |- _ => 
+        destruct (inversion_dlist_cons _ _ H) as [? [? ?]]
+    | H : DList.T _ ([]) |- _ => 
+        pose proof (inversion_dlist_nil H)
+  end; subst. 
+
+
 End DList. 
 
 Notation "[ ]" := DList.nil : dlist_scope.
