@@ -70,19 +70,19 @@ End Ex1.
 *)
 Require ZArith. Open Scope Z_scope.
 Module  Ex2. 
-  Import Core. 
+  Require Import Core Front. 
   
   Section t. 
     Variable n : nat. 
-    Notation NUM := (Tlift (Tint n)). 
-    Notation VAL := (Tlift (Tbool)) (only parsing). 
+    Notation NUM := ( (Tint n)). 
+    Notation VAL := ( (Tbool)) (only parsing). 
     Definition Phi : state := (Treg VAL :: Treg NUM  :: Treg NUM :: nil)%list. 
     
     Notation c := (var_0 : var Phi (Treg VAL)).
     Notation r1 := (var_S (var_0) : var Phi (Treg NUM)).  
     Notation r2 := (var_S (var_S (var_0)) : var Phi (Treg NUM)).  
     Open Scope action_scope. 
-    Definition iterate : Action Phi Unit. intros V.
+    Definition iterate : Action Phi Tunit. intros V.
     refine (DO X <- read [: c]; 
             WHEN ( !X); 
             DO A <- read [: r1]; 
@@ -94,7 +94,7 @@ Module  Ex2.
            ). 
     Defined. 
     
-    Definition done : Action Phi Unit. intros V. 
+    Definition done : Action Phi Tunit. intros V. 
     refine (DO X <- read [: c]; 
             WHEN (!X); 
             DO A <- read [: r1]; 
