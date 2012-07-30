@@ -749,13 +749,19 @@ Section map3o.
     end. 
 End map3o. 
 
+Require Import Equality.
+
 Lemma inversion_dlist_cons {A F} : forall (t : A) q (dl : DList.T F (t :: q)), 
                               exists hd tl, dl = (cons hd tl)%dlist. 
-Admitted. 
+Proof. 
+  intros.  dependent destruction dl. eauto. 
+Qed. 
 
 Lemma inversion_dlist_nil {A} {F : A -> Type}  (dl : DList.T F []) :
                               dl = (nil)%dlist. 
-Admitted. 
+Proof. 
+  dependent destruction dl. reflexivity. 
+Qed. 
 
 Require Import Equality.
 Lemma inversion_pointwise {A F G} P (t : A) q dt dq dt' dq':
