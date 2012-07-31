@@ -160,6 +160,8 @@ Section t.
 
   Defined. 
 
+    
+    
   Definition sval_eqb : forall a b, sval a -> sval b -> bool.  
   refine (let fix eqb {a b} (va : sval a) (vb : sval b) : bool :=
               let fix pointwise  la lb (dla : DList.T sval la) (dlb : DList.T sval lb) : bool :=
@@ -177,7 +179,8 @@ Section t.
                 | SMux ta ca la ra, SMux tb cb lb rb => 
                     type_eqb ta tb && eqb ca cb && eqb la lb && eqb ra rb
                 | STuple la dla, STuple lb dlb => pointwise la lb dla dlb
-                | SBuiltin _ _ fa dla , SBuiltin _ _ fb dlb => 
+                | SBuiltin arga _ fa dla , SBuiltin argb _ fb dlb => 
+                    type_list_eqb arga argb &&
                     builtin_eqb fa fb && pointwise _ _ dla dlb
                 | _, _ => false
               end%bool in @eqb). 
@@ -455,7 +458,7 @@ Proof.
   intros. unfold eq_rect_r in H0. rewrite (UIP_refl _ _ (e eq_refl)) in H0.
   rewrite (UIP_refl _ _ (eq_sym eq_refl)) in H0. 
   rewrite <- eq_rect_eq in H0. 
-  clear - H0. admit. 
+  clear - H0. apply type_eq_correct in H0. subst; auto. 
   - repeat match goal with 
       | H : forall t, _ -> _ , H' : _ |- _ => apply H in H'; clear H; rewrite H'
   end. reflexivity.
@@ -464,7 +467,14 @@ Proof.
     repeat f_equal. 
     destruct H. auto. 
     destruct H. specialize (IHl _ H2 _ H1). clear - IHl. injection IHl; intros; t; auto. 
-Admitted. 
+  - pose proof (type_list_eqb_correct  _ _ H0); subst. 
+    clear H0. 
+    apply builtin_eqb_correct in H2; subst. 
+    f_equal. 
+    clear f. induction t. repeat DList.inversion. reflexivity. 
+    repeat DList.inversion. rewrite Bool.andb_true_iff in H1. destruct H1. f_equal. 
+    simpl in H. intuition.  apply IHt. simpl in H; intuition. auto. 
+Qed. 
 
 End protect00. 
 
@@ -738,7 +748,7 @@ Proof.
 Qed. 
 
 
-Theorem cse_correct Phi st t  Delta: 
+Lemma cse_telescope_correct Phi st t  Delta: 
      forall (b : block Phi eval_type t)
      (b' : block Phi V t)
      (G : Gamma eval_type V),
@@ -810,4 +820,29 @@ Proof.
     Grab Existential Variables. 
     apply st. 
 Qed. 
-Print Assumptions cse_correct.
+Print Assumptions cse_telescope_correct.
+
+Lemma Gamma_inv_empty : Gamma_inv (nil _ _ ) (empty eval_type). 
+Proof. 
+  constructor. 
+  intros. inversion H. 
+  intros. inversion H. 
+  intros. simpl in H. tauto.  
+Qed. 
+
+Theorem cse_correct Phi st t (b : Block Phi t) Delta : WF Phi t b -> 
+  eval_block Phi st t (b _) Delta = eval_block Phi st t (cse_block Phi eval_type t (b _)) Delta. 
+Proof. 
+  intros.  
+  apply (cse_telescope_correct _ _ t _ _ _ _ (H _ _)  _ Gamma_inv_empty). 
+Qed. 
+  
+
+Definition Compile Phi t (b : Block Phi t) : Block Phi t :=  
+  fun V => cse_block Phi V t (b _). 
+
+Theorem Compile_correct Phi t b (Hwf : WF Phi t b): forall st Delta,
+  Eval Phi st t (Compile Phi t b) Delta =  Eval Phi st t b Delta. 
+Proof. 
+  unfold Eval. intros. unfold Compile. symmetry. apply cse_correct. auto. 
+Qed. 

@@ -8,9 +8,53 @@ Record T n := mk { val :> Z ;
 Arguments val {n} _. 
 Arguments range {n} _. 
 
-Definition unsigned {n} (x : T n) : nat := Zabs_nat (val x).
+Definition unsigned {n} (x : T n) : Z := (val x).
+
+Lemma unsigned_inj n (u v : T n) :  unsigned u = unsigned v -> u = v.
+Proof.
+  intros.  unfold unsigned in H.  
+  destruct u as [u Hu]; destruct v as [v Hv]. 
+  simpl in *. destruct H.
+  Require Import ProofIrrelevance.
+  rewrite (proof_irrelevance _ Hu Hv). 
+  reflexivity.
+Qed.
+
 
 Open Scope Z_scope. 
+
+Definition eq {n} : T n -> T n -> bool := 
+  fun x y => 
+    (match val x ?= val y with Eq => true | _ => false end) .
+
+Lemma eq_correct {n} : forall x y : T n, eq x y = true -> x = y. 
+Proof. 
+  destruct x; destruct y. unfold eq; simpl.  
+  case_eq (val0 ?= val1); intros; simpl. 
+  apply Zcompare_Eq_eq in H. subst.  
+  apply unsigned_inj. simpl; auto. 
+  discriminate. 
+  discriminate. 
+Defined.
+
+
+Definition zlt x y := match x ?= y with Lt => true | _ => false end. 
+Lemma zlt_lt x y: Bool.reflect (x < y) (zlt x y).
+Proof. 
+  unfold zlt. 
+  assert( H:= Zcompare_spec x y).
+  revert H. 
+  case_eq (x ?= y); intros H Hs; constructor; inversion_clear Hs.
+  subst.  apply Zlt_irrefl. 
+  auto.
+  auto with zarith.
+Qed.
+
+Definition signed {n} (x : T n) : Z :=
+  if zlt (unsigned  x) [2^ (n - 1)]
+  then unsigned  x
+  else unsigned  x - [2^n ].
+
 
 Lemma mod_in_range n:
   forall x, 0 <= Zmod x [2^ n] < [2^ n] .
@@ -27,10 +71,5 @@ Definition repr n (x: Z)  : T n :=
 Definition add {n} : T n -> T n -> T n := fun x y => repr n (x + y ). 
 Definition minus {n} : T n -> T n -> T n := fun x y => repr n (x - y). 
 Definition mult {n} : T n -> T n -> T n := fun x y => repr n (x * y).  
-Definition eq {n} : T n -> T n -> bool := 
-  fun x y => 
-    (match val x ?= val y with Eq => true | _ => false end) .
 
-Definition lt {n} : T n -> T n -> bool :=
-  fun x y => 
-    (match val x ?= val y with Lt => true | _ => false end) .
+Definition lt {n} : T n -> T n -> bool := zlt. 

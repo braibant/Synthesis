@@ -74,6 +74,14 @@ refine (let fix fold a b {struct a}: bool :=
 Defined. 
 
 
+Fixpoint type_list_eqb (la lb : list type) : bool :=
+  match la,lb with 
+    | [], [] => true
+    | t :: q , t' :: q' => (type_eqb t t' && type_list_eqb q q' )%bool
+    | _ , _ => false
+  end%list. 
+
+
 Lemma nat_eqb_eq : forall x y, Nat.eqb x y = true -> x = y. 
 Proof. 
   induction x; destruct y; try reflexivity || simpl; try congruence.
@@ -91,6 +99,13 @@ Proof.
   discriminate. 
 Defined. 
 
+Lemma type_list_eqb_correct la lb : type_list_eqb la lb = true -> la = lb. 
+Proof. 
+    revert lb; induction la; destruct lb; simpl; try discriminate; intuition.
+     rewrite Bool.andb_true_iff in H. destruct H. rewrite (IHla lb); auto. 
+     rewrite (type_eqb_correct a t H). reflexivity. 
+Qed. 
+
 (** Operations on types *)
 Section type_ops. 
   
@@ -105,13 +120,21 @@ Section type_ops.
     match t with 
       | Tunit => fun _ _  => true
       | Tint n => @Word.eq n
-      | Tfin n => @Finite.eqb n
+      | Tfin n => fun _ _ => false
       | Tbool  => eqb_bool 
       (* | Tabstract _ t => Abstract.eqb t *)
       | Ttuple l => fun _ _ => false
     end. 
   
-  
+  Lemma type_eq_correct t x y : type_eq t x y = true -> x = y.
+  Proof. destruct t; simpl in *.
+    destruct x; destruct y; auto. 
+    destruct x; destruct y; auto. 
+    intros. apply Word.eq_correct; auto.  
+    discriminate. 
+    discriminate. 
+  Qed. 
+
   Definition ltb_bool a b :=
     match a, b with
       | false, true => true
@@ -159,7 +182,7 @@ Notation B := Tbool.
 Notation W n := (Tint n).
 
 Inductive builtin : list type -> type -> Type :=
-| BI_external :  forall (s : signature), builtin (Generics.args s) (Generics.res s)
+(* | BI_external :  forall (s : signature), builtin (Generics.args s) (Generics.res s) *)
 | BI_andb : builtin (B :: B :: nil)%list  B
 | BI_orb  : builtin (B :: B :: nil)%list  B
 | BI_xorb : builtin (B :: B :: nil)%list  B
@@ -176,6 +199,27 @@ Inductive builtin : list type -> type -> Type :=
 
 | BI_next : forall n, builtin (Tfin (S n) :: nil) (Tfin (S n)). 
 
+Module Builtin. 
+  Inductive t : Type :=
+  |andb | orb | xorb | negb | eq | lt | mux | plus | minus | next. 
+  
+  Scheme Equality for t. 
+
+  Definition forget {l r} (b: builtin l r) : t :=
+    match b with
+        | BI_andb => andb
+      | BI_orb => orb
+      | BI_xorb => xorb
+      | BI_negb => negb
+      | BI_eq t => eq
+      | BI_lt t => lt 
+      | BI_mux t => mux 
+      | BI_plus n => plus
+      | BI_minus n => minus
+      | BI_next n => next
+    end. 
+End Builtin. 
+
 Definition builtin_eqb {arg res arg' res'} (b : builtin arg res) (b': builtin arg' res') :=
   match b,b' with
     | BI_andb, BI_andb => true
@@ -190,7 +234,18 @@ Definition builtin_eqb {arg res arg' res'} (b : builtin arg res) (b': builtin ar
     | BI_next n, BI_next m => Nat.eqb n m
     | _ , _ => false
   end. 
-                               
+
+Lemma builtin_eqb_correct l t (b : builtin l t) (b' : builtin l t) :
+  builtin_eqb b b' = true -> b = b'. 
+Proof.
+  intros H. assert (Builtin.forget b = Builtin.forget b'). 
+  revert H. destruct b; simpl; try discriminate; destruct b'; simpl; try discriminate; try reflexivity.  
+  clear H.
+  Import Equality.
+  destruct b;
+  dependent destruction b'; simpl in *; try discriminate || reflexivity.  
+Qed. 
+
 
 (* applies a ternary function to three arguments *)
 Definition tri_op {a b c d } (f : eval_type a -> eval_type b -> eval_type c -> eval_type d) 
@@ -211,7 +266,7 @@ Definition un_op {a b} (f : eval_type a -> eval_type b)
 Definition builtin_denotation (dom : list type) ran (f : builtin dom ran) : 
   eval_type_list dom -> eval_type ran :=
   match f with
-    | BI_external s => Generics.value s
+    (* | BI_external s => Generics.value s *)
     | BI_andb => @bin_op B B B andb
     | BI_orb =>  @bin_op B B B orb
     | BI_xorb => @bin_op B B B xorb

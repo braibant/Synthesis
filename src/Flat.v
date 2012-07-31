@@ -357,7 +357,7 @@ Section correctness.
     rewrite (compile_expr_correct Phi st arg e) . reflexivity.  
   Qed. 
 End correctness. 
-  
+
 
 Section equiv. 
   Import Core. 
@@ -443,3 +443,16 @@ Section equiv.
                 G |- telescope_bind Phi U _ a e1 k1 ==b telescope_bind Phi V _ a e2 k2                
                  where "G |- x ==b y" := (block_equiv _ G x y). 
 End equiv. 
+
+Definition Block Phi t := forall V, block Phi V t. 
+Definition WF Phi t (b : Block Phi t) := forall U V, block_equiv U V Phi t (nil _ _) (b _) (b _). 
+Definition Compile Phi t (B : RTL.Block Phi t) : Block Phi t :=
+  fun V => compile _ _ _ (B _).  
+Definition Eval Phi st t (B : Block Phi t) Delta :=
+  eval_block Phi st t (B _) Delta. 
+
+Theorem Compile_correct Phi t b : forall st Delta,
+  Eval Phi st t (Compile Phi t b) Delta =  RTL.Eval Phi st t b Delta. 
+Proof. 
+  unfold Eval, Compile. intros. apply compile_correct.
+Qed. 

@@ -374,7 +374,7 @@ Section t.
     Notation C := (compile_inner eval_type tt). 
     Lemma eval_andb_true x y : (eval_expr Tbool (andb eval_type x y)) = (eval_expr Tbool x && eval_expr Tbool y)%bool.
     Proof. 
-      Require Import Equality Bool. 
+      Import Equality Bool. 
       
       dependent destruction x; dependent destruction y; simpl;
       repeat match goal with 
@@ -564,12 +564,12 @@ Section correctness2.
   Ltac v := match goal with 
                 |- context [match ?X with  | ( _ , _  )  => _ end ] => destruct X 
             end. 
-
-              Ltac d := match goal with 
-                          | H : context [match ?X with | _ => _ end] |- _ => dependent destruction X
-                          |  |- context [match ?X with | _ => _ end] => case_eq  X; intros; subst; simpl
-                                                                                              
-              end. 
+  Import Equality. 
+  Ltac d := match goal with 
+              | H : context [match ?X with | _ => _ end] |- _ => dependent destruction X
+              |  |- context [match ?X with | _ => _ end] => case_eq  X; intros; subst; simpl
+                                                                                      
+            end. 
 
   Lemma rew_1 Phi st Delta t (v : var Phi t ) x e : 
     eval_effects Phi st (DList.set v (Some x) e) Delta =
@@ -829,4 +829,18 @@ repeat d; repeat f_equal; dependent destruction e0; simpl in H'; inversion H'; s
   
 End correctness2. 
 
+Definition Block Phi t := forall V,  block Phi V t. 
+Definition Compile Phi t (A : forall V, action Phi V t) : Block Phi t := 
+  fun V =>
+    nblock_to_block Phi V (compile Phi V t (A V)):block Phi V t. 
+Definition Eval Phi st t (B : Block Phi t) Delta :=
+  eval_block Phi st t (B _) Delta. 
 
+
+Theorem Compile_correct Phi t A : forall st Delta,
+  Eval Phi st t (Compile Phi t A) Delta =  Front.Eval Phi st t A Delta. 
+Proof. 
+  unfold Compile, Eval, Front.Eval. intros. 
+  rewrite nblock_compile_correct. 
+  simpl.  rewrite CPS_compile_correct. reflexivity.   
+Qed. 

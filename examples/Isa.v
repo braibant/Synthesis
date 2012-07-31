@@ -291,7 +291,6 @@ End Ex2.
 
 Require Compiler. 
 
-Check Compiler.compile _ _ (Ex2.Code 4). 
 
 Notation "[ e : t ]" := (existT _ t e). 
 Notation "[ 'read' v : t ]" := (existT _ _ (Flat.Eread _ _ t v)).
@@ -307,14 +306,10 @@ Notation nth v e := (Flat.Enth _ _ _ _ v e).
 Notation "[: x < 2^ n ]" := (Word.mk n x _). 
 
 Eval vm_compute in 
-     let x := Compiler.fo_compile _ _ (Ex2.Code 4) in 
-       List.length (FirstOrder.bindings _ _ x). 
-
-Eval vm_compute in 
-     let x := Compiler.fo_cse_compile _ _ (Ex2.Code 4) in 
+     let x := Compiler.Fo_compile _ _ (Ex2.Code 4) in 
        List.length (FirstOrder.bindings _ _ x). 
 
 Eval vm_compute in
-      Compiler.fo_cse_compile _ _ (Ex2.Code 4).
+      Compiler.Fo_compile _ _ (Ex2.Code 4).
 
 

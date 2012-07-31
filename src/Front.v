@@ -368,6 +368,10 @@ Module Sem.
 
 End Sem.           
 
+Definition Eval Phi (st: eval_state Phi)  t (A : Action Phi t ) Delta := 
+@Sem.eval_action Phi t (A _) st Delta. 
+
+
 (* Section run.  *)
 
 (*   Variable T : TRS.  *)
