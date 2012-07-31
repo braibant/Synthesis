@@ -1,5 +1,5 @@
 ROOT    := ..
-MODULES := Isa MOD
+MODULES := Isa Mult MOD
 
 VS      := $(MODULES:%=%.v)
 

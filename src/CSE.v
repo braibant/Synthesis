@@ -1,4 +1,5 @@
 Require Common Core Flat.
+Require Import Eqdep. 
 
 (* Solutions for common sub expressions elimination environments:
 
@@ -136,7 +137,9 @@ Section t.
         | Ebuiltin args res f x => let v := DList.map (fun x dx => fst dx) x in 
                                     let sv  := DList.map (fun x dx => snd dx) x in                                     (Ebuiltin _ _ args res f v ,  Some (SBuiltin f sv) ) 
         | Econstant ty c =>  (Econstant _ _ _ c, Some (SConstant _ c)) 
-        | Emux t c l r =>   (Emux _ _ _ (fst c) (fst l) (fst r), !!) 
+        | Emux t c l r =>   (Emux _ _ _ (fst c) (fst l) (fst r), 
+                            Some (SMux _ (snd c) (snd l) (snd r) )
+                           ) 
         | Efst l t x => (Efst _ _ _ _ (fst x), 
                         match snd x in sval t' return fstT t' with
                           | @STuple (_ :: _) dl => Some  (DList.hd  dl)
@@ -264,8 +267,6 @@ Import Flat.
 
 Notation V := (fun t => (eval_type t * sval t))%type.  
 
-Require Import Eqdep. 
-
 
 Ltac t :=  subst; repeat match goal with 
                        H : existT _ _ _ = existT _ _ _ |- _ => 
@@ -369,8 +370,11 @@ Proof.
     apply DList.inversion_pointwise in H3. eapply IHargs.
     destruct H3. apply H3. apply H4.  
     apply DList.inversion_pointwise in H3. 
-    destruct H3. apply H1 in H4. congruence. 
+    destruct H3. apply H1 in H4. congruence.
+  - intros. simpl.
 
+    rewrite (H1 _ _ _ H4).     rewrite (H1 _ _ _ H5). pose proof (H1 _ _ _ H2). 
+    simpl in H3. rewrite H3. simpl. reflexivity.     
   - intros.  simpl. 
     destruct dl2 as [hd tl].  simpl. dependent destruction tl; try tauto.
     specialize (H0 _ _ _ H3). 

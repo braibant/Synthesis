@@ -1,5 +1,6 @@
 Require Export ZArith. 
-Require Import Eqdep. 
+Require Import Eqdep_dec. 
+Require Import FunctionalExtensionality. 
 
 Notation "[2^ n ]" := (two_power_nat n). 
 (** Implementation of parametric size machine words.  *)
@@ -14,12 +15,14 @@ Definition unsigned {n} (x : T n) : Z := (val x).
 Lemma proof_irrelevance_Zlt n m : forall (p q : Z.lt n m), p = q.
 Proof. 
   unfold Z.lt. intros. 
-  apply UIP.   
+  apply UIP_dec.   
+  decide equality. 
 Qed. 
 
 Lemma proof_irrelevance_Zle n m : forall (p q : Z.le n m), p = q.
-Proof. 
-Admitted. 
+Proof.
+  unfold Z.le. intros. apply functional_extensionality_dep; intro x; contradict x; trivial.
+Qed.
 
 Lemma unsigned_inj n (u v : T n) :  unsigned u = unsigned v -> u = v.
 Proof.

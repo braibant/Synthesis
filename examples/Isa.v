@@ -290,20 +290,7 @@ Module Ex2.
 End Ex2. 
 
 Require Compiler. 
-
-
-Notation "[ e : t ]" := (existT _ t e). 
-Notation "[ 'read' v : t ]" := (existT _ _ (Flat.Eread _ _ t v)).
-Notation "[ 'read' v @ a : t ]" := (existT _ _ (Flat.Eread_rf _ _ _ t  v a)).
-Notation W n:= (Core.Tint n). 
-Notation "< >" := (Core.Ttuple nil). 
-Notation "< a ; .. ; b >" := (Core.Ttuple (a :: .. (b :: []) ..))%list. 
-Notation "# a " := (FirstOrder.box _ a) (no associativity, at level 71). 
-Notation "f @@ args" := (Flat.Ebuiltin _ _ _ _ f args) (no associativity, at level 71). 
-Notation "$ x" := (Flat.Econstant _ _ _ x) (no associativity, at level 71). 
-Notation nth v e := (Flat.Enth _ _ _ _ v e). 
-
-Notation "[: x < 2^ n ]" := (Word.mk n x _). 
+Require Import FirstOrder Core. 
 
 Eval vm_compute in 
      let x := Compiler.Fo_compile _ _ (Ex2.Code 4) in 

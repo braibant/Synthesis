@@ -1,5 +1,5 @@
 Require Export String. 
-Require Vector. 
+(* Require Vector.  *)
 
 Definition bind {A B: Type} (f: option A) (g: A -> option B) : option B :=
   match f with

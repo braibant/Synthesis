@@ -120,3 +120,16 @@ Section t.
     Defined. 
 End defs.
 End t.  
+
+Notation "[ e : t ]" := (existT _ t e). 
+Notation "[ 'read' v : t ]" := (existT _ _ (Flat.Eread _ _ t v)).
+Notation "[ 'read' v @ a : t ]" := (existT _ _ (Flat.Eread_rf _ _ _ t  v a)).
+Notation W n:= (Core.Tint n). 
+Notation "< >" := (Core.Ttuple nil). 
+Notation "< a ; .. ; b >" := (Core.Ttuple (a :: .. (b :: nil) ..))%list. 
+Notation "# a " := (box _ a) (no associativity, at level 71). 
+Notation "f @@ args" := (Flat.Ebuiltin _ _ _ _ f args) (no associativity, at level 71). 
+Notation "$ x" := (Flat.Econstant _ _ _ x) (no associativity, at level 71). 
+Notation nth v e := (Flat.Enth _ _ _ _ v e). 
+
+Notation "[: x < 2^ n ]" := (Word.mk n x _). 
