@@ -10,6 +10,14 @@ Require Import Eqdep.
 
 - do not use lists (but loose some sharing)
 
+ Todo 
+
+- mux (x,a,a) should be transformed in a. This is not possible right
+ now, since a is a variable, and it is not possible to return just a
+ variable
+
+- it should be possible to share common reads. 
+
 *)
 Import Common Core. 
 
@@ -127,44 +135,6 @@ Section t.
   Import Flat. 
   Notation "!!" := (None). 
 
-  
-  Definition cse_expr t (e : expr Phi V t) : expr Phi Var t * option (sval t). 
-  refine (
-      match e  with
-        (* | Eread t v => (Eread _ _ t v, Some (SRead t v))  *)
-        | Eread t v => (Eread _ _ t v, !!)
-        | Eread_rf n t v adr =>   (Eread_rf _ _ _  t v (fst adr), !! )
-        | Ebuiltin args res f x => let v := DList.map (fun x dx => fst dx) x in 
-                                    let sv  := DList.map (fun x dx => snd dx) x in                                     (Ebuiltin _ _ args res f v ,  Some (SBuiltin f sv) ) 
-        | Econstant ty c =>  (Econstant _ _ _ c, Some (SConstant _ c)) 
-        | Emux t c l r =>   (Emux _ _ _ (fst c) (fst l) (fst r), 
-                            Some (SMux _ (snd c) (snd l) (snd r) )
-                           ) 
-        | Efst l t x => (Efst _ _ _ _ (fst x), 
-                        match snd x in sval t' return fstT t' with
-                          | @STuple (_ :: _) dl => Some  (DList.hd  dl)
-                          | _ => !!
-                        end)
-        | Esnd l t x => (Esnd _ _ _ _ (fst x), 
-                        match snd x in sval t' return sndT t' with
-                          | @STuple (t::q) dl => Some  (@STuple q (DList.tl  dl))
-                          | _ => !!
-                        end)
-        | Enth l t m x => (Enth _ _ _ _ m (fst x), 
-                          match snd x in sval t' return nthT  t' t 
-                          with
-                            | @STuple l dl => fun m => Some (DList.get  m dl)
-                            | _ => fun _ => !!
-                          end m) 
-        | Etuple l exprs => let x := DList.map (fun x dx => fst dx) exprs in 
-                            let y := DList.map (fun x dx => snd dx) exprs in 
-                             (Etuple _  _ l x, Some (STuple  y))
-      end). 
-
-  Defined. 
-
-    
-    
   Definition sval_eqb : forall a b, sval a -> sval b -> bool.  
   refine (let fix eqb {a b} (va : sval a) (vb : sval b) : bool :=
               let fix pointwise  la lb (dla : DList.T sval la) (dlb : DList.T sval lb) : bool :=
@@ -192,6 +162,46 @@ Section t.
   apply (type_eq tb ca cb). 
   exact (fun _ => false). 
   Defined. 
+  
+  
+  Definition cse_expr t (e : expr Phi V t) : expr Phi Var t * option (sval t). 
+  refine (
+      match e  with
+        (* | Eread t v => (Eread _ _ t v, Some (SRead t v))  *)
+        | Eread t v => (Eread _ _ t v, !!)
+        | Eread_rf n t v adr =>   (Eread_rf _ _ _  t v (fst adr), !! )
+        | Ebuiltin args res f x => let v := DList.map (fun x dx => fst dx) x in 
+                                    let sv  := DList.map (fun x dx => snd dx) x in                                     (Ebuiltin _ _ args res f v ,  Some (SBuiltin f sv) ) 
+        | Econstant ty c =>  (Econstant _ _ _ c, Some (SConstant _ c)) 
+        | Emux t c l r =>  
+            (Emux _ _ _ (fst c) (fst l) (fst r), 
+             Some (SMux _ (snd c) (snd l) (snd r) )
+            ) 
+        | Efst l t x => (Efst _ _ _ _ (fst x), 
+                        match snd x in sval t' return fstT t' with
+                          | @STuple (_ :: _) dl => Some  (DList.hd  dl)
+                          | _ => !!
+                        end)
+        | Esnd l t x => (Esnd _ _ _ _ (fst x), 
+                        match snd x in sval t' return sndT t' with
+                          | @STuple (t::q) dl => Some  (@STuple q (DList.tl  dl))
+                          | _ => !!
+                        end)
+        | Enth l t m x => (Enth _ _ _ _ m (fst x), 
+                          match snd x in sval t' return nthT  t' t 
+                          with
+                            | @STuple l dl => fun m => Some (DList.get  m dl)
+                            | _ => fun _ => !!
+                          end m) 
+        | Etuple l exprs => let x := DList.map (fun x dx => fst dx) exprs in 
+                            let y := DList.map (fun x dx => snd dx) exprs in 
+                             (Etuple _  _ l x, Some (STuple  y))
+      end). 
+
+  Defined. 
+
+    
+    
   
   Definition Env := list ({t : type & (sval t * Var t)%type}). 
 

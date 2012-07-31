@@ -85,7 +85,7 @@ Definition repr n (x: Z)  : T n :=
 
 
 Definition add {n} : T n -> T n -> T n := fun x y => repr n (x + y ). 
-Definition minus {n} : T n -> T n -> T n := fun x y => repr n (x - y). 
-Definition mult {n} : T n -> T n -> T n := fun x y => repr n (x * y).  
+Definition sub {n} : T n -> T n -> T n := fun x y => repr n (x - y). 
+Definition mul {n} : T n -> T n -> T n := fun x y => repr n (x * y).  
 
 Definition lt {n} : T n -> T n -> bool := zlt. 

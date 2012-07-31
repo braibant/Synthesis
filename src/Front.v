@@ -210,15 +210,15 @@ Module Diff.
   
   Definition init (Phi : state ): T Phi := DList.init _ _ (fun _ => None) Phi. 
   
-  (* Fixpoint apply (Phi : state) : T Phi -> Tuple.of_list eval_sync Phi -> Tuple.of_list eval_sync Phi := *)
-  (*   match Phi with  *)
-  (*     | nil => fun _ _ => tt *)
-  (*     | cons t Phi => fun Delta E =>  *)
-  (*                    match fst Delta with  *)
-  (*                      | None => (fst E, apply Phi (snd Delta) (snd E)) *)
-  (*                      | Some d => (d, apply Phi (snd Delta) (snd E)) *)
-  (*                    end *)
-  (*   end.  *)
+  Fixpoint apply (Phi : state) : T Phi -> DList.T eval_sync Phi -> DList.T eval_sync Phi :=
+    match Phi with
+      | nil => fun _ _ => []
+      | cons t Phi => fun Delta E =>
+                     match DList.hd Delta with
+                       | None => (DList.hd E :: apply Phi (DList.tl Delta) (DList.tl E))
+                       | Some d => d :: apply Phi (DList.tl Delta) (DList.tl E)
+                     end
+    end%dlist.
   
 End Diff. 
 
@@ -262,12 +262,6 @@ Module Sem.
       (*     end.  *)
                                           
         
-      (* Definition Run (CMD : T unit) (st : eval_state Phi) :=  *)
-      (*   match CMD st (Diff.init Phi) with  *)
-      (*     | None => None  *)
-      (*     | Some Delta => Some (Diff.apply Phi (snd Delta) st) *)
-      (*   end.  *)
-
       Definition primitive_denote  args res (p : primitive Phi args res) (exprs : DList.T eval_type args) : T (eval_type res). 
       refine (match
           p in (primitive _ l t) return (DList.T eval_type l -> T (eval_type t))
@@ -334,42 +328,18 @@ Module Sem.
     Defined.
   End t. 
   Arguments eval_action {Phi} {t} _%action _ _.  
-  
-  (* Lemma sanity Phi a (st : eval_state Phi) Delta x:  *)
-  (*   eval_action  a st Delta = Some (x, Delta) ->  *)
-  (*   eval_action (Try a) st Delta = Some (x, Delta). *)
-  (* Proof.  *)
-  (*   intros. simpl. unfold Dyn.Try. rewrite H.  reflexivity. *)
-  (* Qed.  *)
-
-  (* Definition eval_rule {Phi} (R : Action Phi Tunit) :=  *)
-  (*   fun st st' => match Sem.Dyn.Run _ (Sem.eval_action (R eval_type)) st  with *)
-  (*                     | None => False *)
-  (*                     | Some st'' => st' = st'' *)
-  (*      end.  *)
-                     
-                      
-  Module FSM. 
-
-    Record T (state : Type):= mk_T
-      {
-        delta : relation state
-      }.
-
-  End FSM.
-
-  Inductive star {A} (R : relation A) : relation A :=
-  | star_step : forall x y, R x y -> star R x y
-  | star_trans : forall x y z, star R x y -> R y z -> star R x z. 
- 
-  (* Definition eval_TRS (T : TRS) : FSM.T (eval_state (Phi T)) := *)
-  (*   let delta := List.fold_left (fun acc t => union (eval_rule t) acc) (rules T) (fun _ _  => False) in *)
-  (*   FSM.mk_T _ (star delta).  *)
 
 End Sem.           
 
 Definition Eval Phi (st: eval_state Phi)  t (A : Action Phi t ) Delta := 
 @Sem.eval_action Phi t (A _) st Delta. 
+
+Definition Next Phi st (A : Action Phi Tunit) := 
+  let Delta := Eval Phi st _ A (Diff.init Phi) in 
+    match Delta with 
+      | None => st
+      | Some Delta => Diff.apply Phi (snd Delta) st
+    end. 
 
 
 (* Section run.  *)
@@ -451,3 +421,5 @@ Definition Eval Phi (st: eval_state Phi)  t (A : Action Phi t ) Delta :=
 (*    Abort.  *)
   
 (* End Ops.    *)
+
+Locate Run. 

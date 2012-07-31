@@ -275,7 +275,7 @@ Definition builtin_denotation (dom : list type) ran (f : builtin dom ran) :
     | BI_lt t => @bin_op t t B (type_lt t)
     | BI_mux t => @tri_op B t t t (fun b x y => if b then x else y) 
     | BI_plus n => @bin_op (W n) (W n) (W n) (@Word.add n)
-    | BI_minus n => @bin_op (W n) (W n) (W n) (@Word.minus n)
+    | BI_minus n => @bin_op (W n) (W n) (W n) (@Word.sub n)
     | BI_next n => @un_op (Tfin (S n)) (Tfin (S n)) (@Finite.next n)
   end. 
 
