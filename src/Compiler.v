@@ -9,6 +9,7 @@ Definition Compile Phi t  (a : forall Var, Front.action Phi Var t) : Flat.Block 
 
 Lemma Compile_correct (Phi : Core.state) t a :
   let block := Compile Phi t a in 
+    Flat.WF Phi t (Flat.Compile _ _(RTL.Compile _ _ a)) -> 
   forall st Delta, 
     Flat.Eval Phi st t block Delta =
     Front.Eval Phi st t a Delta. 
@@ -18,7 +19,7 @@ Proof.
   rewrite Flat.Compile_correct. 
   rewrite RTL.Compile_correct. 
   reflexivity. 
-  admit. 
+  apply H. 
 Qed. 
 
 Print Assumptions Compile_correct. 

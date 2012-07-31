@@ -456,3 +456,63 @@ Theorem Compile_correct Phi t b : forall st Delta,
 Proof. 
   unfold Eval, Compile. intros. apply compile_correct.
 Qed. 
+(*
+Require Import Eqdep. 
+Ltac t :=  subst; repeat match goal with 
+                       H : existT _ _ _ = existT _ _ _ |- _ => 
+                         apply Eqdep.EqdepTheory.inj_pair2 in H
+                   |   H : context [eq_rect ?t _ ?x ?t ?eq_refl] |- _ => 
+                         rewrite <- eq_rect_eq in H
+                   |   H : context [eq_rect ?t _ ?x ?t ?H'] |- _ => 
+                         rewrite (UIP_refl _ _ H') in H;
+                         rewrite <- eq_rect_eq in H
+                   |   H : existT _ ?t1 ?x1 = existT _ ?t2 ?x2 |- _ => 
+                         let H' := fresh "H'" in 
+                           apply eq_sigT_sig_eq in H; destruct H as [H H']; subst
+                         end; subst.
+
+Theorem Compile_wf Phi t b : RTL.WF Phi t b -> WF Phi t (Compile Phi t b). 
+Proof. 
+  unfold RTL.WF, WF. 
+  intros. specialize (H U V).
+  unfold Compile.
+  Record rel U V G G' :=
+    {
+      rel_1 :  (forall t v1 v2, RTL.In U V t v1 v2 G -> In U V t v1 v2 G')
+    }. 
+  Hint Resolve rel_1. 
+  Lemma compile_effects_wf Phi U V G  : 
+    forall e1 e2,
+      RTL.effects_equiv U V Phi (fun t x y => RTL.In U V t x y G) e1 e2 ->
+      forall G', 
+        rel U V G G' ->
+        effects_equiv U V Phi (fun t x y => In U V t x y G') 
+                      (compile_effects Phi U e1) (compile_effects Phi V e2). 
+  Proof. 
+  Admitted.
+  Hint Resolve compile_effects_wf.
+  Hint Unfold R. 
+  Lemma compile_wf Phi U V G : forall  t b1 b2, 
+                                 RTL.block_equiv U V Phi t G b1 b2 ->
+                                 forall G',
+                                   rel U V G G' ->                                  
+                                 block_equiv U V Phi t G' (compile Phi U t b1) (compile Phi V t b2). 
+  Proof. 
+    induction 1; simpl;  unfold RTL.R, R in *. 
+    
+    - intros. inversion H0; t; simpl.
+      constructor; eauto. eapply compile_effects_wf; eauto. 
+      repeat rewrite foo. 
+      unfold R. 
+  
+    simpl. 
+    simpl. 
+    
+  inversion H. simpl. inversion H4;t; simpl.
+  
+  constructor; auto. 
+
+  revert H. Import Equality. dependent induction b. induction H.
+  
+  simpl. 
+ *)

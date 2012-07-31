@@ -1,4 +1,5 @@
 Require Export ZArith. 
+Require Import Eqdep. 
 
 Notation "[2^ n ]" := (two_power_nat n). 
 (** Implementation of parametric size machine words.  *)
@@ -10,16 +11,28 @@ Arguments range {n} _.
 
 Definition unsigned {n} (x : T n) : Z := (val x).
 
+Lemma proof_irrelevance_Zlt n m : forall (p q : Z.lt n m), p = q.
+Proof. 
+  unfold Z.lt. intros. 
+  apply UIP.   
+Qed. 
+
+Lemma proof_irrelevance_Zle n m : forall (p q : Z.le n m), p = q.
+Proof. 
+Admitted. 
+
 Lemma unsigned_inj n (u v : T n) :  unsigned u = unsigned v -> u = v.
 Proof.
   intros.  unfold unsigned in H.  
   destruct u as [u Hu]; destruct v as [v Hv]. 
   simpl in *. destruct H.
-  Require Import ProofIrrelevance.
-  rewrite (proof_irrelevance _ Hu Hv). 
+  destruct Hu as [Hu1 Hu2]. 
+  destruct Hv as [Hv1 Hv2].
+  
+  assert (Hu1 = Hv1). apply proof_irrelevance_Zle. subst. 
+  assert (Hu2 = Hv2). apply proof_irrelevance_Zlt. subst. 
   reflexivity.
 Qed.
-
 
 Open Scope Z_scope. 
 

@@ -844,3 +844,96 @@ Proof.
   rewrite nblock_compile_correct. 
   simpl.  rewrite CPS_compile_correct. reflexivity.   
 Qed. 
+
+
+Section equiv. 
+  Import Core. 
+  Variable U V : type -> Type. 
+  Variable Phi : state. 
+
+  Reserved Notation "x == y" (at level 70, no associativity). 
+  Reserved Notation "x ==e y" (at level 70, no associativity). 
+  
+  Section inner_equiv. 
+  Variable R : forall t, U t -> V t -> Prop. 
+  Notation "x -- y" := (R _ x y) (at level 70, no associativity). 
+    
+  Inductive expr_equiv : forall t,  expr U t -> expr  V t -> Prop :=
+  | Eq_var : forall  t (v1 : U t) v2, v1 -- v2 -> Evar v1 == Evar v2
+  | Eq_builtin : forall args res (f : builtin args res) dl1 dl2, 
+                   Common.DList.pointwise expr_equiv args dl1 dl2 ->
+                   Ebuiltin  f dl1 == Ebuiltin  f dl2
+  | Eq_constant : forall ty (c : constant ty), Econstant c == Econstant c
+  | Eq_mux : forall t c1 c2 l1 l2 r1 r2, 
+               c1 == c2 -> l1 == l2 -> r1 == r2 -> 
+               Emux  U t c1 l1 r1 ==  Emux  V t c2 l2 r2
+                    
+  | Eq_fst : forall (l : list type) (t : type) dl1 dl2, 
+               dl1 == dl2 -> 
+               Efst  U l t dl1 == Efst  V l t dl2
+
+  | Eq_snd : forall (l : list type) (t : type) dl1 dl2, 
+               dl1 == dl2 -> 
+               Esnd  U l t dl1 == Esnd  V l t dl2
+
+  | Eq_nth : forall (l : list type) (t : type) (v : Common.var l t)  dl1 dl2, 
+               dl1 == dl2 -> 
+               Enth v dl1 == Enth v dl2
+
+  | Eq_tuple : forall (l : list type) dl1 dl2, 
+                 Common.DList.pointwise expr_equiv l dl1 dl2 ->
+               Etuple  U l dl1 == Etuple  V l dl2
+                            where "x == y" := (expr_equiv _ x y). 
+  
+  Inductive effect_equiv : forall t,  option (effect U t) -> option (effect V t) -> Prop :=
+  | Eq_none : forall t, effect_equiv t None None
+  | Eq_write : forall t v1 v2 we1 we2, 
+                 v1 -- v2 -> we1 -- we2 -> 
+                 Some (effect_reg_write U t v1 we1) ==e Some  (effect_reg_write V t v2 we2)
+  | Eq_write_rf : forall n t v1 v2 adr1 adr2 we1 we2, 
+                    v1 -- v2 -> adr1 -- adr2 -> we1 -- we2 -> 
+                    Some (effect_regfile_write U n t v1 adr1 we1) ==e 
+                         Some (effect_regfile_write V n t v2 adr2 we2)
+                                  where "x ==e y" := (effect_equiv _ x y). 
+ 
+  Definition effects_equiv : effects Phi U -> effects Phi V -> Prop := 
+    Common.DList.pointwise  effect_equiv Phi. 
+  
+  End inner_equiv. 
+ 
+  Inductive Gamma : Type :=
+  | nil : Gamma
+  | cons : forall t, U t -> V t -> Gamma -> Gamma. 
+  
+  Inductive In t (x : U t) (y : V t) : Gamma -> Prop :=
+  | In_ok : forall Gamma x' y', x' = x -> y' = y ->
+              In t x y (cons t x' y' Gamma )
+  | In_skip : forall Gamma t' x' y', 
+                In t x y Gamma -> 
+                In t x y (cons t' x' y' Gamma ). 
+
+  Definition R G := fun t x y => In t x y G.  
+
+  Reserved Notation "G |- x ==b y" (at level 70, no associativity). 
+  Notation "G |- x -- y" := (In _ x y G) (at level 70, no associativity). 
+
+  Inductive bind_equiv t : forall (G : Gamma), bind Phi U t -> bind Phi V t -> Prop :=
+  |Eq_expr : forall G v1 v2, expr_equiv (R G) t v1 v2 ->
+                        bind_equiv t G (bind_expr Phi U t v1) (bind_expr Phi V t v2)
+  |Eq_reg : forall G v, bind_equiv t G  (bind_reg_read Phi U t v) (bind_reg_read Phi V t v)
+  |Eq_regfile : forall G n v a1 a2, 
+                  G |- a1 -- a2 ->
+                  bind_equiv t G  (bind_regfile_read Phi U t n v a1) (bind_regfile_read Phi V t n v a2). 
+
+  Inductive block_equiv t : forall (G : Gamma), block Phi U t -> block Phi V t -> Prop :=
+  | Eq_end : forall G (v1 : U t) v2 g1 g2 e1 e2, 
+               G |- v1 -- v2 ->  expr_equiv (R G) _ g1 g2 -> effects_equiv (R G) e1 e2 ->
+               G |- telescope_end Phi U _ (v1, g1, e1) ==b telescope_end Phi V _ (v2,g2, e2 ) 
+  | Eq_bind : forall G a (e1 : bind Phi U a) e2 (k1 : U a -> block Phi U t) k2,
+                bind_equiv _ G e1 e2 -> 
+                (forall v1 v2, (* G |- v1 -- v2 ->  *)cons _ v1 v2 G |- k1 v1 ==b k2 v2) ->
+                G |- telescope_bind Phi U _ a e1 k1 ==b telescope_bind Phi V _ a e2 k2                
+                 where "G |- x ==b y" := (block_equiv _ G x y). 
+End equiv. 
+
+Definition WF Phi t (b : Block Phi t) := forall U V, block_equiv U V Phi t (nil _ _) (b _) (b _). 
