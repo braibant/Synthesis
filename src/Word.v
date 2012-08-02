@@ -89,3 +89,13 @@ Definition sub {n} : T n -> T n -> T n := fun x y => repr n (x - y).
 Definition mul {n} : T n -> T n -> T n := fun x y => repr n (x * y).  
 
 Definition lt {n} : T n -> T n -> bool := zlt. 
+
+
+Definition high n m (x : T (n+m)) : T m :=
+  repr m (unsigned x / [2^n]).
+
+Definition low n m (x : T (n+m)) : T n :=
+  repr n (unsigned x mod [2^n]).
+
+Definition combineLH n m (low : T n) (high : T m)  : T (n+m) :=
+  repr (n + m) ((unsigned high)*[2^n] + unsigned low).

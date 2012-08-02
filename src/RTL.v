@@ -57,7 +57,15 @@ Section t.
       | o, Econstant Tbool x => if x then o else (#b false)%expr
       | _, _ => (a && b)%expr
     end. 
-    
+  
+
+  Definition orb (a b : expr R Tbool): expr R Tbool :=
+    match a, b with 
+      | Econstant Tbool x, o 
+      | o, Econstant Tbool x => if x then (#b true) else o
+      | _, _ => (a || b)%expr
+    end. 
+  
   Definition convert  l : DList.T (expr R) l -> Tuple.of_list (expr R) l := 
     DList.to_tuple (fun t X => X). 
 
@@ -95,9 +103,9 @@ Section t.
                 [< rA, gA, eA >] :- compile _ A;
                 [< rA', gA', eA' >] :- compile _ A';
                 let e := neffect_guard gA eA in 
-                let e' := neffect_guard ((~ gA) &&  gA')%expr eA' in 
+                let e' := neffect_guard (andb (~ gA)  gA')%expr eA' in 
                   r <- (bind_expr _ (Emux _ _ gA (!rA) (!rA'))%expr); 
-                  & ( r , (gA || gA')%expr , [e;e'])%list
+                  & ( r , (orb gA gA')%expr , [e;e'])%list
           end in f t a).
   (* primitive *)
   revert exprs. 
@@ -182,7 +190,7 @@ Section t.
                                  match inversion_effect_Tregfile t n b with 
                                    | (vb,adrb,gb) =>
                                        (
-                                         we <- bind_expr  _ (!ga || !gb)%expr; 
+                                         we <- bind_expr  _ (orb (!ga) (!gb))%expr; 
                                          wadr <- bind_expr _ (Emux _ _ (!ga) (!adra) (!adrb))%expr; 
                                          wdata <- bind_expr _ (Emux _ _ (!ga) (!va) (!vb))%expr; 
                                          &  (effect_regfile_write _ _ wdata wadr we))
@@ -212,7 +220,7 @@ Section t.
                               compose (compile_neffect G t U)
                                       (compile_neffects G q)
                         end in 
-                      compile_neffects (G && guard)%expr L B
+                      compile_neffects (andb G  guard)%expr L B
       | neffect_reg_write t v val => 
           G <- bind_expr _  G;
           update (Treg t) v (effect_reg_write t val G) B
@@ -384,6 +392,19 @@ Section t.
              end; rewrite ?andb_true_r, ?andb_true_l, ?andb_false_l , ?andb_false_r ; reflexivity.  
     Qed. 
 
+    Lemma eval_orb_true x y : (eval_expr Tbool (orb eval_type x y)) = (eval_expr Tbool x || eval_expr Tbool y)%bool.
+    Proof. 
+      Import Equality Bool. 
+      
+      dependent destruction x; dependent destruction y; simpl;
+      repeat match goal with 
+                 c : constant B |- _ => destruct c
+               | x : eval_type Tbool |- _ => destruct x
+               | _ => idtac
+             end; rewrite ?orb_true_r, ?orb_true_l, ?orb_false_l , ?orb_false_r ; reflexivity.  
+    Qed. 
+
+
     Lemma eval_neffects_append  st e f (Delta : updates) : 
       eval_neffects st (e ++ f) Delta = 
                    eval_neffects st f (eval_neffects st e Delta).              
@@ -449,14 +470,27 @@ Section t.
         + simpl. 
           DList.inversion; reflexivity.
         + simpl. repeat DList.inversion. simpl. reflexivity.
-
+          Arguments andb R _ _ : simpl never. 
+          Arguments orb R _ _ : simpl never. 
+          Ltac s :=
+            match goal with 
+              |- context [eval_expr _ (orb _ ?x ?y )] => rewrite eval_orb_true
+            | |- context [eval_expr _ (andb _ ?x ?y )] => rewrite eval_andb_true
+            | H : context [eval_expr _ (orb _ ?x ?y )] |- _ => rewrite eval_orb_true in H
+            | H : context [eval_expr _ (andb _ ?x ?y )] |- _  => rewrite eval_andb_true in H
+            | H : eval_expr _ ?x = true |- context [eval_expr _ ?x] => rewrite H
+            | H : eval_expr _ ?x = true , H' : context [eval_expr _ ?x] |- _ => rewrite H in H'
+            | H : eval_expr _ ?x = false |- context [eval_expr _ ?x] => rewrite H
+            | H : eval_expr _ ?x = false , H' : context [eval_expr _ ?x] |- _ => rewrite H in H'
+            end. 
       - intros. simpl.   unfold Sem.Dyn.OrElse. 
         rewrite <- IHa1, <- IHa2 . clear IHa1 IHa2. 
         generalize (C t a1); intros T; generalize (C t a2); intros T'. 
         induction T as [[[rA gA] eA] |]; simpl.
         induction T' as [[[rA' gA'] eA'] |]. simpl compose.
-        t. simpl. rewrite check0. simpl.  t. reflexivity. 
-        simpl. rewrite check0. simpl. t; reflexivity.  
+        t. simpl. repeat (s; simpl). reflexivity. 
+        t. simpl. repeat (s; simpl). t. reflexivity. 
+        reflexivity. 
         simpl. unfold compose_block in *. simpl in *.  rewrite H. reflexivity. 
         simpl. unfold compose_block in *. simpl in *.  rewrite H. reflexivity. 
 
@@ -525,7 +559,7 @@ Section correctness2.
   Qed. 
   
   Lemma correspondance Phi l e : forall g1 g2, 
-                               compile_neffect Phi eval_type g1 (neffect_guard Phi eval_type g2 l) e = (compile_neffects Phi eval_type (g1 && g2)%expr l e).
+                               compile_neffect Phi eval_type g1 (neffect_guard Phi eval_type g2 l) e = (compile_neffects Phi eval_type (andb _ g1  g2)%expr l e).
   Proof.                                                                                        
     induction l; reflexivity.
   Qed. 
@@ -609,10 +643,10 @@ Section correctness2.
         setoid_rewrite correspondance in IHa0.
         
         revert IHa IHa0.
-        intros H. specialize (H Delta e (g && guard)%expr). revert H. 
-        induction (C (g && guard)%expr a e); intros. 
-         {simpl. rewrite IHa0. rewrite folder. simpl. simpl in H. rewrite H. 
-         destruct ([[g]]); destruct ([[guard]]); simpl; try reflexivity. }
+        intros H. specialize (H Delta e (andb _ g guard)%expr). revert H. 
+        induction (C (andb _ g guard)%expr a e); intros. 
+        {simpl. rewrite IHa0. rewrite folder. simpl. simpl in H. rewrite eval_andb_true in H.        simpl in H. 
+         destruct ([[g]]); destruct ([[guard]]); simpl; simpl in H; try rewrite H; try reflexivity. }
          {
          simpl. rewrite H. reflexivity. 
          simpl. simpl in *. rewrite H0. reflexivity.

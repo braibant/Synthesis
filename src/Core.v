@@ -182,7 +182,6 @@ Notation B := Tbool.
 Notation W n := (Tint n).
 
 Inductive builtin : list type -> type -> Type :=
-(* | BI_external :  forall (s : signature), builtin (Generics.args s) (Generics.res s) *)
 | BI_andb : builtin (B :: B :: nil)%list  B
 | BI_orb  : builtin (B :: B :: nil)%list  B
 | BI_xorb : builtin (B :: B :: nil)%list  B
@@ -196,18 +195,21 @@ Inductive builtin : list type -> type -> Type :=
 (* integer operations *)
 | BI_plus  : forall n, builtin (W n :: W n :: nil)%list (W n)
 | BI_minus : forall n, builtin (W n :: W n :: nil)%list (W n)
+| BI_low   : forall n m, builtin (W (n + m) :: nil)%list (W n)
+| BI_high   : forall n m, builtin (W (n + m) :: nil)%list (W m)
+| BI_combineLH   : forall n m, builtin (W n :: W m :: nil)%list (W (n + m))
 
 | BI_next : forall n, builtin (Tfin (S n) :: nil) (Tfin (S n)). 
 
 Module Builtin. 
   Inductive t : Type :=
-  |andb | orb | xorb | negb | eq | lt | mux | plus | minus | next. 
+  |andb | orb | xorb | negb | eq | lt | mux | plus | minus | next | low | high | combine. 
   
   Scheme Equality for t. 
-
+  
   Definition forget {l r} (b: builtin l r) : t :=
     match b with
-        | BI_andb => andb
+      | BI_andb => andb
       | BI_orb => orb
       | BI_xorb => xorb
       | BI_negb => negb
@@ -217,6 +219,9 @@ Module Builtin.
       | BI_plus n => plus
       | BI_minus n => minus
       | BI_next n => next
+      | BI_low _ _ => low
+      | BI_high _ _ => high
+      | BI_combineLH _ _ => combine
     end. 
 End Builtin. 
 
@@ -232,19 +237,43 @@ Definition builtin_eqb {arg res arg' res'} (b : builtin arg res) (b': builtin ar
     | BI_plus n, BI_plus m =>  Nat.eqb n m
     | BI_minus n, BI_minus m => Nat.eqb n m
     | BI_next n, BI_next m => Nat.eqb n m
+    | BI_low n m, BI_low n' m' => Nat.eqb n n' && Nat.eqb m m'
+    | BI_high n m, BI_high n' m' => Nat.eqb n n' && Nat.eqb m m'
+    | BI_combineLH n m, BI_combineLH n' m' => Nat.eqb n n' && Nat.eqb m m'
     | _ , _ => false
+  end%bool. 
+
+Definition cast t {l l' }(p : l = l') (b : builtin l t) : builtin l' t :=
+  match p in (_ = y) return (builtin y t) with
+    | eq_refl => b
   end. 
 
-Lemma builtin_eqb_correct l t (b : builtin l t) (b' : builtin l t) :
-  builtin_eqb b b' = true -> b = b'. 
+Lemma builtin_eqb_correct_ l t (b : builtin l t) l' (b' : builtin l' t) :
+  builtin_eqb b b' = true -> forall p : l' = l,
+   b = cast t p b'. 
 Proof.
-  intros H. assert (Builtin.forget b = Builtin.forget b'). 
-  revert H. destruct b; simpl; try discriminate; destruct b'; simpl; try discriminate; try reflexivity.  
+  intros H. assert (Builtin.forget b = Builtin.forget b').
+  {
+  revert H. destruct b; simpl; try discriminate; destruct b'; simpl; try discriminate; try reflexivity.  }
   clear H.
-  Import Equality.
-  destruct b;
-  dependent destruction b'; simpl in *; try discriminate || reflexivity.  
+
+  
+  Import Equality JMeq.
+
+  destruct b; simpl;
+  dependent destruction b'; try (intros; dependent destruction p;  simpl; reflexivity) || simpl in *; try discriminate. 
+  intros. injection p. intros.  assert (m0 = m). omega. subst; dependent destruction p; reflexivity. 
+  intros. injection p. intros.  assert (n0 = n). omega. subst; dependent destruction p; reflexivity. 
+Qed.   
+
+Lemma builtin_eqb_correct l t (b : builtin l t) (b' : builtin l t) :
+  builtin_eqb b b' = true -> 
+   b = b'. 
+Proof.
+  intros H. 
+  apply  (builtin_eqb_correct_ l t b l b' H eq_refl).
 Qed. 
+
 
 
 (* applies a ternary function to three arguments *)
@@ -277,6 +306,9 @@ Definition builtin_denotation (dom : list type) ran (f : builtin dom ran) :
     | BI_plus n => @bin_op (W n) (W n) (W n) (@Word.add n)
     | BI_minus n => @bin_op (W n) (W n) (W n) (@Word.sub n)
     | BI_next n => @un_op (Tfin (S n)) (Tfin (S n)) (@Finite.next n)
+    | BI_low n m => @un_op (W (n + m)) (W n ) (@Word.low n m)
+    | BI_high n m => @un_op (W (n + m)) (W m)(@Word.high n m)
+    | BI_combineLH n m => @bin_op (W n) (W m) (W (n + m))(@Word.combineLH n m)
   end. 
 
 Inductive sync : Type :=
