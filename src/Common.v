@@ -79,10 +79,11 @@ Arguments var_S {T} {E} {t} {t'} _.
 Arguments var_lift {T E F t} v. 
 Arguments var_eqb {T l t t'} _ _. 
 
-Definition var_map {A B: Type} (F : A -> B) (l : list A) t (v : var l t) : var (List.map F l) (F t). 
-induction v. apply var_0. 
-simpl. apply var_S.   auto. 
-Defined. 
+Fixpoint var_map {A B: Type} (F : A -> B) (l : list A) t (v : var l t) : var (List.map F l) (F t) :=
+  match v with
+    | var_0 E t => var_0 
+    | var_S E t t' x => var_S (var_map F E _ x)
+  end. 
 
 
 Module Tuple. 
@@ -114,6 +115,7 @@ Module Tuple.
         | var_0 _ _ => fun x e => (x, snd e)
         | var_S _ _ _ v => fun x e => (fst e, set _ _ v x (snd e))
       end. 
+
   Fixpoint init (el : forall t, F t) l : of_list l :=
     match l with 
       | nil => tt
@@ -375,146 +377,9 @@ Module FIFO.
   End t. 
 End FIFO. 
 
-
- 
-(* The base types, that exist in every language. These types should have:
-   - decidable equality; 
-   - default element (to initialize the arrays)
- *)
-Inductive type0 : Type :=
-| Tunit : type0 
-| Tbool: type0 
-| Tint: nat -> type0
-| Tfin: nat -> type0
-| Tabstract : ident -> Abstract.T -> type0. 
-
-Fixpoint eval_type0 st : Type := 
-  match st with 
-    | Tunit => unit
-    | Tbool => bool
-    | Tint n => Word.T n
-    | Tfin n => Finite.T n
-    | Tabstract _ t => Abstract.carrier t
-  end. 
-
-Definition eval_type0_list l : Type := Tuple.of_list eval_type0 l. 
-
-(** Operations on types *)
-Section type_ops. 
-  
-  Definition eqb_bool (b1 b2: bool)  :=
-    match b1,b2 with 
-      | true, true => true
-      | false, false => true
-      | _,_ => false
-    end. 
-  
-  Fixpoint type0_eq(t : type0) : eval_type0 t -> eval_type0 t -> bool :=
-    match t with 
-      | Tunit => fun _ _  => true
-      | Tint n => @Word.eq n
-      | Tfin n => @Finite.eqb n
-      | Tbool  => eqb_bool 
-      | Tabstract _ t => Abstract.eqb t
-    end. 
-  
-  
-  Definition ltb_bool a b :=
-    match a, b with
-      | false, true => true
-      | _, _ => false
-    end. 
-  
-  Fixpoint type0_lt (bt : type0) : eval_type0 bt -> eval_type0 bt -> bool :=
-    match bt with
-      | Tunit => fun _ _  => true
-                              
-      | Tbool => ltb_bool 
-      | Tint n => @Word.lt n
-      | Tfin n => @Finite.ltb n
-      | Tabstract _ t => Abstract.lt t
-    end. 
-End type_ops. 
-
- 
-Record signature T (E : T -> Type) := mk_signature
-  {
-    args : list T;
-    res : T; 
-    value :> Tuple.of_list E args -> E res
-  }. 
-
-Arguments mk_signature {T E} args res value. 
-Arguments args {T E} s. 
-Arguments res {T E} s. 
-Arguments value {T E} s _. 
-
-(* could it be a primitive with an empty set of arguments ? *)
-Definition constant T (E : T -> Type) (ty : T) := E ty. 
-
-Arguments constant {T E} ty. 
-
-Notation signature0 := (signature type0 eval_type0). 
-Notation constant0 := (@constant type0 eval_type0). 
-
-Definition Cbool b : constant0 Tbool := b. 
-Definition Cword {n} x : constant0 (Tint n) := (Word.repr _ x). 
-
-Notation B := Tbool. 
-Notation W n := (Tint n).
-
-Inductive builtin : list type0 -> type0 -> Type :=
-| BI_external :  forall (s : signature0), builtin (args s) (res s)
-| BI_andb : builtin (B :: B :: nil)%list  B
-| BI_orb  : builtin (B :: B :: nil)%list  B
-| BI_xorb : builtin (B :: B :: nil)%list  B
-| BI_negb : builtin (B  :: nil)%list  B
-                    
-(* "type-classes" *)
-| BI_eq   : forall t, builtin (t :: t :: nil)%list B
-| BI_lt   : forall t, builtin (t :: t :: nil)%list B
-| BI_mux : forall t, builtin (B :: t :: t :: nil)%list t                         
-
-(* integer operations *)
-| BI_plus  : forall n, builtin (W n :: W n :: nil)%list (W n)
-| BI_minus : forall n, builtin (W n :: W n :: nil)%list (W n)
-
-| BI_next : forall n, builtin (Tfin (S n) :: nil) (Tfin (S n)). 
-
-
-(* applies a ternary function to three arguments *)
-Definition tri_op {a b c d } (f : eval_type0 a -> eval_type0 b -> eval_type0 c -> eval_type0 d) 
-  : eval_type0_list (a :: b :: c :: nil)%list -> eval_type0 d :=
-  fun X => match X with (x,(y,(z, tt))) => f x y z end. 
-
-(* applies a binary function to two arguments *)
-Definition bin_op {a b c} (f : eval_type0 a -> eval_type0 b -> eval_type0 c) 
-  : eval_type0_list (a :: b :: nil)%list -> eval_type0 c :=
-  fun X => match X with (x,(y,tt)) => f x y end. 
-
-(* applies a unary function to one arguments *)
-Definition un_op {a b} (f : eval_type0 a -> eval_type0 b) 
-  : eval_type0_list (a :: nil) -> eval_type0 b :=
-  fun X => match X with (x,tt) => f x end. 
-
-  (* denotation of the builtin functions *)
-Definition builtin_denotation (dom : list type0) ran (f : builtin dom ran) : 
-  eval_type0_list dom -> eval_type0 ran :=
-  match f with
-    | BI_external s => value s
-    | BI_andb => @bin_op B B B andb
-    | BI_orb =>  @bin_op B B B orb
-    | BI_xorb => @bin_op B B B xorb
-    | BI_negb =>  @un_op B B negb
-    | BI_eq t => @bin_op t t B (type0_eq t)
-    | BI_lt t => @bin_op t t B (type0_lt t)
-    | BI_mux t => @tri_op B t t t (fun b x y => if b then x else y) 
-    | BI_plus n => @bin_op (W n) (W n) (W n) (@Word.add n)
-    | BI_minus n => @bin_op (W n) (W n) (W n) (@Word.minus n)
-    | BI_next n => @un_op (Tfin (S n)) (Tfin (S n)) (@Finite.next n)
-  end. 
-
 *)
+ 
+
 Definition relation A := A -> A -> Prop. 
 Definition union {A} (R S : relation A) := fun x y => R x y \/ S x y. 
 
@@ -625,12 +490,14 @@ End t.
 
 Arguments T {X} P _%list. 
 Arguments nil {X P}. 
-Arguments cons {X P} {t q} _ _.  
+Arguments cons {X P} {t q} _ _%dlist.  
 (* Arguments fold' {X P E} _ _ _.  *)
-Arguments app {X P l1 l2} _ _ . 
+Arguments app {X P l1 l2} _%dlist _%dlist. 
 Arguments get {X P l t} _ _%dlist.  
 Arguments set {X P l t} _ _ _%dlist.  
 
+Arguments Forall {X P} _ {l}%list _%dlist. 
+Arguments init {X P} _ l%list.
 Section ops. 
   Variable X : Type. 
   Variable (F G : X -> Type). 
@@ -691,20 +558,7 @@ Definition hmap :
 induction l. simpl. constructor. 
 simpl. intros. inversion X1.   subst. constructor. auto. auto. 
 Defined. 
- (*
-Definition fold2 :
-  forall (S T : Type) (P : T -> Type) (E : S -> Type)
-    (F : S -> T),
-    (forall t : S, P (F t) -> E t) -> forall l : list S, T P (List.map F l) -> Tuple.of_list E l. intros S T P E F f.
-refine (let fix fold (l : list S) (dl : T P (List.map F l)) : Tuple.of_list E l :=
-              match l return T P (List.map F l) -> Tuple.of_list E l with
-                | nil =>  fun _ => tt
-                | cons t q => fun x : T P (F t :: List.map F q) =>
-                    (f  _ (hd _ _ _ _ x),  fold _ (tl _ _ _ _ x))
-              end dl
-          in fold).
-Defined.
-*)
+
 Definition dmap {A B} (F : A -> Type) (G: B -> Type) (C : A -> B) (D : forall x, F x -> G ( C x)) (l: list  A) (dl : T F l) : T G (List.map C l). 
   induction dl. simpl. constructor. 
   simpl. constructor. apply D.  auto. 

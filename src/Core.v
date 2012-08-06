@@ -106,6 +106,13 @@ Proof.
      rewrite (type_eqb_correct a t H). reflexivity. 
 Qed. 
 
+Lemma type_eqb_refl : forall t, type_eqb t t = true.
+Proof.  
+  induction t using type_ind; simpl;  firstorder. 
+  apply NPeano.Nat.eqb_eq. reflexivity. 
+  apply NPeano.Nat.eqb_eq. reflexivity. 
+Qed. 
+ 
 (** Operations on types *)
 Section type_ops. 
   
@@ -323,6 +330,6 @@ Definition eval_sync (s : sync) :=
     | Tregfile n t => Regfile.T n (eval_type t) 
   end. 
 
-Definition eval_state := DList.T eval_sync. 
+Notation eval_state := (DList.T eval_sync). 
 
 (* Notation updates := (Common.Tuple.of_list (Common.comp option  Core.eval_sync) _).  *)

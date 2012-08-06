@@ -42,7 +42,7 @@ Section s.
       forall (args : list type) (res : type) (f0 : builtin args res)
         (t : DList.T expr args), 
         (* (forall t (e : expr t), P t e) -> *)
-        DList.Forall _ _ P args t ->
+        DList.Forall P t ->
         P res (Ebuiltin args res f0 t). 
       Hypothesis Hconstant : 
       forall (ty : type) (c : constant ty), P ty (Econstant ty c). 
@@ -55,27 +55,30 @@ Section s.
       Hypotheses Hnth : forall (l : list type) (t : type) (m : var l t) (e : expr (Ttuple l)),
         P (Ttuple l) e -> P t (Enth l t m e). 
       Hypothesis Htuple : forall (l : list type) (exprs : DList.T expr l),
-                            DList.Forall _ _ P l exprs -> 
+                            DList.Forall P exprs -> 
                             P (Ttuple l) (Etuple l exprs). 
+      
       Lemma expr_ind_alt (t : type) (e : expr t) :  P t e. 
-      refine (let fix fold (t : type) (e : expr t) :  P t e  := match e with
-          | Evar t v => Hvar t v
-          | Ebuiltin args res f x =>  Hbuiltin args res f _ _
-          | Econstant ty c => Hconstant ty c
-          | Emux t x x0 x1 => Hmux t x x0 x1 (fold _ x) (fold _ x0) (fold _ x1)
-          | Efst l t x => Hfst l t x (fold _ x)
-          | Esnd l t x => Hsnd l t x (fold _ x) 
-          | Enth l t m x => Hnth l t m x (fold _ x)
-          | Etuple l exprs => Htuple l exprs _  end in fold t e); clear Hbuiltin Hvar Hconstant Hmux Hfst Hsnd Hnth Htuple.
+      refine (let fix fold (t : type) (e : expr t) :  P t e  := 
+                  match e with
+                    | Evar t v => Hvar t v
+                    | Ebuiltin args res f x =>  Hbuiltin args res f _ _
+                    | Econstant ty c => Hconstant ty c
+                    | Emux t x x0 x1 => Hmux t x x0 x1 (fold _ x) (fold _ x0) (fold _ x1)
+                    | Efst l t x => Hfst l t x (fold _ x)
+                    | Esnd l t x => Hsnd l t x (fold _ x) 
+                    | Enth l t m x => Hnth l t m x (fold _ x)
+                    | Etuple l exprs => Htuple l exprs _  end in fold t e);
+        clear Hbuiltin Hvar Hconstant Hmux Hfst Hsnd Hnth Htuple.
       {
         clear f.
-      induction x. simpl; apply I.
-      split; [apply fold | apply IHx]; auto.
-      
+        induction x. simpl; apply I.
+        split; [apply fold | apply IHx]; auto.      
       }
       {
         induction exprs. simpl; apply I. 
-        split; [apply fold | apply IHexprs]; auto. }
+        split; [apply fold | apply IHexprs]; auto.
+      }
       Qed. 
     End induction. 
 
@@ -189,12 +192,6 @@ Notation "#" := Econstant.
 
 Definition Ctt : constant Tunit := tt. 
 
-Record TRS : Type := mk_TRS
-  {
-    Phi : state; 
-    rules : list (Action Phi Tunit)
-  }. 
-
 Module Diff. 
   Section t. 
     Variable Phi : state. 
@@ -208,7 +205,7 @@ Module Diff.
     
   End t. 
   
-  Definition init (Phi : state ): T Phi := DList.init _ _ (fun _ => None) Phi. 
+  Definition init (Phi : state ): T Phi := DList.init (fun _ => None) Phi. 
   
   Fixpoint apply (Phi : state) : T Phi -> DList.T eval_sync Phi -> DList.T eval_sync Phi :=
     match Phi with
@@ -298,41 +295,34 @@ Module Sem.
   *)
   Section t. 
     Variable Phi : state. 
-    Definition eval_action (t : type) (a : action Phi eval_type t) : 
-      (Dyn.T Phi (eval_type t)). 
-
-    refine (
-        let fix eval_action (t : type) (a : action Phi eval_type t) :
-            Dyn.T Phi ( eval_type t) :=
-            match a with
-              | Return t exp => Dyn.Return Phi (eval_expr _ exp)
-              | Bind t u a f => 
-                  let act := eval_action _ a in 
-                    let f' := (fun e => eval_action u (f e)) in 
-                      Dyn.Bind Phi act f'              
-              | Assert e => 
-                  let g := eval_expr _ e in 
-                    match g with 
-                      | true => Dyn.Return Phi tt
-                      | false => Dyn.Retry  Phi
-                    end
-              | Primitive args res p exprs => 
-                  Dyn.primitive_denote Phi args res p (DList.map eval_expr  exprs)
-              (* | Try a =>  *)
-              (*     let a := eval_action _ a in  *)
-              (*       Dyn.Try Phi a                     *)
-              | OrElse t a b => Dyn.OrElse Phi (eval_action _ a) (eval_action _ b)  
-          end                 
-        in  eval_action t a). 
-
-    Defined.
+    Fixpoint eval_action (t : type) (a : action Phi eval_type t) : 
+      (Dyn.T Phi (eval_type t)) :=
+      match a with
+        | Return t exp => Dyn.Return Phi (eval_expr _ exp)
+        | Bind t u a f => 
+            let act := eval_action _ a in 
+              let f' := (fun e => eval_action u (f e)) in 
+                Dyn.Bind Phi act f'              
+        | Assert e => 
+            let g := eval_expr _ e in 
+              match g with 
+                | true => Dyn.Return Phi tt
+                | false => Dyn.Retry  Phi
+              end
+        | Primitive args res p exprs => 
+            Dyn.primitive_denote Phi args res p (DList.map eval_expr  exprs)
+        (* | Try a =>  *)
+        (*     let a := eval_action _ a in  *)
+        (*       Dyn.Try Phi a                     *)
+        | OrElse t a b => Dyn.OrElse Phi (eval_action _ a) (eval_action _ b)  
+      end.                 
+    
   End t. 
   Arguments eval_action {Phi} {t} _%action _ _.  
 
 End Sem.           
 
-Definition Eval Phi (st: eval_state Phi)  t (A : Action Phi t ) Delta := 
-@Sem.eval_action Phi t (A _) st Delta. 
+Definition Eval Phi (st: eval_state Phi)  t (A : Action Phi t ) Delta :=  @Sem.eval_action Phi t (A _) st Delta. 
 
 Definition Next Phi st (A : Action Phi Tunit) := 
   let Delta := Eval Phi st _ A (Diff.init Phi) in 

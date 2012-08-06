@@ -34,7 +34,7 @@
 \newcommand{\redbf}[1]{\alert{\textbf{#1}}}
 
 \newcommand\denote[1]{\llbracket #1 \rrbracket}
-
+\newcommand\fesi{Fe-Si}
 
 %  Structure
 \newenvironment{remark}{\footnotesize \begin{description}\item[\emph{Remark}:]}{\end{description}}
@@ -141,18 +141,14 @@
   \begin{itemize}
   \item  Investigate hardware synthesis in Coq
     
-    \begin{itemize}
-    \item formalize an high-level HDL, and its semantics
-    \item formalize a low-level HDL, and its semantics
-    \item compile the former to the latter
-    \item prove this compilation correct
-    \end{itemize}
-
+    \begin{center}
+      \includegraphics[height= 2cm ]{figs/compilation.pdf}
+    \end{center}
     \pause
     
-  \item Source language: \alert{Fe-Si}
+  \item Source language: \alert{\fesi{}} (Featherweight Synthesis)
     \begin{itemize}
-    \item Stripped down and simplified version of \alert{Bluespec}
+    \item Stripped down and simplified version of \alert{Bluespec} 
     \item Semantics based on ``guarded atomic actions'' (with a flavour of transactional memory)
     \end{itemize}
     
@@ -160,7 +156,7 @@
     
   \item Target language: RTL
     \begin{itemize}
-    \item Combinational logic and next-state assignements for registers
+    \item Combinational logic and next-state assignments for registers
     \item No currents, no delays, single-clock
     \end{itemize}
     
@@ -175,6 +171,70 @@
   \end{itemize}
 \end{frame}
 
+
+\defverbatim[colored]\phoasprimer{
+}
+\begin{frame}[fragile]
+  \frametitle{A PHOAS primer}
+  \begin{itemize}
+  \item Use Coq bindings to represent the bindings of the object language.
+    \newcommand\arrow{\ulcorner \to \urcorner}
+\begin{coq}
+Section t. 
+  Variable var: T -> Type.
+  
+  Inductive term : T -> Type :=
+  | Var: forall t, var t -> term t
+  | Abs: forall $\alpha$ $\beta$, (var $\alpha$ -> term $\beta$) -> term ($\alpha$ $\arrow$ $\beta$)
+  | App: ...
+End t. 
+
+Definition Term := forall (var: T -> Type), term var. 
+
+Example K $\alpha$ $\beta$ : Term ($\alpha~\arrow{}~\beta{}~\arrow{}~\alpha$):= fun V =>
+$\quad$Abs (fun x => Abs (fun y => Var x)).
+\end{coq}
+
+\pause
+
+\item An \alert{intrinsic approaches} (strongly typed syntax vs. syntax + typing judgement)
+\item Program transformations are easier to implement (and prove!) 
+  \parenthesis{with one caveat}
+\end{itemize}
+\end{frame}
+% \begin{frame}[fragile]
+%   \frametitle{A PHOAS primer}
+%   \framesubtitle{Face-off with Dependent de Bruijn indices}
+%   \begin{columns}
+%     \column{0.07 \linewidth}
+%     \column{0.5 \linewidth}
+% \newcommand\env{\Gamma}
+% \begin{coq}
+% Inductive var : list T -> T -> Type :=
+% | 0 : forall $\env$ t , var (t::$\env$) t
+% | S : forall $\env$ t u , var $\env$ u -> var (t::$\env$) u. 
+
+% Inductive term : list T -> T -> Type :=
+% | Var: forall $\env$ t, var $\env$ t -> term $\env$ t
+% | Abs: forall $\env$ $\alpha$ $\beta$, term ($\alpha$:: $\env$) $\beta$ -> 
+%            term $\env$ ($\alpha$ $\ulcorner \to \urcorner$ $\beta$)
+% | App: ...  
+
+% Example K := 
+% $\quad$Abs (Abs (Var (S 0))).
+% \end{coq}
+%     \column{0.5 \linewidth}
+% \only<2->{\phoasprimer}
+%   \end{columns}
+%   \begin{itemize}
+%   \item<3> Two alternative  \alert{intrinsic approaches}
+%     \begin{itemize}
+%     \item strongly typed syntax
+%     \item alternative to syntax + typing judgement
+%     \end{itemize}
+%   \end{itemize}
+% \end{frame}
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 
 \begin{frame}
@@ -187,82 +247,78 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 
 \section{A glimpse of the languages and the compiler}
+\begin{frame}[fragile]
+  \frametitle{\fesi{} in a nutshell}
+
+  \fesi{} programs:
+  \begin{itemize}
+  \item update a set of \alert{memory elements} $\Phi$;
+    \\
+    \parenthesis{registers, register files, fifos, \dots}
+  \item are based on \alert{guarded atomic actions} 
+    \\
+    \begin{center}
+    \coqe{do n <- !x + 1; (y := 1; assert (n = 0)) orElse (y := 2)}      
+    \end{center}
+  \item are endowed with a (simple) \alert{synchronous semantics}
+    \\
+    \begin{center}
+    \coqe{do n <- !x; x := n + 1; do m <- !x; assert (n = m)}
+    \end{center}
+  \end{itemize}
+\end{frame}
 
 \begin{frame}[fragile]
-  \frametitle{Fe-Si in a nutshell}
+  \frametitle{\fesi{} in a nutshell}
   \begin{columns}
-\column{0.5 \textwidth}  
-  \begin{itemize}
-  \item  We use an \alert{intrinsic approach}
-    \begin{itemize}
-    \item strongly typed syntax
-    \item alternative to syntax + typing judgement
-    \end{itemize}
-  \item Expressions:
-    \begin{itemize}
-    \item  variables and operations
-    \item  \alert{effect-free}
-    \end{itemize}
-    
-    % (arithmetic on words, boolean operations)
-  \item ``Guarded Atomic Actions''
-  \end{itemize}
-\column{0.5 \textwidth}  
+\column{0.1\linewidth}
 
+\column{0.6 \linewidth}
 \begin{coq}
-Variable Var: type -> Type. 
-Inductive $\mathbb A$ : type -> Type :=
+Variable V: T -> Type. 
+Inductive $\mathbb A$: T -> Type:=
 | Return: forall t, expr t -> $\mathbb A$ t
-| Bind: forall t u,  $\mathbb A$  t -> (Var t -> $\mathbb A$ u) -> $\mathbb A$ u
+| Bind: forall t u,  $\mathbb A$  t -> (V t -> $\mathbb A$ u) -> $\mathbb A$ u
+
 (** effects **)
-| Primitive : forall args res, prim $\Phi$ args res -> 
-  DList.T expr args -> $\mathbb A$ res 
+| Primitive: ... 
+
 (** control-flow **)
-| OrElse : forall t, $\mathbb A$ t -> $\mathbb A$ t -> $\mathbb A$ t.
+| OrElse: forall t, $\mathbb A$ t -> $\mathbb A$ t -> $\mathbb A$ t.
 | Assert: expr Tbool -> $\mathbb A$ Tunit\end{coq}
-\end{columns}
+    \end{columns}
+
 
 \begin{itemize}
-\item $\Phi$ is the list of memory elements (registers, register files, \dots)
-\item Primitives are operations on memory elements
-\item Simple synchronous semantics 
-\parenthesis{Program order used to resolve clashing assignements}
+\item Expressions are side-effects free. 
+\item Primitives are operations on memory elements (dependent on $\Phi$)
+\item 
   \begin{coq}
-Definition eval $\Phi$ t (a: $\mathbb A$ $\denote{.}_{\tt type}$ t): $\denote\Phi$ -> option ($\denote{\tt t}$ * $\denote\Phi$).
-Definition Eval $\Phi$ t (a: forall Var, $\mathbb A$ Var t): $\denote\Phi$ -> option ($\denote{\tt t}$ * $\denote\Phi$).
+Definition Eval $\Phi$ t (a: forall V, $\mathbb A$ V t): $\denote\Phi$ -> option ($\denote{\tt t}$ * $\denote\Phi$).
 \end{coq}
 \end{itemize}
 
 \end{frame}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 \begin{frame}[fragile]
-  \frametitle{RTL}
+  \frametitle{RTL in a nutshell}
   \begin{columns}
     \column{0.5 \textwidth}
-    \begin{itemize}
-    \item Telescope of expressions:
-      \begin{itemize}
-      \item Read from memory elements 
-      \item Operations 
-      \end{itemize}
-    \item Effect on each memory element
-      \begin{itemize}
-      \item write-enable bit and data
-      \end{itemize}
-    \end{itemize}
+\includegraphics[width=5cm]{figs/rtl.pdf}
+    
     \column{0.5 \textwidth}
     \begin{coq}
-Variable V : type -> Type.       
+Variable V: T -> Type.       
 
-Inductive $\mathbb T$ (A : Type): Type :=
-| Bind : forall arg, expr arg -> (V arg -> $\mathbb T$ A) -> $\mathbb T$ A
-| End : A -> $\mathbb T$ A.
+Inductive $\mathbb T$ (A: Type): Type:=
+| Bind: forall arg, expr arg -> (V arg -> $\mathbb T$ A) -> $\mathbb T$ A
+| End: A -> $\mathbb T$ A.
 
-Inductive $\mathbb E$: memory -> Type :=
-| write : forall t,  V t -> V Tbool -> $\mathbb E$ (R t)
+Inductive $\mathbb E$: memory -> Type:=
+| write: forall t,  V t -> V Tbool -> $\mathbb E$ (R t)
 | ...
 
-Definition block t :=
+Definition block t:=
   $\mathbb T$ (V Tbool  * V t  * DList.T (option $\circ$ $\mathbb E$) $\Phi$). 
 \end{coq}
   \end{columns}
@@ -271,8 +327,7 @@ Definition block t :=
 \begin{itemize}
 \item Simple synchronous semantics 
   \begin{coq}
-Definition eval $\Phi$ t (a: block $\denote{.}_{\tt type}$ t): $\denote\Phi$ -> option ($\denote{\tt t}$ * $\denote\Phi$).
-Definition Eval $\Phi$ t (a: forall Var, block Var t): $\denote\Phi$ -> option ($\denote{\tt t}$ * $\denote\Phi$).
+Definition Eval $\Phi$ t (a: forall V, block V t): $\denote\Phi$ -> option ($\denote{\tt t}$ * $\denote\Phi$).
 \end{coq}
 \end{itemize} 
 \end{frame}
@@ -289,7 +344,7 @@ x5 <-  !r2;
 x6 <- x6;
 begin 
   if x1 then (r1 := x3; r2 := x4);
-  if ~ !x1 then (r1 := x6)
+  if  !x1 then (r1 := x6)
 end
 \end{ocaml}} 
 
@@ -351,15 +406,16 @@ end
 \end{ocaml}}
 
 \begin{frame}[fragile]
-  \frametitle{Compiling Fe-Si to RTL}
+  \frametitle{Compiling \fesi{} to RTL}
   
 Running example:
 \begin{coq}
-do x <- ! r1;if (x <> 0) then {do y <- !r2; r1 := x - 1; r2 := y + 1} else {do y <- !r2; r1 := y}
+do x <- ! r1;if (x <> 0) then {do y <- !r2; r1 := x - 1; r2 := y + 1} else { y <- !r2; r1 := y}
 \end{coq}
  
 \pause
 \begin{columns}
+\column{0.1 \textwidth}  
 \column{0.5 \textwidth}  
 \begin{enumerate}
 \item<+-> Pull out all bindings (that is, ANF)
@@ -382,7 +438,7 @@ do x <- ! r1;if (x <> 0) then {do y <- !r2; r1 := x - 1; r2 := y + 1} else {do y
   \begin{itemize}
   \item<+-> (Temporary) final result
 \begin{coq}
-Definition Compile $\Phi$ t  (a : forall Var, $\mathbb A$ $\Phi$ Var t) : forall Var, block Var $\Phi$ t :=
+Definition Compile $\Phi$ t  (a : forall V, $\mathbb A$ $\Phi$ V t) : forall V, block V $\Phi$ t :=
   let x := Flat.Compile $\Phi$ t (Push.Compile $\Phi$  t (Pull.Compile $\Phi$  t a)) in
   CSE.Compile $\Phi$ t x.
 \end{coq}
@@ -393,23 +449,31 @@ Theorem Compile_correct $\Phi$ t a :
   WF $\Phi$ t x -> forall (st : $\denote\Phi$),  Eval $\Phi$ t (CSE.Compile $\Phi$ t x) st = Eval $\Phi$ t a st. 
 \end{coq}
 
-\item<+-> No need to prove lemmas about substitutions
-\item<+-> \coqe{WF $\Phi$ t x} states that \coqe{x} is parametric w.r.t. the instantiation of \coqe{Var}
-  \begin{enumerate}
-  \item posit \coqe{forall x, WF $\Phi$ t x} as an axiom
-  \item define what is \coqe{WF} for each language, prove that compilation preserves \coqe{WF} and prove that each starting program is \coqe{WF} 
-  \item generates \coqe{WF $\Phi$ t x} as a \alert{proof-obligation}, and discharge it using tactics
-  \end{enumerate}
+\item<+-> No need to prove lemmas about substitutions!
+\item<+-> What about \coqe{WF $\Phi$ t x} ? 
 \end{itemize}
+\end{frame}
 
+\begin{frame}[fragile]
+  \frametitle{Well-formedness}
 
+  \begin{itemize}
+  \item   \coqe{WF $\Phi$ t x} states that \coqe{x} is  parametric w.r.t. the instantiation of \coqe{V}. 
+  \item  We may:
+    \begin{itemize}
+    \item posit \coqe{forall x, WF $\Phi$ t x} as an axiom (informed
+      parties think that this is consistent with Coq)
+    \item or define what is \coqe{WF} for each language, prove that compilation preserves \coqe{WF} and prove that each starting program is \coqe{WF} 
+    \item or generates \coqe{WF $\Phi$ t x} as a \alert{proof-obligation}, and discharge it using tactics
+    \end{itemize}
+  \end{itemize}
 \end{frame}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 \begin{frame}[fragile]
   \frametitle{PHOAS in action (2)}
 
   \begin{itemize}
-  \item<1-> PHOAS shines when define examples of circuits inside Coq: 
+  \item<1-> PHOAS shines when defining examples of circuits inside Coq: 
     \begin{itemize}
     \item makes it possible to use fancy coq notations 
 \begin{coq}
@@ -430,8 +494,8 @@ Notation "'DO' X <- A ; B" := (Bind A (fun X => B)) ( ... )
 
 
 \begin{frame}[fragile]
-\frametitle{Recursive circuits}
-\framesubtitle{A divide and conquer adder (without pain)}
+\frametitle{Recursive circuits: A divide and conquer adder (without pain)}
+\framesubtitle{Meta-programming for free}
 \begin{columns}
   \column{0.5\linewidth}
   \begin{center}
@@ -442,44 +506,47 @@ Notation "'DO' X <- A ; B" := (Bind A (fun X => B)) ( ... )
     \includegraphics[height= 3cm ]{figs/DC.pdf}
   \end{center}
 \end{columns}
-\begin{twolistings}
-\begin{coq}
-Variable V : type -> Type. 
+\begin{columns}
+\column{0.1\linewidth}
+\column{0.5\linewidth}
+\begin{scoq}
+Variable V : T -> Type. 
 
 Fixpoint add $\Phi$ n (x : V (Tint [2^ n])) (y : V (Tint [2^ n])) := 
 match n  with 
-| 0 => RETURN [ (x = 1) || (y = 1) ;
-          (x = 1) && (y = 1); x + y; x + y + 1] 
+| 0 => Return ( (x = 1) || (y = 1) ;
+          (x = 1) && (y = 1); x + y; x + y + 1)
 
 
 
 
 $$
-\end{coq}
-&
-\begin{coq}
+\end{scoq}
+\column{0.5\linewidth}
+\begin{scoq}
 | S n => 
-  DO [xL,xH] <- [low x, high x];
-  DO [yL,yH] <- [low y, high y];
-  DO [pL, gL, sL, tL] <- add _ xL yL; 
-  DO [pH, gH, sH, tH] <- add _ xH yH; 
+  DO (xL,xH) <- (low x, high x);
+  DO (yL,yH) <- (low y, high y);
+  DO (pL, gL, sL, tL) <- add n xL yL; 
+  DO (pH, gH, sH, tH) <- add n xH yH; 
   DO sH' <- (gL ? tH : sH);
   DO tH' <- (pL ? tH : sH);
   DO pH' <- (gH || (pH && gH));
   DO gH' <- (gH || (pH && gL));
-  RETURN [pH'; gH'; combineLH sL sH' ; combineLH  tL tH' ]
+  Return (pH'; gH'; sL $\otimes$ sH' ; tL $\otimes$ tH' )
 end.  
-\end{coq}
-\end{twolistings}
+\end{scoq}
+\end{columns}
+\parenthesis{builds a 4-uple: carry-propagate, carry-generate, sum w/ carry, sum w/o carry}
 \end{frame}
 
 \begin{frame}[fragile]
-  \frametitle{Sequential circuits}
+  \frametitle{Processor designs}
   \begin{itemize}
-  \item Almost verbatim translation from old Bluespec papers
+  \item Easy translation from old Bluespec papers
     \begin{columns}
 \column{0.1 \linewidth}
-\column{0.5\linewidth}
+\column{0.3\linewidth}
       \begin{coq}
 Definition bz :=
 DO pc <- ! PC 
@@ -491,16 +558,18 @@ If  r1 = 0 { PC := r2 }
 Else {PC := pc + 1}
 \end{coq}
 
+
 \column{0.5\linewidth}
 \begin{coq}
-Definition loadi  :=
-DO pc <- ! PC 
-DO I   <- IMEM.[pc] ; 
-WHEN (opcode (!I) =  (#i 0) ) ; 
-PC := pc + 1;
-RF.[rd I] <- const I 
+(** Rule BZ taken **)
+Proc(PC,RF,IMEM,DMEM) 
+if (RF[r1] = 0) where BZ(r1,r2) = IMEM[PC]
+-> Proc(RF[r2],RF,IMEM,DMEM)
 
-$ $
+(** Rule BZ not taken **)
+Proc(PC,RF,IMEM,DMEM) 
+if (RF[r1] <> 0) where BZ(r1,r2) = IMEM[PC]
+-> Proc(PC + 1,RF,IMEM,DMEM)
 \end{coq}
 \end{columns}
 
@@ -526,12 +595,12 @@ $ $
     \begin{itemize}
     \item Bluespec started as an HDL deeply embedded in Haskell
     \item Lava [1998] is another HDL deeply embedded in Haskell
-    \item Fe-Si is ``just'' another HDL,  deeply embedded in \alert{Coq}
+    \item \fesi{} is ``just'' another HDL,  deeply embedded in \alert{Coq}
       \pause
       \begin{itemize}
       \item semantics (i.e., interpreter), compiler and programs are \alert{integrated seamlessly}
       \item use of computation \alert{inside} Coq to dump compiled programs
-      \item Dependent types capture some interesting properties in hardware
+      \item dependent types capture some interesting properties in hardware
       \end{itemize}
     \end{itemize}
 
@@ -541,17 +610,17 @@ $ $
       \begin{itemize}
       \item Improve on the language (inputs, FIFOs, schedulers)
       \item Better compiler (boolean optimisations/BDDs)
-      \item Coq plugin to output actual VHDL/Verilog
-      \item Prove some designs correct (w.r.t. specifications as Moore automatas)
+      \item Extraction/plugin to output actual VHDL/Verilog
+      \item Prove some designs correct (w.r.t. specifications as Moore automata)
       \end{itemize}
       
 \pause
 
     \item Closing remarks
       \begin{itemize}
-      \item Could really use some help from SMT solvers to solve bitvector arithemtic goals
+      \item Could really use some help from SMT solvers to solve bitvector arithmetic goals
       \item Generated induction principles useless
-      \item Mutual fixpoints and Inner fixpoints being not equivalent
+      \item Mutual fixpoints and inner fixpoints being not equivalent
       \end{itemize}
   
     \end{itemize}
@@ -560,7 +629,13 @@ $ $
 \begin{frame}
   \frametitle{Thank you for your attention}
   
-  if you have any questions
+  \begin{center}
+    \includegraphics[height= 2cm ]{figs/compilation.pdf}
 
+    \vspace{1cm}
+
+    If you have any questions ... \\
+  \end{center}
+  
 \end{frame}
 \end{document}

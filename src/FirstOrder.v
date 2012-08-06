@@ -1,4 +1,4 @@
-Require Common Core Flat.
+Require Common Core RTL.
 
 Section t. 
   Variable Phi : Core.state. 
@@ -9,8 +9,8 @@ Section t.
     
     Inductive Var (t : type) := box : nat -> Var t. 
     
-    Notation expr := (Flat.expr Phi Var). 
-    Notation effect := (Flat.effect Var). 
+    Notation expr := (RTL.expr Phi Var). 
+    Notation effect := (RTL.effect Var). 
     
     Record block t := mk
       {
@@ -20,14 +20,14 @@ Section t.
         effects : DList.T (option ∘ effect) Phi
       }. 
               
-    Definition compile t (b : Flat.block Phi Var t) : block t. 
-    refine (let fold := fix fold t (b : Flat.block Phi Var t) (acc : list ({t : type & expr t})): block t :=
+    Definition compile t (b : RTL.block Phi Var t) : block t. 
+    refine (let fold := fix fold t (b : RTL.block Phi Var t) (acc : list ({t : type & expr t})): block t :=
                 match b with 
-                    Flat.telescope_end x => 
+                    RTL.telescope_end x => 
                       match x with 
                           (r,g,e) => mk _ acc r g e
                       end
-                  | Flat.telescope_bind a b k => 
+                  | RTL.telescope_bind a b k => 
                       let n := List.length acc in 
                       let acc := List.app acc [(existT _ a b)] in 
                         fold _ (k (box a n)) acc
@@ -70,9 +70,9 @@ Section t.
        refine (fun  eff => 
               match eff with 
                 | Some eff =>  
-                    match eff in Flat.effect _ s return eval_sync s -> (option ∘ eval_sync) s ->
+                    match eff in RTL.effect _ s return eval_sync s -> (option ∘ eval_sync) s ->
                                                         option ((option ∘ eval_sync) s)  with 
-                      |  Flat.effect_reg_write t val we => 
+                      |  RTL.effect_reg_write t val we => 
                            fun _ old => 
                              match old with 
                                | Some _ => Some old
@@ -81,7 +81,7 @@ Section t.
                                    do val <- lookup _ val env;
                                    Some (if we then Some val else None)
                              end
-                      |  Flat.effect_regfile_write n t val adr we => 
+                      |  RTL.effect_regfile_write n t val adr we => 
                            fun rf old =>
                              match old with 
                                | Some _ => Some old 
@@ -122,14 +122,14 @@ End defs.
 End t.  
 
 Notation "[ e : t ]" := (existT _ t e). 
-Notation "[ 'read' v : t ]" := (existT _ _ (Flat.Eread _ _ t v)).
-Notation "[ 'read' v @ a : t ]" := (existT _ _ (Flat.Eread_rf _ _ _ t  v a)).
+Notation "[ 'read' v : t ]" := (existT _ _ (RTL.Eread _ _ t v)).
+Notation "[ 'read' v @ a : t ]" := (existT _ _ (RTL.Eread_rf _ _ _ t  v a)).
 Notation W n:= (Core.Tint n). 
 Notation "< >" := (Core.Ttuple nil). 
 Notation "< a ; .. ; b >" := (Core.Ttuple (a :: .. (b :: nil) ..))%list. 
 Notation "# a " := (box _ a) (no associativity, at level 71). 
-Notation "f @@ args" := (Flat.Ebuiltin _ _ _ _ f args) (no associativity, at level 71). 
-Notation "$ x" := (Flat.Econstant _ _ _ x) (no associativity, at level 71). 
-Notation nth v e := (Flat.Enth _ _ _ _ v e). 
+Notation "f @@ args" := (RTL.Ebuiltin _ _ _ _ f args) (no associativity, at level 71). 
+Notation "$ x" := (RTL.Econstant _ _ _ x) (no associativity, at level 71). 
+Notation nth v e := (RTL.Enth _ _ _ _ v e). 
 
 Notation "[: x < 2^ n ]" := (Word.mk n x _). 

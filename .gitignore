@@ -15,3 +15,12 @@ papers/coq-workshop-12/main.rel
 papers/coq-workshop-12/main.run.xml
 papers/coq-workshop-12/main.synctex.gz
 src/Makefile.coq
+talks/coq-2012/auto/
+talks/coq-2012/talk.aux
+talks/coq-2012/talk.log
+talks/coq-2012/talk.nav
+talks/coq-2012/talk.out
+talks/coq-2012/talk.snm
+talks/coq-2012/talk.synctex.gz
+talks/coq-2012/talk.toc
+talks/coq-2012/talk.vrb
