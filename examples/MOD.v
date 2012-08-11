@@ -42,7 +42,7 @@ Module  Ex2.
     Inductive Ty : Type :=
     | RET : Word.T n -> Ty
     | ST : Word.T n -> Word.T n -> Ty. 
-    Hint Unfold eval_state Phi. 
+    Hint Unfold Phi. 
 
     Program Definition start (x : Ty) : eval_state Phi :=
       match x with 

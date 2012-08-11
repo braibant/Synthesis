@@ -62,7 +62,7 @@ Section t.
       forall t, s  ~~> t -> 
            t == Next Phi s' mult. 
     Proof. 
-      intros. unfold Next, Eval. unfold Phi, eval_state in s'.
+      intros. unfold Next, Eval. unfold Phi in s'.
       repeat DList.inversion. simpl. 
       
       cbv [Sem.Dyn.Bind Sem.Dyn.OrElse Sem.Dyn.Return Sem.Dyn.Retry DList.tl DList.hd].

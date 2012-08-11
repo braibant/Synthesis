@@ -3,11 +3,12 @@ Require Import Core.
 Require Word Array. 
 
 Inductive primitive (Phi : state) : list type -> type -> Type:=
-  | register_read : forall t, var Phi (Treg t) ->  primitive Phi nil t
-  | register_write : forall t, var Phi (Treg t) -> primitive Phi (t:: nil) Tunit
-  (* register file primitives *)
-  | regfile_read : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([ (Tint n)])%list  t
-  | regfile_write : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([ (Tint n); t])%list  Tunit.
+| register_read : forall t, var Phi (Treg t) ->  primitive Phi nil t
+| register_write : forall t, var Phi (Treg t) -> primitive Phi (t:: nil) Tunit
+(* register file primitives *)
+| regfile_read : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([ (Tint n)])%list  t
+| regfile_write : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([ (Tint n); t])%list  Tunit
+(* fifos primitives *).
 
 
 Section s.

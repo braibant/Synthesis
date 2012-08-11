@@ -100,10 +100,10 @@ Section t.
               end). 
     Defined. 
     
-    Definition eval_effects (env : Env) (e : DList.T (option ∘ effect) Phi) (Delta : updates) : option updates.  
-    refine (Common.DList.map3o _ Phi e st Delta).
-    apply (eval_effect env). 
-    Defined. 
+    Definition eval_effects (env : Env) (e : DList.T (option ∘ effect) Phi) (Delta : updates) : 
+      option updates :=
+      Common.DList.map3o (eval_effect env) Phi e st Delta.
+
     
     Definition eval_block t (b : block t) (Delta : updates) : 
       option (option (eval_type t * updates)). 

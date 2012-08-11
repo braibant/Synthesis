@@ -24,3 +24,9 @@ talks/coq-2012/talk.snm
 talks/coq-2012/talk.synctex.gz
 talks/coq-2012/talk.toc
 talks/coq-2012/talk.vrb
+.DS_Store
+talks/.DS_Store
+talks/coq-2012/.DS_Store
+talks/coq-2012/figs/.DS_Store
+talks/coq-2012/talk.rel
+.\#question.txt

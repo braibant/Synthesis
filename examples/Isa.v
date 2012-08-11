@@ -296,7 +296,20 @@ Eval vm_compute in
      let x := Compiler.Fo_compile _ _ (Ex2.Code 4) in 
        List.length (FirstOrder.bindings _ _ x). 
 
+Eval vm_compute in 
+     let x := Compiler.Fo_CP_compile _ _ (Ex2.Code 4) in 
+       List.length (FirstOrder.bindings _ _ x). 
+
 Eval vm_compute in
       Compiler.Fo_compile _ _ (Ex2.Code 4).
+
+
+(* Definition finish {Phi t} x := List.length (FirstOrder.bindings Phi t(FirstOrder.compile _ _ x)).  *)
+(* Eval vm_compute in finish (Compiler.Compile _ _ (Ex2.Code 4) _).  *)
+(* Definition step {Phi t} x :=  (CSE.Compile Phi t  (CP.Compile _ _ x)).  *)
+(* Eval vm_compute in finish (step (Compiler.Compile _ _ (Ex2.Code 4) ) _).  *)
+(* Eval vm_compute in finish (step (step (Compiler.Compile _ _ (Ex2.Code 4) )) _).  *)
+(* Eval vm_compute in finish (step (step (step (Compiler.Compile _ _ (Ex2.Code 4) ))) _).  *)
+
 
 

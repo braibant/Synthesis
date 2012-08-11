@@ -1,0 +1,6 @@
+- bitvector in HOL4 (not sat, because of the sizes)
+- bluespec optimisations (firing multiple rules simultaneously)
+
+Anthony fox talk:
+- type system with non-recursive sums, records, products, map
+- run : instruction -> state -> unit * state

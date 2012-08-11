@@ -7,6 +7,12 @@ Definition bind {A B: Type} (f: option A) (g: A -> option B) : option B :=
     | None => None
   end.
 
+Definition bind2 {A B C: Type} (f: option (A * B)) (g: A -> B -> option C) : option C :=
+  match f with
+  | Some (x, y) => g x y
+  | None => None
+  end.
+
 Remark bind_inversion:
   forall (A B: Type) (f: option A) (g: A -> option B) (y: B),
   bind f g = Some y ->
@@ -19,6 +25,10 @@ Qed.
 
 Notation "'do' X <- A ; B" := (bind A (fun X => B) )
   (at level 200, X ident, A at level 100, B at level 200). 
+
+Notation "'do' ( X , Y ) <- A ; B" := (bind2 A (fun X Y => B))
+ (at level 200, X ident, Y ident, A at level 100, B at level 200).
+
 Notation "'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200). 
 

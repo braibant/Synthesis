@@ -247,8 +247,8 @@ Section t.
                       match svo with 
                         | None => k :- e; 
                             let sv := (SVar arg (List.length F)) in
-                              let F := add arg  sv k F in
-                                cse F (cont (k,sv))
+                            let F := add arg sv k F in
+                              cse F (cont (k,sv))
                         | Some sv =>                   
                             match lookup arg sv F with 
                               | None =>     

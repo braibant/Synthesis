@@ -96,18 +96,18 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 \begin{frame}
-  \frametitle{Context}
+  \frametitle{Context: formal verification of hardware}
   
   \begin{itemize}
-  \item  Formally verified everything:
-    \begin{itemize}
-    \item Compilers (CompCert [2006])
-    \item Operating Systems (Gypsy [1989]; seL4 [2009])
-    \item Static analysers
-    \item \alert<2->{Hardware}
-    \end{itemize}
+  % \item  Formally verified everything:
+  %   \begin{itemize}
+  %   \item Compilers (CompCert [2006])
+  %   \item Operating Systems (Gypsy [1989]; seL4 [2009])
+  %   \item Static analysers
+  %   \item \alert<2->{Hardware}
+  %   \end{itemize}
   
-  \pause
+  % \pause
 
   \item Verifying hardware with theorem provers:
     \begin{itemize}
@@ -120,6 +120,7 @@
       \item[-] Floating-point operations verified at AMD using ACL2 
       \item[-] VAMP [2003]  (a pipelined micro-processor verified in PVS)
       \end{itemize}
+    \item high-level formalization of the ARM architecture in HOL
     \item ...
     \end{itemize}
 
@@ -131,6 +132,7 @@
     \item generates low-level code (RTL) from high-level HDLs
     \item argue (in)formally that this synthesis is correct
     \end{itemize}
+    \parenthesis{Bluespec, Esterel, Lustre, \dots}
   \end{itemize}
 \end{frame}
 
@@ -166,8 +168,8 @@
     \begin{itemize}
     \item Define data-structures to represent programs
     \item Define what is a program's semantics (via an interpretation function) 
-    \item Use \alert{parametric higher-order abstract syntax} (PHOAS) to deal with binders
     \end{itemize}
+  \item Use \alert{parametric higher-order abstract syntax} (PHOAS) to deal with binders
   \end{itemize}
 \end{frame}
 
@@ -197,7 +199,7 @@ $\quad$Abs (fun x => Abs (fun y => Var x)).
 
 \pause
 
-\item An \alert{intrinsic approaches} (strongly typed syntax vs. syntax + typing judgement)
+\item An \alert{intrinsic approach} (strongly typed syntax vs. syntax + typing judgement)
 \item Program transformations are easier to implement (and prove!) 
   \parenthesis{with one caveat}
 \end{itemize}
@@ -358,7 +360,7 @@ x4   <- x2 + 1;
 x5   <-  ! r2;
 x6   <- x5;
 x8   <- x1;
-x9 <- x1;
+x9   <- x1;
 x10 <- not x1;
 x11 <- x8 || x10;
 x12 <- x8 ?  x3 : x6;
@@ -398,7 +400,7 @@ x4   <- !r2;
 x5   <- 1;
 x6   <- x0 - x5;
 x7   <- x4 + x5;
-x8 <-x3 ? x6 : x4
+x8   <-x3 ? x6 : x4
 begin
   r1 := x8 when true;
   r2 := x4 when x3
@@ -469,22 +471,6 @@ Theorem Compile_correct $\Phi$ t a :
   \end{itemize}
 \end{frame}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-\begin{frame}[fragile]
-  \frametitle{PHOAS in action (2)}
-
-  \begin{itemize}
-  \item<1-> PHOAS shines when defining examples of circuits inside Coq: 
-    \begin{itemize}
-    \item makes it possible to use fancy coq notations 
-\begin{coq}
-Notation "'DO' X <- A ; B" := (Bind A (fun X => B)) ( ... )      
-\end{coq}
-\item other solutions (e.g., dependently typed de Bruijn indices) would not scale
-\item keep all the benefits of deep-embeddings!
-\end{itemize}
-\end{itemize}
-\end{frame}
-
 \section{Examples}
 
 \begin{frame}
@@ -574,11 +560,28 @@ if (RF[r1] <> 0) where BZ(r1,r2) = IMEM[PC]
 \end{columns}
 
 \item \coqe{Definition isa := loadi $\oplus$ loadpc $\oplus$  add $\oplus$ bz $\oplus$ load $\oplus$ store}
-\item Use a mixture of notations and intermediate definitions
-\item (Not yet tried to prove anything about this one)
+% \item Use a mixture of notations and intermediate definitions
+\end{itemize}
+\parenthesis{Not yet tried to prove anything about this one}
+\end{frame}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+\begin{frame}[fragile]
+  \frametitle{PHOAS in action (2)}
+
+  \begin{itemize}
+  \item<1-> PHOAS shines when defining examples of circuits inside Coq: 
+    \begin{itemize}
+    \item makes it possible to use fancy coq notations 
+\begin{coq}
+Notation "'DO' X <- A ; B" := (Bind A (fun X => B)) ( ... )      
+\end{coq}
+\item other solutions (e.g., dependently typed de Bruijn indices) would not scale
+\item keep all the benefits of deep-embeddings!
+\end{itemize}
 \end{itemize}
 \end{frame}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+
 
 \section{Conclusion}
 % Rant about Coq
@@ -611,16 +614,16 @@ if (RF[r1] <> 0) where BZ(r1,r2) = IMEM[PC]
       \item Improve on the language (inputs, FIFOs, schedulers)
       \item Better compiler (boolean optimisations/BDDs)
       \item Extraction/plugin to output actual VHDL/Verilog
-      \item Prove some designs correct (w.r.t. specifications as Moore automata)
+      \item Prove some designs correct  
       \end{itemize}
       
 \pause
 
-    \item Closing remarks
+    \item Closing remarks (wish-list)
       \begin{itemize}
-      \item Could really use some help from SMT solvers to solve bitvector arithmetic goals
       \item Generated induction principles useless
       \item Mutual fixpoints and inner fixpoints being not equivalent
+      \item Could really use some help from SMT solvers to solve bitvector arithmetic goals
       \end{itemize}
   
     \end{itemize}

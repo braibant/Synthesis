@@ -1,7 +1,24 @@
 Require Import Common Core Front. 
     
 Require ZArith. Open Scope Z_scope.
-Module Ex1. 
+Require Compiler. 
+Module T.
+  Definition Phi : state := ([Treg Tbool])%list.
+  Definition M : Action Phi Tunit. intros V. 
+  refine (DO x <- read [: var_0 ]; 
+          DO a <- Return (#b true);
+          DO x' <- Return ( ~ (! x))%expr;
+          DO x'' <- Return ( ~ (! x'))%expr;
+          DO x''' <- Return (!x' || !x)%expr;
+          DO y <- Return (Emux _ _ (! x''') (@Econstant _  (Tint 4) (Cword 1)) (#i 2))%expr;
+          Return (# Ctt) 
+         )%action. 
+  Defined. 
+  Require Import FirstOrder. 
+  Eval vm_compute in Compiler.Fo_CP_compile _ _ M. 
+  Eval vm_compute in Compiler.Fo_compile _ _ M. 
+End T.  
+
 Section t. 
   Variable W : nat. 
   
@@ -33,25 +50,23 @@ Section t.
                write [: r1 <- !y]
              })%action. 
   Defined.
-
 End t. 
 
 Require Import FirstOrder Core.
+Require  Compiler. 
 
-Require  RTL. 
-Notation "x :- e1 ; e2" := (RTL.telescope_bind _ _ _ _ (RTL.bind_expr _ _ _ e1) (fun x => e2)) (right associativity, at level 80, e1 at next level).  
-Notation "x :- ! e1 ; e2" := (RTL.telescope_bind _ _ _  _ (RTL.bind_reg_read _ _ _  e1) (fun x => e2)) (right associativity, at level 80, e1 at next level).  
-Notation "& e" := (RTL.telescope_end _ _ _  e) (right associativity, at level 80, e1 at next level).  
-Notation "x @@ { l }" := (RTL.neffect_guard _ _ x l) (no associativity, at level 71). 
-Notation "v := x" := (RTL.neffect_reg_write _ _ _ v x) (no associativity, at level 80). 
-Eval vm_compute in RTL.compile (Phi 5) _ _ (mult 5 (fun _ => unit)). 
 
-Notation "x 'when' b" := (RTL.effect_reg_write _ _ x b) (no associativity, at level 80). 
-Eval vm_compute in RTL.Compile (Phi 5) _ (mult 5). 
+Eval vm_compute in Compiler.Fo_CP_compile _ _ (mult 5). 
+Eval vm_compute in Compiler.Fo_compile _ _ (mult 5). 
+(* Notation "x :- e1 ; e2" := (RTL.telescope_bind _ _ _ _ (RTL.bind_expr _ _ _ e1) (fun x => e2)) (right associativity, at level 80, e1 at next level).   *)
+(* Notation "x :- ! e1 ; e2" := (RTL.telescope_bind _ _ _  _ (RTL.bind_reg_read _ _ _  e1) (fun x => e2)) (right associativity, at level 80, e1 at next level).   *)
+(* Notation "& e" := (RTL.telescope_end _ _ _  e) (right associativity, at level 80, e1 at next level).   *)
+(* Notation "x @@ { l }" := (RTL.neffect_guard _ _ x l) (no associativity, at level 71).  *)
+(* Notation "v := x" := (RTL.neffect_reg_write _ _ _ v x) (no associativity, at level 80).  *)
+(* Eval vm_compute in RTL.compile (Phi 5) _ _ (mult 5 (fun _ => unit)).  *)
 
 Require Compiler. 
 Eval vm_compute in Compiler.Fo_compile (Phi 5) _ (mult 5). 
-End Ex1. 
 
 
 Fixpoint pow2 k := (match k with O => 1 | S p => pow2 p + pow2 p end)%nat.
@@ -61,25 +76,6 @@ Notation "[2^ n ]" := (pow2 n).
 Section s. 
   
   Variable V : type -> Type. 
-
-
-  Definition add Phi n (x : V (Tint [2^ n])) (y : V (Tint [2^ n])) : 
-    action Phi V (Ttuple [Tbool; Tbool; Tint [2^ n]; Tint [2^ n]]). 
-  refine (
-      let fix add n (x : V (Tint [2^ n])) (y : V (Tint [2^ n]))  := 
-          match n 
-             return 
-             V (Tint [2^ n]) ->  V (Tint [2^ n]) ->  action Phi V (Ttuple [Tbool; Tbool; Tint [2^ n]; Tint [2^ n]])
-          with 
-            | 0 => _
-            | S n => _
-          end%nat x y in add n x y); clear - add;intros x y.
-  Notation "[ a ; b ; c ; d ]" := (Etuple _ _ ([a;b;c;d])%dlist) : expr_scope. 
- 
-  simpl in *. 
-
-  refine (RETURN [(!x = #i 1) || (!y = #i 1) ; (!x = #i 1) && (!y = #i 1); !x + !y; !x + !y + #i 1])%expr. 
-
   Notation "'DOT' << p , g , s , t >> <- x ; f" := 
   (( 
       DO p <- RETURN (Efst _ _ _ (!x)%expr);
@@ -95,8 +91,20 @@ Section s.
   Notation low x := ( Ebuiltin (BI_low _ _) ([x])%dlist). 
   Notation high x := ( Ebuiltin (BI_high _ _) ([x])%dlist). 
   Notation combineLH x y := ( Ebuiltin  (BI_combineLH _ _) (x :: [ y])%dlist). 
+  Notation "[< a ; b ; c ; d >]" := (Etuple _ _ ([a;b;c;d])%dlist) : expr_scope. 
+
+  Open Scope Z_scope. 
+  Definition add Phi n (x : V (Tint [2^ n])) (y : V (Tint [2^ n])) : 
+    action Phi V (Ttuple [Tbool; Tbool; Tint [2^ n]; Tint [2^ n]]). 
   refine (
-      DO xL <- RETURN ((low (!x))%expr);
+      let fix add n (x : V (Tint [2^ n])) (y : V (Tint [2^ n]))  := 
+          match n 
+             return 
+             V (Tint [2^ n]) ->  V (Tint [2^ n]) ->  action Phi V (Ttuple [Tbool; Tbool; Tint [2^ n]; Tint [2^ n]])
+          with 
+            | 0%nat => fun x y =>(RETURN [< (!x = #i 1) || (!y = #i 1) ; (!x = #i 1) && (!y = #i 1); !x + !y; !x + !y + #i 1 >])%expr
+            | S n => fun x y =>
+      (DO xL <- RETURN ((low (!x))%expr);
       DO xH <- RETURN ((high (!x))%expr);
       DO yL <- RETURN ((low (!y))%expr);
       DO yH <- RETURN ((high (!y))%expr);
@@ -108,8 +116,9 @@ Section s.
       DO tH' <- RETURN (Emux _ _ (!pL) (!tH) (!sH))%expr;
       DO pH' <- RETURN (!gH || (!pH && !gH))%expr;
       DO gH' <- RETURN (!gH || (!pH && !gL))%expr;
-      RETURN ([!pH'; !gH'; combineLH (!sL) (!sH') ; combineLH  (!tL) (!tH') ])%expr
-    )%action. 
+      RETURN ([< !pH'; !gH'; combineLH (!sL) (!sH') ; combineLH  (!tL) (!tH') >])%expr
+)%action
+          end x y in add n x y).
 
   Defined.
 End s. 
@@ -134,4 +143,4 @@ Definition x n a b : ty n :=
     let b := Word.repr _ b : eval_sync (Treg (W [2^n])) in 
       ([a;b])%dlist. 
 Eval vm_compute in test_real 6 (x 6 16 64). 
-                            
+End Ex1.                             
