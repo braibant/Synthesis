@@ -1,73 +1,4 @@
-Require Import Common Core Front. 
-    
-Require ZArith. Open Scope Z_scope.
-Require Compiler. 
-Module T.
-  Definition Phi : state := ([Treg Tbool])%list.
-  Definition M : Action Phi Tunit. intros V. 
-  refine (DO x <- read [: var_0 ]; 
-          DO a <- Return (#b true);
-          DO x' <- Return ( ~ (! x))%expr;
-          DO x'' <- Return ( ~ (! x'))%expr;
-          DO x''' <- Return (!x' || !x)%expr;
-          DO y <- Return (Emux _ _ (! x''') (@Econstant _  (Tint 4) (Cword 1)) (#i 2))%expr;
-          Return (# Ctt) 
-         )%action. 
-  Defined. 
-  Require Import FirstOrder. 
-  Eval vm_compute in Compiler.Fo_CP_compile _ _ M. 
-  Eval vm_compute in Compiler.Fo_compile _ _ M. 
-End T.  
-
-Section t. 
-  Variable W : nat. 
-  
-  (* do x <- ! r1;if (x <> 0) then {do y <- !r2; r1 := x - 1; r2 := y + 1} else {do y <- !r2; r1 := y} *)
-
-  Notation NUM := (Tint W). 
-
-  Definition Phi : state := (Treg NUM :: Treg NUM  :: nil)%list. 
-    
-  Notation r1 := (var_0 : var Phi (Treg NUM)).
-  Notation r2 := (var_S (var_0) : var Phi (Treg NUM)).  
-  
-  Notation "'If' c { b1 } 'else' { b2 }" := 
-  (OrElse _ _ _ (WHEN (c)%expr; b1) b2) 
-    (no associativity, at level 95, c at level 0). 
-  
-  Definition mult : Action Phi Tunit. intros V. 
-  refine ( DO x   <- read [: r1 ];
-           If (! x <> #i 0) 
-              {
-                DO y <- read [: r2 ];
-                DO _ <- (write [: r1 <- !x - #i 1]);
-                DO _ <- (write [: r2 <- !y + #i 1]);
-                RETURN #Ctt 
-              }
-           else 
-             {
-               DO y <- read [: r2 ];
-               write [: r1 <- !y]
-             })%action. 
-  Defined.
-End t. 
-
-Require Import FirstOrder Core.
-Require  Compiler. 
-
-
-Eval vm_compute in Compiler.Fo_CP_compile _ _ (mult 5). 
-Eval vm_compute in Compiler.Fo_compile _ _ (mult 5). 
-(* Notation "x :- e1 ; e2" := (RTL.telescope_bind _ _ _ _ (RTL.bind_expr _ _ _ e1) (fun x => e2)) (right associativity, at level 80, e1 at next level).   *)
-(* Notation "x :- ! e1 ; e2" := (RTL.telescope_bind _ _ _  _ (RTL.bind_reg_read _ _ _  e1) (fun x => e2)) (right associativity, at level 80, e1 at next level).   *)
-(* Notation "& e" := (RTL.telescope_end _ _ _  e) (right associativity, at level 80, e1 at next level).   *)
-(* Notation "x @@ { l }" := (RTL.neffect_guard _ _ x l) (no associativity, at level 71).  *)
-(* Notation "v := x" := (RTL.neffect_reg_write _ _ _ v x) (no associativity, at level 80).  *)
-(* Eval vm_compute in RTL.compile (Phi 5) _ _ (mult 5 (fun _ => unit)).  *)
-
-Require Compiler. 
-Eval vm_compute in Compiler.Fo_compile (Phi 5) _ (mult 5). 
-
+Require Import Common Core Front ZArith. 
 
 Fixpoint pow2 k := (match k with O => 1 | S p => pow2 p + pow2 p end)%nat.
 
@@ -133,14 +64,17 @@ refine
      add V _ n x y
     )%action. 
 Defined. 
-Eval vm_compute in Compiler.Fo_compile _ _  (test 3). 
-Definition test_real n s :=
-   Front.Eval _ s _ (test n) (Diff.init _). 
+Require Compiler. 
+Require Import FirstOrder. 
+Eval vm_compute in do r <- (Compiler.copt _ _  (test 3)); Some (List.length (bindings _ _ r)). 
+Eval vm_compute in List.length (bindings _ _ (Compiler.Fo_CP_compile _ _  (test 3))). 
+(* Definition test_real n s := *)
+(*    Front.Eval _ s _ (test n) (Diff.init _).  *)
 
-Definition ty n := (eval_state [Treg (W [2^n]); Treg (W [2^n])])%type. 
-Definition x n a b : ty n :=
-  let a := Word.repr _ a : eval_sync (Treg (W [2^n])) in
-    let b := Word.repr _ b : eval_sync (Treg (W [2^n])) in 
-      ([a;b])%dlist. 
-Eval vm_compute in test_real 6 (x 6 16 64). 
-End Ex1.                             
+(* Definition ty n := (eval_state [Treg (W [2^n]); Treg (W [2^n])])%type.  *)
+(* Definition x n a b : ty n := *)
+(*   let a := Word.repr _ a : eval_sync (Treg (W [2^n])) in *)
+(*     let b := Word.repr _ b : eval_sync (Treg (W [2^n])) in  *)
+(*       ([a;b])%dlist.  *)
+(* Eval vm_compute in test_real 6 (x 6 16 64).  *)
+(* End Ex1.                              *)

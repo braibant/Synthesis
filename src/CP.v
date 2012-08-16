@@ -136,59 +136,57 @@ Section t.
       (r, mk bdd (Eknown Gamma) (S n)). 
 
   (* Unfortunately, multiple reads from the same state elements cannot be shared *)
-  Definition cp_telescope {A} (E: Env) (T : telescope Phi V A) : telescope Phi Var A. 
-  refine (let fix cp Gamma T :=
-              match T with
-                | & x => & x
-                | telescope_bind arg b cont => 
-                    let (e,svo) := cp_expr arg b in 
-                      match svo in toption _ arg return 
-                         (Var arg * sval arg -> telescope Phi V A) -> 
-                         expr Phi Var arg -> telescope Phi Var A 
-                      with 
-                        | @SNone  arg => 
-                            match arg as ty return 
-                               (Var ty * sval ty -> telescope Phi V A) -> 
-                               expr Phi Var ty -> telescope Phi Var A 
-                            with 
-                              | Tbool => fun cont e => 
-                                         (
-                                           k :- e; 
-                                           let (ptr, Gamma) := incr Gamma in 
-                                             let Gamma := add_env Gamma k ptr in
-                                             cp Gamma (cont (k, SSome ptr)))
-                              | _ => fun cont e => 
-                                      k :- e; cp Gamma (cont (k, SNone _))
-                            end
-                        | SSome sv => 
-                            (* We have a symbolic value *)
-                            fun cont e =>  
-                              match add_bdd Gamma sv with 
-                                | Some (ptr, Gamma) =>
-                                    (* the symbolic value correspond to a pointer in the bdd *)
-                                    match lookup Gamma ptr with
-                                      | None =>
-                                          (* this pointer does not
+  Fixpoint cp_telescope {A} (Gamma: Env) (T : telescope Phi V A) : telescope Phi Var A :=
+    match T with
+      | & x => & x
+      | telescope_bind arg b cont => 
+          let (e,svo) := cp_expr arg b in 
+            match svo in toption _ arg return 
+               (Var arg * sval arg -> telescope Phi V A) -> 
+               expr Phi Var arg -> telescope Phi Var A 
+            with 
+              | @SNone  arg => 
+                  match arg as ty return 
+                     (Var ty * sval ty -> telescope Phi V A) -> 
+                     expr Phi Var ty -> telescope Phi Var A 
+                  with 
+                    | Tbool => fun cont e => 
+                                (
+                                  k :- e; 
+                                  let (ptr, Gamma) := incr Gamma in 
+                                    let Gamma := add_env Gamma k ptr in
+                                      cp_telescope Gamma (cont (k, SSome ptr)))
+                    | _ => fun cont e => 
+                            k :- e; cp_telescope Gamma (cont (k, SNone _))
+                  end
+              | SSome sv => 
+                  (* We have a symbolic value *)
+                  fun cont e =>  
+                    match add_bdd Gamma sv with 
+                      | Some (ptr, Gamma) =>
+                          (* the symbolic value correspond to a pointer in the bdd *)
+                          match lookup Gamma ptr with
+                            | None =>
+                                (* this pointer does not
                                           correspond to a value. We
                                           bind this value, and add it
                                           to the environment*)
-                                          k :- e;
-                                          let Gamma := add_env Gamma k ptr in 
-                                            cp Gamma (cont (k, SSome ptr))
-                                      | Some old => 
-                                          (* the pointer was already
+                                k :- e;
+                                let Gamma := add_env Gamma k ptr in 
+                                  cp_telescope Gamma (cont (k, SSome ptr))
+                            | Some old => 
+                                (* the pointer was already
                                           associated. No need to bind
                                           a new value *)
-                                          cp Gamma (cont (old, (SSome ptr))) 
-                                    end
-                                | None => 
-                                    (* adding to the bdd failed. This
+                                cp_telescope Gamma (cont (old, (SSome ptr))) 
+                          end
+                      | None => 
+                          (* adding to the bdd failed. This
                                     should not happen, but is safe *)
-                                    k :- e; cp Gamma (cont (k,SNone _))
-                              end
-                      end cont e
-              end in cp E T). 
-  Defined. 
+                          k :- e; cp_telescope Gamma (cont (k,SNone _))
+                    end
+            end cont e
+    end. 
 
 
   Definition cp_effects (eff: effects Phi V) : effects Phi Var :=
