@@ -84,14 +84,14 @@ Section t.
                 & (rB, andb gA gB, List.app eA eB)             
             | Assert exp => 
                 x <- (bind_expr _ exp); 
-                & (unit, !x, nil)%expr
+                & (unit, Evar x, nil)%expr
             | Primitive args res p exprs => _
             | OrElse t A A' => 
                 [< rA, gA, eA >] :- compile _ A;
                 [< rA', gA', eA' >] :- compile _ A';
                 let e := neffect_guard gA eA in 
                 let e' := neffect_guard (andb (~ gA)  gA')%expr eA' in 
-                  r <- (bind_expr _ (Emux _ _ gA (!rA) (!rA'))%expr); 
+                  r <- (bind_expr _ (Emux gA (Evar rA) (Evar rA'))%expr); 
                   & ( r , (orb gA gA')%expr , [e;e'])%list
           end in f t a).
   (* primitive *)
@@ -169,8 +169,8 @@ Section t.
                            let (va,ga) := inversion_effect_Treg t a in 
                            let (vb,gb) := inversion_effect_Treg t b in 
                              (
-                               we <- bind_expr  _ (!ga || !gb)%expr ;
-                               w <- bind_expr  _ (Emux _ _ (!ga) (!va) (!vb) )%expr ;
+                               we <- bind_expr  _ (Evar ga || Evar gb)%expr ;
+                               w <- bind_expr  _ (Emux  (Evar ga) (Evar va) (Evar vb) )%expr ;
                                & (effect_reg_write  _ w we))
               | Tregfile n t => fun a b => 
                            match inversion_effect_Tregfile t n a with 
@@ -178,9 +178,9 @@ Section t.
                                  match inversion_effect_Tregfile t n b with 
                                    | (vb,adrb,gb) =>
                                        (
-                                         we <- bind_expr  _ (orb (!ga) (!gb))%expr; 
-                                         wadr <- bind_expr _ (Emux _ _ (!ga) (!adra) (!adrb))%expr; 
-                                         wdata <- bind_expr _ (Emux _ _ (!ga) (!va) (!vb))%expr; 
+                                         we <- bind_expr  _ (orb (Evar ga) (Evar gb))%expr; 
+                                         wadr <- bind_expr _ (Emux (Evar ga) (Evar adra) (Evar adrb))%expr; 
+                                         wdata <- bind_expr _ (Emux (Evar ga) (Evar va) (Evar vb))%expr; 
                                          &  (effect_regfile_write _ _ wdata wadr we))
                                  end
                            end
@@ -888,15 +888,15 @@ Section equiv.
   | Eq_constant : forall ty (c : constant ty), Econstant c == Econstant c
   | Eq_mux : forall t c1 c2 l1 l2 r1 r2, 
                c1 == c2 -> l1 == l2 -> r1 == r2 -> 
-               Emux  U t c1 l1 r1 ==  Emux  V t c2 l2 r2
+               @Emux  U t c1 l1 r1 ==  @Emux  V t c2 l2 r2
                     
   | Eq_fst : forall (l : list type) (t : type) dl1 dl2, 
                dl1 == dl2 -> 
-               Efst  U l t dl1 == Efst  V l t dl2
+               @Efst U l t dl1 == @Efst  V l t dl2
 
   | Eq_snd : forall (l : list type) (t : type) dl1 dl2, 
                dl1 == dl2 -> 
-               Esnd  U l t dl1 == Esnd  V l t dl2
+               @Esnd  U l t dl1 == @Esnd  V l t dl2
 
   | Eq_nth : forall (l : list type) (t : type) (v : Common.var l t)  dl1 dl2, 
                dl1 == dl2 -> 
@@ -904,7 +904,7 @@ Section equiv.
 
   | Eq_tuple : forall (l : list type) dl1 dl2, 
                  Common.DList.pointwise expr_equiv l dl1 dl2 ->
-               Etuple  U l dl1 == Etuple  V l dl2
+               @Etuple  U l dl1 == @Etuple  V l dl2
                             where "x == y" := (expr_equiv _ x y). 
   
   Inductive effect_equiv : forall t,  option (effect U t) -> option (effect V t) -> Prop :=

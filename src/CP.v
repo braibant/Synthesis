@@ -108,19 +108,19 @@ Section t.
     match b with
       | Lift x => Some (x, Gamma)
       | Ite c l r => 
-          do (r,bdd) <- BDD.ite (Ebdd Gamma) c l r;
+          do r, bdd <- BDD.ite (Ebdd Gamma) c l r;
           Some (r, mk bdd (Eknown Gamma) (Enext Gamma))
       | And a b => 
-          do (r,bdd) <- BDD.andb (Ebdd Gamma) a b;
+          do  r,bdd <- BDD.andb (Ebdd Gamma) a b;
           Some (r, mk bdd (Eknown Gamma) (Enext Gamma))
       | Or a b => 
-          do (r,bdd) <- BDD.orb (Ebdd Gamma) a b;
+          do  r,bdd <- BDD.orb (Ebdd Gamma) a b;
           Some (r, mk bdd (Eknown Gamma) (Enext Gamma))
       | Xor a b => 
-          do (r,bdd) <- BDD.xorb (Ebdd Gamma) a b;
+          do r,bdd  <- BDD.xorb (Ebdd Gamma) a b;
           Some (r, mk bdd (Eknown Gamma) (Enext Gamma))
       | Not a => 
-          do (r,bdd) <- BDD.negb (Ebdd Gamma) a;
+          do r,bdd <- BDD.negb (Ebdd Gamma) a;
           Some (r, mk bdd (Eknown Gamma) (Enext Gamma))
     end. 
 

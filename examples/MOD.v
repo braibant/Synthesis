@@ -16,24 +16,24 @@ Module  Ex2.
     Notation r2 := (var_S (var_S (var_0)) : var Phi (Treg NUM)).  
     Open Scope action_scope. 
     Definition iterate : Action Phi Tunit. intros V.
-    refine (DO X <- read [: c]; 
-            WHEN ( !X); 
-            DO A <- read [: r1]; 
-            DO B <- read [: r2];
-            WHEN (!B <= !A); 
-            DO _ <- (write [: r1 <- (!A - !B)]);  
-            RETURN #Ctt
+    refine (do X <- read [: c]; 
+            WHEN ( X); 
+            do A <- read [: r1]; 
+            do B <- read [: r2];
+            WHEN (B <= A); 
+            DO _ <- (write [: r1 <- (A - B)]);  
+            ret (#Ctt)
            ). 
     Defined. 
     
     Definition done : Action Phi Tunit. intros V. 
-    refine (DO X <- read [: c]; 
-            WHEN (!X); 
-            DO A <- read [: r1]; 
-            DO B <- read [: r2];
-            WHEN (!A < !B); 
-            DO _ <- (write [: c <- #b false]);  
-            RETURN #Ctt
+    refine (do X <- read [: c]; 
+            WHEN (X); 
+            do A <- read [: r1]; 
+            do B <- read [: r2];
+            WHEN (A < B); 
+            (write [: c <- #b false]);;
+            ret  (#Ctt)
            ). 
     Defined. 
     
@@ -47,9 +47,9 @@ Module  Ex2.
     Program Definition start (x : Ty) : eval_state Phi :=
       match x with 
         | RET a => 
-             [false; a; a] 
+             [ :: false; a; a] 
         | ST a b => 
-            [true; a; b]
+            [ :: true; a; b]
       end%dlist. 
         
     Definition finish (x : eval_state Phi) : Ty :=

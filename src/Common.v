@@ -26,8 +26,9 @@ Qed.
 Notation "'do' X <- A ; B" := (bind A (fun X => B) )
   (at level 200, X ident, A at level 100, B at level 200). 
 
-Notation "'do' ( X , Y ) <- A ; B" := (bind2 A (fun X Y => B))
+Notation "'do' X , Y  <- A ; B" := (bind2 A (fun X Y => B))
  (at level 200, X ident, Y ident, A at level 100, B at level 200).
+
 
 Notation "'check' A ; B" := (if A then B else None)
   (at level 200, A at level 100, B at level 200). 
@@ -650,9 +651,10 @@ Ltac inversion :=
 
 End DList. 
 
-Notation "[ ]" := DList.nil : dlist_scope.
+
+Notation "[ :: ]" := DList.nil : dlist_scope.
 Notation "t :: q" := (DList.cons t q) : dlist_scope.
-Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)%dlist : dlist_scope.
+Notation "[ :: a ; .. ; b ]" := (a :: .. (b :: [ :: ]) ..)%dlist : dlist_scope.
 
 Arguments DList.pointwise {A F G} _ l%list _%dlist _%dlist. 
 

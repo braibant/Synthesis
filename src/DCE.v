@@ -87,26 +87,29 @@ Section t.
           Some (RTL.Etuple args)          
     end%bool.
   
-  Definition VS {t} (n: Var t) : Var t := let (n) := n in box t (S n). 
   Fixpoint is_used {t} (n: Var t) (G: Gamma) : bool :=
     match G with 
       | nil => false
-      | cons (existT  _ e) q => use n e || is_used (VS n) q 
+      | cons (existT  _ e) q => use n e || is_used (n) q 
     end%bool. 
 
   Section crop. 
     Variable preserve: list nat.
-    Fixpoint mem n l := match l with 
-                            | nil => false 
-                            | cons t q => NPeano.Nat.eqb n t || mem n q end%bool. 
+    Fixpoint mem n l := 
+      match l with 
+        | nil => false 
+        | cons t q => NPeano.Nat.eqb n t || mem n q 
+      end%bool.
+
+ 
     Fixpoint crop old next (map: list (nat * nat)) (bindings: Gamma) : option (list (nat * nat) * Gamma) :=
       match bindings with 
         | nil => Some (map, nil)
         | cons (existT t e) q => 
             if (mem old preserve) || is_used (box t old) q
             then 
-              do (map,q) <- crop (S old) (S next) ((old,next) :: map) q;
               do e <- (update_expr map e);
+              do map, q <- crop (S old) (S next) ((old,next) :: map) q;
               Some (map,cons (existT _ t e) q)
             else
               crop (S old) (next) ((old,next) :: map) q
@@ -137,15 +140,56 @@ Section t.
   Defined. 
 
   
+  Definition used {t} (e: RTL.effect Var t) := 
+    match e with 
+      | RTL.effect_reg_write _ v g => 
+          let (v) := v in 
+          let (g) := g in                                                
+          [v; g]%list
+      | RTL.effect_regfile_write _ _ v a g =>
+          let (v) := v in 
+          let (g) := g in                                                
+          let (a) := a in 
+          [v; g; a]%list
+    end. 
+      
+  Section fold.
+    Variable A X : Type. Variable F : X -> Type. 
+    Variable f: forall (x:X) (dx: F x), A -> A. 
+    
+    Fixpoint fold (l:list X) (dl: DList.T F l) acc: A :=
+      match dl with 
+        | DList.nil => acc
+        | DList.cons t q dt dq => 
+            f t dt (fold q dq acc)
+      end%dlist. 
+  End fold. 
+
+  Arguments fold {A X F} f {l} dl%dlist acc. 
+
+  Fixpoint union (i j: list nat) : list nat :=
+    match i with 
+      | nil => j
+      | t :: q => if mem t j then union q j else union q (t :: j)
+    end%list. 
+    
+  Definition used_effects (x : Xi) l :=
+    fold (fun _ e acc => 
+            match e with 
+                None => acc 
+              | Some e => union (used e) acc
+            end) x l. 
+            
+  
   Definition compile {t} (b: block Phi t) :=
     let (guard) := guard _ _ b in 
     let (value) := value _ _ b in 
-    let preserve := [guard;value]%list in
-    do (map,bindings) <- crop preserve 0 0 nil (bindings _ _ b);
+    let effects := effects _ _ b in 
+    let preserve := used_effects (effects) [guard;value]%list in
+    do map, bindings <- crop preserve 0 0 nil (bindings _ _ b);
     do guard <- BDD.assoc NPeano.Nat.eqb guard map;
     do value <- BDD.assoc NPeano.Nat.eqb value map;
     (* do effects <- update_effects map (effects _ _ b); *)
-    let effects := effects _ _ b in 
     Some (mk Phi t bindings (box _ value) (box _ guard) effects).
 End t. 
   

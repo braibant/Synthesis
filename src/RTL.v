@@ -64,7 +64,7 @@ Section t.
                 match x in  (DList.T _ l)
                    return
                    (telescope (DList.T Var l)) with 
-                      | DList.nil => & ([])%dlist
+                      | DList.nil => & ([ :: ])%dlist
                       | DList.cons t q dt dq => 
                           x  :-- fold t dt;
                           dq :--   of_list q dq;   
@@ -99,7 +99,7 @@ Section t.
       match x in  (DList.T _ l)
          return
          (telescope (DList.T Var l)) with 
-        | DList.nil => & ([])%dlist
+        | DList.nil => & ([ :: ])%dlist
         | DList.cons t q dt dq => 
             x  :-- compile_expr t dt;
             dq :--   compile_exprs q dq;   

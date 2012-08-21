@@ -13,25 +13,24 @@ Section t.
   Notation M := (var_S (var_0) : var Phi (Treg NUM)).  
   Notation R := (var_S (var_S (var_0)) : var Phi (Treg NUM)).  
   
-  Notation "'If' c { b1 } 'else' { b2 }" := 
-  (OrElse _ _ _ (WHEN (c)%expr; b1) b2) 
-    (no associativity, at level 95, c at level 0). 
+  Notation "'If' c 'then' b1 'else' b2 " := 
+  (OrElse _ _ _ (WHEN (c)%expr ; b1)%action b2) 
+    (no associativity, at level 200, c,b1,b2 at level 200). 
   
   Definition mult : Action Phi Tunit. intros V. 
-  refine ( DO n   <- read [: N ];
-           DO m   <- read [: M ];
-           DO acc <- read [: R ];
-           If (! m = #i 0) 
-              { 
-                RETURN #Ctt 
-              }
+  refine ( do n <- ! N; 
+           do m <- ! M; 
+           do acc <- ! R;
+           ( 
+           If (m = #i 0) 
+           then
+                ret (#Ctt)              
            else 
-             { 
-               DO _ <- (write [: M <- (!m - #i 1)]);
-               DO _ <- (write [: R <- (!acc + !n)]);
-               RETURN #Ctt
-             } 
-         )%action. 
+             (               
+               do _ <- M ::= (m - (#i 1)) ;
+               do _ <- R ::= (acc + n);
+               ret (#Ctt))
+           ))%action. 
   Defined.
   
   Section correct.
@@ -134,6 +133,7 @@ End t.
 
 Require Compiler. 
 Require Import FirstOrder Core.
-Eval vm_compute in Compiler.Fo_compile (Phi 5) _ (mult 5). 
+Eval vm_compute in Compiler.copt (Phi 5) _ (mult 5). 
+Eval vm_compute in Compiler.Fo_CP_compile (Phi 5) _ (mult 5). 
     
     

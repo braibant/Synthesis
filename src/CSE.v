@@ -96,7 +96,7 @@ Section t.
               let fold :=
                   (fix fold l dl  : option (eval_type (Ttuple l)):=
                    match dl in DList.T _ l return option (eval_type (Ttuple l)) with 
-                                                | [] => Some tt
+                                                | [ :: ] => Some tt
                                                 | t::q => 
                                                     do t <- eval_sval _ t;
                                                     do q <- fold _ q;
@@ -145,7 +145,7 @@ Section t.
   refine (let fix eqb {a b} (va : sval a) (vb : sval b) : bool :=
               let fix pointwise  la lb (dla : DList.T sval la) (dlb : DList.T sval lb) : bool :=
                   match dla, dlb with 
-                    | [] , [] => true
+                    | [ :: ] , [ :: ] => true
                     | t::q , t' :: q' => (eqb t t' && pointwise _ _ q q')%bool
                     | _, _ => false
                   end%dlist in 

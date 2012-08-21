@@ -74,16 +74,16 @@ Module Inner.
                   | (l1,v1,h1),(l2,v2,h2) =>
                       match NPeano.Nat.compare v1  v2 with 
                           | Eq =>
-                              do (x,bdd) <- andb bdd depth l1 l2;
-                              do (y,bdd) <- andb bdd depth h1 h2;
+                              do  x ,bdd  <- andb bdd depth l1 l2;
+                              do  y, bdd <- andb bdd depth h1 h2;
                               Some (mk_node bdd x v1 y)
                           | Lt =>
-                              do (x,bdd) <- andb bdd depth l1 b;
-                              do (y,bdd) <- andb bdd depth h1 b;
+                              do x, bdd <- andb bdd depth l1 b;
+                              do y, bdd <- andb bdd depth h1 b;
                               Some (mk_node bdd x v1 y)
                           | _ => 
-                              do (x,bdd) <- andb bdd depth a l2;
-                              do (y,bdd) <- andb bdd depth a h2;
+                              do x, bdd <- andb bdd depth a l2;
+                              do y, bdd <- andb bdd depth a h2;
                               Some (mk_node bdd x v2 y)
                 end
           end
@@ -106,16 +106,16 @@ Module Inner.
                   | (l1,v1,h1),(l2,v2,h2) =>
                       match NPeano.Nat.compare v1  v2 with 
                           | Eq =>
-                              do (x,bdd) <- orb bdd depth l1 l2;
-                              do (y,bdd) <- orb bdd depth h1 h2;
+                              do x, bdd <- orb bdd depth l1 l2;
+                              do y, bdd <- orb bdd depth h1 h2;
                               Some (mk_node bdd x v1 y)
                           | Lt =>
-                              do (x,bdd) <- orb bdd depth l1 b;
-                              do (y,bdd) <- orb bdd depth h1 b;
+                              do x, bdd <- orb bdd depth l1 b;
+                              do y, bdd <- orb bdd depth h1 b;
                               Some (mk_node bdd x v1 y)
                           | _ => 
-                              do (x,bdd) <- orb bdd depth a l2;
-                              do (y,bdd) <- orb bdd depth a h2;
+                              do x, bdd <- orb bdd depth a l2;
+                              do y, bdd <- orb bdd depth a h2;
                               Some (mk_node bdd x v2 y)
                 end
           end
@@ -135,8 +135,8 @@ Module Inner.
                 do na <- assoc Pos.eqb na (tmap bdd);
                 match na with 
                   | (l,v,h) =>
-                              do (x,bdd) <- negb bdd depth l;
-                              do (y,bdd) <- negb bdd depth h;
+                              do x, bdd <- negb bdd depth l;
+                              do y, bdd <- negb bdd depth h;
                               Some (mk_node bdd x v y)
                 end
           end
@@ -158,16 +158,16 @@ Module Inner.
                   | (l1,v1,h1),(l2,v2,h2) =>
                       match NPeano.Nat.compare v1  v2 with 
                           | Eq =>
-                              do (x,bdd) <- xorb bdd depth l1 l2;
-                              do (y,bdd) <- xorb bdd depth h1 h2;
+                              do x, bdd <- xorb bdd depth l1 l2;
+                              do y, bdd <- xorb bdd depth h1 h2;
                               Some (mk_node bdd x v1 y)
                           | Lt =>
-                              do (x,bdd) <- xorb bdd depth l1 b;
-                              do (y,bdd) <- xorb bdd depth h1 b;
+                              do x, bdd <- xorb bdd depth l1 b;
+                              do y, bdd <- xorb bdd depth h1 b;
                               Some (mk_node bdd x v1 y)
                           | _ => 
-                              do (x,bdd) <- xorb bdd depth a l2;
-                              do (y,bdd) <- xorb bdd depth a h2;
+                              do x, bdd <- xorb bdd depth a l2;
+                              do y, bdd <- xorb bdd depth a h2;
                               Some (mk_node bdd x v2 y)
                 end
           end
@@ -209,25 +209,25 @@ Definition eval bdd env (a: expr) : option bool :=
   Inner.eval (content bdd) (depth bdd) env a. 
 
 Definition andb bdd a b :=
-  do (e,r) <- Inner.andb (content bdd) (depth bdd) a b;
+  do e, r <- Inner.andb (content bdd) (depth bdd) a b;
   Some (e,mk r (depth bdd)).
 
 Definition orb bdd a b :=
-  do (e,r) <- Inner.orb (content bdd) (depth bdd) a b;
+  do e, r <- Inner.orb (content bdd) (depth bdd) a b;
   Some (e,mk r (depth bdd)).
 
 Definition negb bdd a  :=
-  do (e,r) <- Inner.negb (content bdd) (depth bdd) a;
+  do e, r <- Inner.negb (content bdd) (depth bdd) a;
   Some (e, mk r (depth bdd)). 
 
 Definition xorb bdd a b :=
-  do (e,r) <- Inner.xorb (content bdd) (depth bdd) a b;
+  do e, r <- Inner.xorb (content bdd) (depth bdd) a b;
   Some (e,mk r (depth bdd)).
 
 Definition ite bdd c l r:=
-  do (cl,bdd)  <- andb bdd c l;
-  do (nc,bdd)  <- negb bdd c;
-  do (ncr,bdd) <- andb bdd nc r;
+  do cl, bdd  <- andb bdd c l;
+  do nc, bdd  <- negb bdd c;
+  do ncr, bdd <- andb bdd nc r;
   orb bdd cl ncr.
 
 Definition empty := mk Inner.empty 0.
@@ -242,12 +242,12 @@ Definition test :=
   let bdd := empty in 
   let (a,bdd) := mk_var bdd 10 in 
   let (b,bdd) := mk_var bdd 11 in 
-  do (a,bdd) <- orb bdd a b;
-  do (na,bdd) <- negb bdd a;
-  do (r,bdd) <- orb bdd a na;
-  do (nr,bdd) <- negb bdd r;
-  do (nnr,bdd) <- negb bdd nr;
-  do (x, bdd) <- orb bdd nnr a;
+  do a,bdd <- orb bdd a b;
+  do na,bdd <- negb bdd a;
+  do r,bdd <- orb bdd a na;
+  do nr,bdd <- negb bdd r;
+  do nnr,bdd <- negb bdd nr;
+  do x, bdd <- orb bdd nnr a;
   Some (r, bdd). 
 
 Eval compute in test. 

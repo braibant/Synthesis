@@ -10,7 +10,6 @@ Inductive primitive (Phi : state) : list type -> type -> Type:=
 | regfile_write : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([ (Tint n); t])%list  Tunit
 (* fifos primitives *).
 
-
 Section s.
   
   Variable Phi : state.
@@ -95,70 +94,89 @@ Section s.
       forall args res (p : primitive Phi args res)
         (exprs : DList.T (expr) args),
         action res 
-    (* | Try : forall (a : action Tunit), action Tunit *)
     | OrElse : forall t, action t -> action t -> action t.
   End t. 
+
   Definition Action t := forall Var, action Var t.
   Definition Expr t := forall Var, expr Var t. 
 
   Notation eval_type_list := (ETuple.of_list eval_type). 
   
-  Definition eval_expr (t : type) (e : expr eval_type t) : eval_type t. 
-  refine ( 
-      let fix eval_expr t (e : expr eval_type t) {struct e} : eval_type t :=
-          match e with
-            | Evar t v => v
-            | Ebuiltin args res f exprs => 
-                let exprs := 
-                    DList.to_tuple eval_expr  exprs
-                in
-                  builtin_denotation args res f exprs                            
-            | Emux t b x y => if eval_expr _ b then eval_expr t x else eval_expr t y
-            | Econstant ty c => c
-            | Etuple l exprs => 
-                DList.to_tuple eval_expr exprs
-            | Enth l t v e => 
-                Tuple.get l t v (eval_expr (Ttuple l) e)
-            | Efst l t  e => 
-                Tuple.fst  (eval_expr _ e)
-            | Esnd l t  e => 
-                Tuple.snd  (eval_expr _ e)
-          end 
-      in eval_expr t e). 
-  Defined. 
-
-
+  Fixpoint eval_expr (t : type) (e : expr eval_type t) : eval_type t :=
+    match e with
+      | Evar t v => v
+      | Ebuiltin args res f exprs => 
+          let exprs := 
+              DList.to_tuple eval_expr  exprs
+          in
+            builtin_denotation args res f exprs                            
+      | Emux t b x y => if eval_expr _ b then eval_expr t x else eval_expr t y
+      | Econstant ty c => c
+      | Etuple l exprs => 
+          DList.to_tuple eval_expr exprs
+      | Enth l t v e => 
+          Tuple.get l t v (eval_expr (Ttuple l) e)
+      | Efst l t  e => 
+          Tuple.fst  (eval_expr _ e)
+      | Esnd l t  e => 
+          Tuple.snd  (eval_expr _ e)
+    end. 
 End s. 
 
-
-(** * Actions *)
 Delimit Scope expr_scope with expr. 
 Delimit Scope action_scope with action. 
-  
+
+Arguments expr Var _%list. 
+Arguments action _%list _ _. 
+
+(** * Actions *)
 
 Arguments Bind {Phi Var t u} _%action _%action. 
-Notation "'DO' X <- A ; B" := (Bind A (fun X => B)) (at level 200, X ident, A at level 100, B at level 200) : action_scope. 
+Arguments Return {Phi Var t} _%expr. 
 
-(* Arguments Try {Phi%list Var} _%action.   *)
-(* Notation "'TRY' A " := (Try A) (at level 40) : action_scope.  *)
+Definition Bind' {Phi Var t u} a (f : expr Var t -> action Phi Var u) :=  
+    Bind (a) (fun x => let x := Evar _ _ x in f x).  
+
+(** A notation for the general bind, with [a] being an action  *)
+Notation "'do' x <- a ; b" := (Bind' a (fun x =>  b)) 
+                               (at level 200, x ident, a at level 100, b at level 200) 
+                          : action_scope. 
+
+Notation "a ;; b" := (Bind a (fun _ => b)) 
+                            (at level 200,  b at level 200) 
+                          : action_scope. 
+
+Notation "'do' x <~ a ; b " := (Bind' (Return a) (fun x =>  b)) 
+                                (at level 200, x ident, a at level 100, b at level 200) 
+                              : action_scope. 
+
+(* (** Another notation to bind expressions  *) *)
+(* Notation "'do' x <- e ; b" := (Bind' (Return e) (fun x => b))  *)
+(*                                (at level 200, x ident, e at level 100, b at level 200)  *)
+(*                              : action_scope.  *)
+  
+Notation "'ret' x" := (Return x) (at level 0) : action_scope .   
+
+(** old style binding, deprecated  *)
+Notation "'DO' X <- A ; B" := (Bind A (fun X => B)) (at level 200, X ident, A at level 100, B at level 200) : action_scope. 
 
 Arguments Assert {Phi Var} e%expr. 
 
 Definition When {Phi Var t} e a : action Phi Var t := @Bind Phi Var _ _ (Assert e) (fun _ => a). 
 Arguments When {Phi Var t} _%expr _%action. 
 Notation " 'WHEN' e ; B" := (When e B) (at level 200, e at level 100, B at level 200). 
-
-Arguments Return {Phi Var t} _%expr. 
-Notation " 'RETURN' e" := (Return e) (at level 200, e at level 100). 
+Notation " 'when' e 'do' B" := (When e B) (at level 200, e at level 100, B at level 200). 
 
 Arguments Primitive {Phi Var} args res _ _%expr. 
 
 (** * Primitives *)
 Arguments register_read {Phi t} _. 
 Notation "'read' [: v ]" := (Primitive nil _ (register_read v) DList.nil) (no associativity).
+Notation "! v" := (Primitive nil _ (register_read v) DList.nil ) (no associativity, at level 71). 
 
 Arguments register_write {Phi t} _. 
 Notation "'write' [: v <- w ]" := (Primitive (cons _ nil) Tunit (register_write v) (DList.cons (w)%expr (DList.nil))) (no associativity). 
+Notation "v ::= w" := (Primitive (cons _ nil) Tunit (register_write v) (DList.cons (w)%expr (DList.nil))) (no associativity, at level 71). 
 
 Arguments regfile_read {Phi n t} _. 
 Notation "'read' M [: v ]" := (Primitive ([ (_)])%list _ (regfile_read M ) (DList.cons (v)%expr (DList.nil))) (no associativity). 
@@ -169,12 +187,11 @@ Notation "'write' M [: x <- v ]" := (Primitive ([ (_); _])%list _ (regfile_write
 (** * Expressions  *)
 Arguments Enth  {Var l t} m _%expr. 
 Arguments Evar  {Var t} _. 
-Notation "! x" := (Evar x) (at level  10) : expr_scope . 
 
-Arguments Ebuiltin {Var} {args res} _ _%expr. 
-Notation "{< f ; x ; y ; z >}" := (Ebuiltin f (x :: y :: z :: [])%dlist) : expr_scope. 
-Notation "{< f ; x ; y >}" := (Ebuiltin f (x :: y :: [])%dlist) : expr_scope. 
-Notation "{< f ; x >}" := (Ebuiltin f (x :: [])%dlist) : expr_scope. 
+Arguments Ebuiltin {Var} {args res} _ _%dlist. 
+Notation "{< f ; x ; y ; z >}" := (Ebuiltin f [ :: x ; y ; z]) : expr_scope. 
+Notation "{< f ; x ; y >}" := (Ebuiltin f [ :: x ; y]) : expr_scope. 
+Notation "{< f ; x >}" := (Ebuiltin f [ :: x]) : expr_scope. 
 
 Notation "~ x" :=  ({< BI_negb ; x >})%expr : expr_scope. 
 Notation "a || b" := ({< BI_orb ; a ; b >})%expr : expr_scope. 
@@ -185,6 +202,9 @@ Notation "a = b" := ({< BI_eq _ ; a ; b >})%expr : expr_scope.
 Notation "a < b" := ({< BI_lt _ ; a ; b >})%expr : expr_scope. 
 Notation "x <= y" := ((x < y) || (x = y))%expr : expr_scope. 
 Notation "x <> y" := (~(x = y))%expr : expr_scope. 
+Notation low x := ( Ebuiltin (BI_low _ _) ([ :: x])%dlist). 
+Notation high x := ( Ebuiltin (BI_high _ _) ([ :: x])%dlist). 
+Notation combineLH x y := ( Ebuiltin  (BI_combineLH _ _) [ :: x ; y ]). 
 
 Arguments Econstant {Var ty} _.  
 Notation "#i x" := (Econstant (Cword x)) (at level 0). 
@@ -192,6 +212,25 @@ Notation "#b x" := (Econstant (Cbool x)) (at level 0).
 Notation "#" := Econstant. 
 
 Definition Ctt : constant Tunit := tt. 
+    
+Arguments Efst {Var l t} _%expr. 
+Arguments Esnd {Var l t} _%expr. 
+
+Arguments Emux {Var t} _%expr _%expr _%expr. 
+Notation "b ? l : r" := (Emux b l r) (at level 200, l, r at level 200).  
+
+Definition Asplit {Phi Var l t u}  f (a: expr Var (Ttuple (t::l))) : action Phi Var u:= 
+  (do x <- ret (Efst a);
+   do y <- ret (Esnd a);
+   f x y)%action. 
+    
+Notation apply x f := (f x) (only parsing). 
+
+Notation "'do' ( x , .. , y ) <- a ; b" :=
+(apply a (Asplit (fun x => .. ( Asplit (fun y _ => b)) .. ))) (at level 200, x closed binder, a at level 100, b at level 200): action_scope.  
+
+Arguments Etuple {Var l} _%dlist. 
+Notation "[ 'tuple' x , .. , y ]" := (Etuple (x :: .. (y :: [ :: ]) .. )%dlist) : expr_scope. 
 
 Module Diff. 
   Section t. 
@@ -210,7 +249,7 @@ Module Diff.
   
   Fixpoint apply (Phi : state) : T Phi -> DList.T eval_sync Phi -> DList.T eval_sync Phi :=
     match Phi with
-      | nil => fun _ _ => []
+      | nil => fun _ _ => [ :: ]
       | cons t Phi => fun Delta E =>
                      match DList.hd Delta with
                        | None => (DList.hd E :: apply Phi (DList.tl Delta) (DList.tl E))
@@ -251,14 +290,7 @@ Module Sem.
                          | None => b st Delta
                          | Some Delta => Some Delta
                        end. 
-      
-      (* Definition Try : T unit -> T unit :=  *)
-      (*   fun a st Delta =>  *)
-      (*     match a st Delta with  *)
-      (*       | None => Some (tt, Delta) *)
-      (*       | x =>  x *)
-      (*     end.  *)
-                                          
+                                                
         
       Definition primitive_denote  args res (p : primitive Phi args res) (exprs : DList.T eval_type args) : T (eval_type res). 
       refine (match
@@ -332,85 +364,3 @@ Definition Next Phi st (A : Action Phi Tunit) :=
       | Some Delta => Diff.apply Phi (snd Delta) st
     end. 
 
-
-(* Section run.  *)
-
-(*   Variable T : TRS.  *)
-(*   Notation rule := (Action (Phi T) Tunit).  *)
-
-(*   Definition run_rule (R : rule) :=  *)
-(*     fun st => Sem.Dyn.Run _ (Sem.eval_action (R eval_type)) st.  *)
-                        
-(*   Fixpoint first_rule (l : list rule) x := *)
-(*     match l with  *)
-(*       | nil => Some x *)
-(*       | cons R q =>  *)
-(*           match run_rule R x with  *)
-(*             | None => first_rule q x *)
-(*             | Some x => Some x  *)
-(*           end *)
-(*     end.  *)
-  
-(*   Fixpoint iter_option {A} n (f : A -> option A) x := *)
-(*     match n with  *)
-(*       | 0 => Some x *)
-(*       | S n => match f x with | None => Some x | Some x => iter_option n f x end  *)
-(*     end.  *)
-
-(*   Fixpoint run_unfair n x := *)
-(*     match n with  *)
-(*       | 0 => Some x *)
-(*     | S n =>  *)
-(*         match first_rule (rules T) x with  *)
-(*           | None => Some x *)
-(*           | Some x => run_unfair n x *)
-(*         end *)
-(*   end.  *)
-
-(* End run.  *)
-
-(* Module Ops.  *)
-(*   Notation rule Phi := (Action Phi Tunit).  *)
-
-(*   (** * A simple round-robin scheduler  *)
-
-(*       The simplest scheduler one could imagine _try_ to fire one rule *)
-(*       each cycle; but the rule may fail. This is a (weakly) fair *)
-(*       scheduler, that applies rules one by one in a given order, if *)
-(*       possible, and moving to the next rule if not.  *)
-
-(*   *) *)
-(*   Definition round_robin (Phi : state) (l : list (rule Phi)) : {Phi' : state & rule Phi'}.  *)
-(*   refine  *)
-(*     ( *)
-(*       let n := List.length l in  *)
-(*       let c := Treg ( (Tfin n)) in  *)
-(*       let Phi' := (Phi ++ [c])%list  in _ *)
-(*     ).  *)
-(*    exists Phi'.  *)
-(*    intros Var.  *)
-(*    Definition lift Var Phi Psi t : action Phi Var t -> action (Phi ++ Psi)%list Var t. Admitted.  *)
-(*    assert (v : var Phi' c ). clear. admit.  *)
-(*    (* refine ( *) *)
-(*    (*    let fold := fix fold v' n l := *) *)
-(*    (*        match l with  *) *)
-(*    (*          | nil => Return (#Ctt) *) *)
-(*    (*          | cons t q =>  *) *)
-(*    (*              let t := lift _ _ _ _ (t Var) in  *) *)
-(*    (*              OrElse _ _ _ ( _ ) (fold v' (S n) q) *) *)
-(*    (*        end *) *)
-(*    (*    in  *) *)
-(*    (*      DO v' <- read [: v ];   *) *)
-(*    (*      DO _ <- fold v' 0 l;  *) *)
-(*    (*      write [: v <- {< BI_next _ ; !v' >}   ] *) *)
-(*    (*  )%action.  *) *)
-(*    (* (* refine (TRY *) *) *)
-(*    (* (*           ( *) *) *)
-(*    (* (*             WHEN (!v' = # (Finite.repr n0 : constant0 (Tfin n)));  *) *) *)
-(*    (* (*             (TRY t0) *) *) *)
-(*    (* (*        ))%action.  *) *) *)
-(*    Abort.  *)
-  
-(* End Ops.    *)
-
-Locate Run. 
