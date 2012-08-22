@@ -1,6 +1,7 @@
-Require Common Core Front IR Equality.
+Require Import Common. 
+Require Import DList. 
+Require  Core Front IR Equality.
 
-Import Common. 
 
 Section t. 
   Variable Phi : Core.state. 
@@ -108,20 +109,20 @@ Section t.
     
     Lemma compile_exprs_fold : 
       (fix of_list (l : list Core.type)
-           (x0 : Common.DList.T
+           (x0 : DList.T
                        (Front.expr Var) l)
            {struct x0} :
        telescope 
-                   (Common.DList.T Var l) :=
+                   (DList.T Var l) :=
        match
-         x0 in (Common.DList.T _ l0)
+         x0 in (DList.T _ l0)
           return
-          (telescope (Common.DList.T Var l0))
+          (telescope (DList.T Var l0))
        with
-         | Common.DList.nil => & Common.DList.nil
-         | Common.DList.cons t1 q0 dt dq =>
+         | DList.nil => & DList.nil
+         | DList.cons t1 q0 dt dq =>
              x1 :-- compile_expr t1 dt;
-             dq0 :-- of_list q0 dq; & Common.DList.cons x1 dq0
+             dq0 :-- of_list q0 dq; & DList.cons x1 dq0
        end) = compile_exprs. 
     Proof. reflexivity. Qed. 
     
@@ -169,14 +170,14 @@ Section t.
         let fix eval_expr t (e : expr Core.eval_type t) {struct e} : Core.eval_type t:=
             match e with
               | Evar t v => v
-              | Eread t v => (Common.DList.get v st)
+              | Eread t v => (DList.get v st)
               | Eread_rf n t v adr =>  
-                  let rf := Common.DList.get  v st in
+                  let rf := DList.get  v st in
                     Common.Regfile.get rf (adr)                
 
               | Ebuiltin args res f exprs => 
                   let exprs := 
-                      Common.DList.to_tuple  
+                      DList.to_tuple  
                             (fun (x : Core.type) (X : Core.eval_type x) => X)
                             exprs
                   in
@@ -184,7 +185,7 @@ Section t.
               | Emux t b x y => if b then x else y 
               | Econstant ty c => c
               | Etuple l exprs => 
-                  Common.DList.to_tuple (fun _ X => X) exprs
+                  DList.to_tuple (fun _ X => X) exprs
               | Enth l t v e => 
                   Common.Tuple.get _ _ v e
               | Efst l t  e => 
@@ -199,7 +200,7 @@ Section t.
     unfold effects in e. 
     
     (* refine (DList.fold Phi _ e Delta).  *)
-    refine (Common.DList.map3 _ Phi e st Delta). 
+    refine (DList.map3 _ Phi e st Delta). 
     Import Common Core.
     Definition eval_effect (a : Core.sync) :   
       (Common.comp option (effect Core.eval_type)) a ->
@@ -302,9 +303,9 @@ Section correctness.
                          Ev(r :-- compile_expr Phi Core.eval_type t e; f r) = 
                            Ev (f (Front.eval_expr t e))). 
       Lemma compile_exprs_correct : forall l dl f,         
-                                      Common.DList.Forall P dl ->                    
+                                      DList.Forall P dl ->                    
                                       Ev (Y :-- compile_exprs Phi Core.eval_type l dl; f Y) =
-                                         Ev (f (Common.DList.map Front.eval_expr dl )). 
+                                         Ev (f (DList.map Front.eval_expr dl )). 
       Proof. 
         induction dl. simpl. reflexivity. 
         simpl. intros. rewrite foo. destruct H. rewrite H. rewrite foo. simpl. apply IHdl. auto. 
@@ -324,7 +325,7 @@ Section correctness.
       
       { simpl. rewrite (compile_exprs_fold Phi Core.eval_type). repeat rewrite foo; simpl.
         rewrite compile_exprs_correct; auto.  simpl.  repeat f_equal. 
-        rewrite Common.DList.map_to_tuple_commute. reflexivity. }       
+        rewrite DList.map_to_tuple_commute. reflexivity. }       
       
       {simpl; repeat t; reflexivity.   }
       {simpl; repeat t; reflexivity.   }
@@ -334,7 +335,7 @@ Section correctness.
       { simpl. rewrite (compile_exprs_fold Phi Core.eval_type). repeat rewrite foo; simpl.
         rewrite compile_exprs_correct; auto.  simpl.  repeat f_equal.
         
-        rewrite Common.DList.map_to_tuple_commute. reflexivity. }       
+        rewrite DList.map_to_tuple_commute. reflexivity. }       
     
     Qed. 
   End compile_expr. 
@@ -380,7 +381,7 @@ Section equiv.
                    adr1 -- adr2 -> 
                    Eread_rf Phi U n t v adr1 == Eread_rf Phi V n t v adr2
   | Eq_builtin : forall args res (f : builtin args res) dl1 dl2, 
-                   Common.DList.pointwise R args dl1 dl2 ->
+                   DList.pointwise R args dl1 dl2 ->
                    Ebuiltin Phi U args res f dl1 == Ebuiltin Phi V args res f dl2
   | Eq_constant : forall ty c, Econstant Phi U ty c == Econstant Phi V ty c
   | Eq_mux : forall t c1 c2 l1 l2 r1 r2, 
@@ -400,7 +401,7 @@ Section equiv.
                Enth Phi U l t v dl1 == Enth Phi V l t v dl2
 
   | Eq_tuple : forall (l : list type) dl1 dl2, 
-                 Common.DList.pointwise R l dl1 dl2 ->
+                 DList.pointwise R l dl1 dl2 ->
                Etuple Phi U l dl1 == Etuple Phi V l dl2
                             where "x == y" := (expr_equiv _ x y). 
   
@@ -416,7 +417,7 @@ Section equiv.
                                   where "x ==e y" := (effect_equiv _ x y). 
  
   Definition effects_equiv : effects Phi U -> effects Phi V -> Prop := 
-    Common.DList.pointwise  effect_equiv Phi. 
+    DList.pointwise  effect_equiv Phi. 
     
   End inner_equiv. 
  

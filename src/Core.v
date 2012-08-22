@@ -1,7 +1,8 @@
 Require Import Common. 
+Require Import DList. 
 Require Word Array. 
 
-(* Require Import DList.  *)
+
 Unset Elimination Schemes. 
 Inductive type : Type :=
 | Tunit : type 
@@ -264,8 +265,7 @@ Proof.
   revert H. destruct b; simpl; try discriminate; destruct b'; simpl; try discriminate; try reflexivity.  }
   clear H.
 
-  
-  Import Equality JMeq.
+  Require Import Equality JMeq.
 
   destruct b; simpl;
   dependent destruction b'; try (intros; dependent destruction p;  simpl; reflexivity) || simpl in *; try discriminate. 

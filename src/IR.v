@@ -1,4 +1,5 @@
 Require Import Common. 
+Require Import DList. 
 Require Import Core.   
 Require Import Front. 
   
@@ -883,7 +884,7 @@ Section equiv.
   Inductive expr_equiv : forall t,  expr U t -> expr  V t -> Prop :=
   | Eq_var : forall  t (v1 : U t) v2, v1 -- v2 -> Evar v1 == Evar v2
   | Eq_builtin : forall args res (f : builtin args res) dl1 dl2, 
-                   Common.DList.pointwise expr_equiv args dl1 dl2 ->
+                   DList.pointwise expr_equiv args dl1 dl2 ->
                    Ebuiltin  f dl1 == Ebuiltin  f dl2
   | Eq_constant : forall ty (c : constant ty), Econstant c == Econstant c
   | Eq_mux : forall t c1 c2 l1 l2 r1 r2, 
@@ -903,7 +904,7 @@ Section equiv.
                Enth v dl1 == Enth v dl2
 
   | Eq_tuple : forall (l : list type) dl1 dl2, 
-                 Common.DList.pointwise expr_equiv l dl1 dl2 ->
+                 DList.pointwise expr_equiv l dl1 dl2 ->
                @Etuple  U l dl1 == @Etuple  V l dl2
                             where "x == y" := (expr_equiv _ x y). 
   
@@ -919,7 +920,7 @@ Section equiv.
                                   where "x ==e y" := (effect_equiv _ x y). 
  
   Definition effects_equiv : effects Phi U -> effects Phi V -> Prop := 
-    Common.DList.pointwise  effect_equiv Phi. 
+    DList.pointwise  effect_equiv Phi. 
   
   End inner_equiv. 
  

@@ -1,12 +1,12 @@
-Require Common Core RTL.
+Require Import Common DList. 
+Require Core RTL.
 
 Section t. 
   Variable Phi : Core.state. 
-  Notation updates := (Common.DList.T (Common.comp option  Core.eval_sync) Phi). 
+  Notation updates := (DList.T (Common.comp option  Core.eval_sync) Phi). 
   
   Section defs. 
-    Import Core Common.
-    
+    Import Core. 
     Inductive Var (t : type) := box : nat -> Var t. 
     
     Notation expr := (RTL.expr Phi Var). 
@@ -102,7 +102,7 @@ Section t.
     
     Definition eval_effects (env : Env) (e : DList.T (option ∘ effect) Phi) (Delta : updates) : 
       option updates :=
-      Common.DList.map3o (eval_effect env) Phi e st Delta.
+      DList.map3o (eval_effect env) Phi e st Delta.
 
     
     Definition eval_block t (b : block t) (Delta : updates) : 

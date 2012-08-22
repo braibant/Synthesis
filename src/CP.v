@@ -1,4 +1,4 @@
-Require Import Common Core ZArith. 
+Require Import Common DList Core ZArith. 
 Require BDD.
 (* In this compilation pass, we implement boolean simplification using BDDs. *)
 
