@@ -55,8 +55,13 @@ refine
 Defined. 
 Require Compiler. 
 Require Import FirstOrder. 
-Eval vm_compute in do r <- (Compiler.copt _ _  (test 5)); Some (List.length (bindings _ _ r)). 
-Eval vm_compute in List.length (bindings _ _ (Compiler.Fo_CP_compile _ _  (test 5))). 
+Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 5)); Some (List.length (bindings _ _ r)). 
+Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 6)); Some (List.length (bindings _ _ r)). 
+Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 7)); Some (List.length (bindings _ _ r)). 
+Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 8)); Some (List.length (bindings _ _ r)). 
+Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 9)); Some (List.length (bindings _ _ r)). 
+
+(* Eval vm_compute in List.length (bindings _ _ (Compiler.Fo_CP_compile _ _  (test 5))).  *)
 (* Definition test_real n s := *)
 (*    Front.Eval _ s _ (test n) (Diff.init _).  *)
 

@@ -23,6 +23,14 @@ Proof.
   discriminate. 
 Qed. 
 
+Remark bind_inversion_None {A B} x (f: A -> option B) : bind x f = None -> 
+  (x = None) \/ (exists y, x = Some y /\ f y = None).
+Proof. 
+  destruct x; simpl; intuition.
+  right. exists a; intuition.  
+Qed. 
+
+
 Notation "'do' X <- A ; B" := (bind A (fun X => B) )
   (at level 200, X ident, A at level 100, B at level 200). 
 
@@ -46,6 +54,16 @@ Ltac invert_do H :=
               destruct (bind_inversion _ _ F G _ H) as [x [EQ1 EQ2]];
         clear H;
         try (invert_do EQ2)
+    | (bind ?x ?f = None) => 
+        let EQ := fresh "EQ" in 
+        let EQ1 := fresh "EQ" in
+        let EQ2 := fresh "EQ" in
+        let x' := fresh "x" in 
+        destruct (bind_inversion_None x f H) as [EQ | [x' [EQ1 EQ2]]];
+        clear H;
+        try (invert_do EQ1);
+        try (invert_do EQ2);
+        try (invert_do EQ)
   end. 
   
 Axiom admit : forall {X} , X. 
@@ -72,16 +90,40 @@ Section var.
         var_0 E' t'=> var_0 (E' ++ F) t'
       | var_S E' s' s'' v' => var_S (E' ++ F ) s' s'' (var_lift E' F s'' v') 
     end. 
-  
-  Fixpoint var_to_nat {l t} (v : var l t) : nat :=
-    match v with 
-      | var_0 _ _ => 0 
-      | var_S _ _ _ v => S (var_to_nat v)
-    end. 
-  
-  Definition var_eqb l t t' (v : var l t) (v' : var l t') :=
-    NPeano.Nat.eqb (var_to_nat v) (var_to_nat v').  
-  
+
+  Fixpoint var_eqb {l t t'} (v : var l t) (v' : var l t') : bool :=
+    match v in var l t return var l t' -> bool with 
+      | var_0 _ _ => 
+          fun v' => match v' with 
+                     | var_0 _ _ => true 
+                     | var_S _ _ _ _ => false
+                   end
+      | var_S E hd t v => 
+          fun v' => 
+            (match v' in var L T return
+                match L with 
+                  | nil => ID
+                  | hd :: E => var E t -> bool
+                end%list
+             with
+               | var_0 _ _ => fun _ => false
+               | var_S _ _ _ v' => fun v => var_eqb v v'
+             end v)
+    end v'. 
+  Lemma var_eqb_correct_1 l t t' (v: var l t ) (v': var l t') : 
+    var_eqb v v' = true ->  t = t'.
+  Proof. 
+    Require Import Equality. 
+    revert v'. induction v;  dependent destruction v'; simpl; intuition.  
+    apply IHv in H. auto. 
+  Qed. 
+  Lemma var_eqb_correct_2 l t (v: var l t ) (v': var l t) : 
+    var_eqb v v' = true ->  v = v'. 
+  Proof. 
+    revert v'.  induction v;  dependent destruction v'; simpl; intuition.  
+    apply IHv in H. subst.  congruence. 
+  Qed. 
+
 End var. 
 
 Arguments var {T} _ _. 

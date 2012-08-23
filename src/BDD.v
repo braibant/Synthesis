@@ -29,7 +29,8 @@ Fixpoint assoc {A B} (eq: A -> A ->  bool) x l : option B :=
   end. 
 
 Module Inner. 
-
+  Require Import FMapPositive. 
+  
   Record BDD :=
     {
       tmap : list (positive * node)%type;
