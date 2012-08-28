@@ -298,10 +298,22 @@ Eval vm_compute in
 
 Eval vm_compute in 
      let x := Compiler.Fo_CP_compile _ _ (Ex2.Code 4) in 
-       List.length (FirstOrder.bindings _ _ x). 
+       List.length (FirstOrder.bindings _ _ x).
+
+Import  Common DList. 
 
 Eval vm_compute in
       Compiler.Fo_compile _ _ (Ex2.Code 4).
+
+Extract Inductive list => "list" [ "[]" "(::)" ].
+Extract Inductive bool => "bool" [ "true" "false" ].
+Extract Inductive unit => "unit" [ "()" ].
+Extract Inductive prod => "(*)"  [ "(,)" ].
+
+ Extract Inductive nat => int [ "0" "succ" ] "(fun fO fS n -> if n=0 then fO () else fS (n-1))".
+
+Definition t := (Compiler.copt _ _ (Ex2.Code 4)). 
+Extraction "teest.ml" t.  
 
 Eval vm_compute in
   (do x <- (Compiler.copt _ _ (Ex2.Code 4));

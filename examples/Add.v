@@ -59,16 +59,3 @@ Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 5)); Some (List.length
 Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 6)); Some (List.length (bindings _ _ r)). 
 Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 7)); Some (List.length (bindings _ _ r)). 
 Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 8)); Some (List.length (bindings _ _ r)). 
-Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 9)); Some (List.length (bindings _ _ r)). 
-
-(* Eval vm_compute in List.length (bindings _ _ (Compiler.Fo_CP_compile _ _  (test 5))).  *)
-(* Definition test_real n s := *)
-(*    Front.Eval _ s _ (test n) (Diff.init _).  *)
-
-(* Definition ty n := (eval_state [Treg (W [2^n]); Treg (W [2^n])])%type.  *)
-(* Definition x n a b : ty n := *)
-(*   let a := Word.repr _ a : eval_sync (Treg (W [2^n])) in *)
-(*     let b := Word.repr _ b : eval_sync (Treg (W [2^n])) in  *)
-(*       ([a;b])%dlist.  *)
-(* Eval vm_compute in test_real 6 (x 6 16 64).  *)
-(* End Ex1.                              *)
