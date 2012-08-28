@@ -14,6 +14,17 @@ Definition expr_eqb a b :=
     | _, _ => false
   end. 
 
+Definition expr_compare x y := 
+  match x,y with 
+    | F , F => Eq
+    | T , T => Eq
+    | N x, N y => Pos.compare x y
+    | F, _ =>  Lt
+    | _, F => Gt
+    | T, _ =>  Lt
+    | _, T => Gt
+  end.     
+
 Definition node_eqb (a b: node) :=
   match a with 
     | (xa,ya,za) => 
@@ -29,33 +40,62 @@ Fixpoint assoc {A B} (eq: A -> A ->  bool) x l : option B :=
   end. 
 
 Module Inner. 
-  Require Import FMapPositive. 
+  Require Import FMapPositive FMapAVL OrderedTypeAlt.
+  Module PMap := PositiveMap.
+  Module N <: OrderedTypeAlt.
+    Definition t := node.    
+    
+    Definition compare (x y : t) := 
+      let '(l1,v1,r1) := x in 
+      let '(l2,v2,r2) := y in 
+        match expr_compare l1 l2 with
+            | Eq => match expr_compare r1 r2 with
+                     | Eq => match NPeano.Nat.compare v1 v2 with
+                                | Eq => Eq
+                                | c => c
+                   end
+            | c => c
+        end
+    | c => c
+         end.
+
+    Lemma compare_sym :
+      forall x y, ( compare y x) = CompOpp (compare x y).
+    Admitted.
+    Lemma compare_trans :
+      forall c x y z, (compare x y) = c -> (compare y z) = c -> (compare x z) = c.
+    Admitted.
+  End N.
+  Module NO := OrderedType_from_Alt(N).
   
+  Module NMap := FMapAVL.Make (NO).
+  Notation pmap := PMap.t.
+  Notation nmap := NMap.t.
   Record BDD :=
     {
-      tmap : list (positive * node)%type;
-      hmap : list (node * positive)%type;
+      tmap : pmap node;
+      hmap : nmap positive;
       next : positive
     }. 
 
   Definition empty :=
     {|
-      tmap := nil;
-      hmap := nil;
+      tmap := PMap.empty _;
+      hmap := NMap.empty _;
       next := 1
     |}.
          
 
-  Definition mk_node bdd (l : expr) v (h : expr) :=
+  Definition mk_node bdd (l : expr) (v: var) (h : expr) :=
     if expr_eqb l  h then (l,bdd)
     else
-      match assoc node_eqb (l,v,h) (hmap bdd) with 
+      match NMap.find (l,v,h) (hmap bdd) with 
           | Some x => (N x, bdd)
           | None => let n := (l,v,h) in 
                     let u := next bdd in 
-                    let bdd := {|  tmap := (u,n) :: tmap bdd;
-                                    hmap := (n,u) :: hmap bdd;
-                                    next := (u + 1)%positive |} in
+                    let bdd := {|  tmap := PMap.add u n (tmap bdd);
+                                   hmap := NMap.add n u (hmap bdd);
+                                   next := (u + 1)%positive |} in
                       (N u, bdd)
        end. 
 
@@ -69,8 +109,8 @@ Module Inner.
             | T, x => Some (x, bdd)
             | x, T => Some (x, bdd)
             | N na, N nb => 
-                do na <- assoc Pos.eqb na (tmap bdd);
-                do nb <- assoc Pos.eqb nb (tmap bdd);
+                do na <- PMap.find na (tmap bdd);
+                do nb <- PMap.find nb (tmap bdd);
                 match na,nb with 
                   | (l1,v1,h1),(l2,v2,h2) =>
                       match NPeano.Nat.compare v1  v2 with 
@@ -101,8 +141,8 @@ Module Inner.
             | T, _ => Some (T, bdd)
             | _, T => Some (T, bdd)
             | N na, N nb => 
-                do na <- assoc Pos.eqb na (tmap bdd);
-                do nb <- assoc Pos.eqb nb (tmap bdd);
+                do na <- PMap.find na (tmap bdd);
+                do nb <- PMap.find nb (tmap bdd);
                 match na,nb with 
                   | (l1,v1,h1),(l2,v2,h2) =>
                       match NPeano.Nat.compare v1  v2 with 
@@ -133,7 +173,7 @@ Module Inner.
             | F => Some (T, bdd)
             | T => Some (F, bdd)
             | N na => 
-                do na <- assoc Pos.eqb na (tmap bdd);
+                do na <- PMap.find na (tmap bdd);
                 match na with 
                   | (l,v,h) =>
                               do x, bdd <- negb bdd depth l;
@@ -153,8 +193,8 @@ Module Inner.
             | T, x => negb bdd depth x (* is this depth enough ?? *)
             | x, T => negb bdd depth x (* is this depth enough ?? *)
             | N na, N nb => 
-                do na <- assoc Pos.eqb na (tmap bdd);
-                do nb <- assoc Pos.eqb nb (tmap bdd);
+                do na <- PMap.find na (tmap bdd);
+                do nb <- PMap.find nb (tmap bdd);
                 match na,nb with 
                   | (l1,v1,h1),(l2,v2,h2) =>
                       match NPeano.Nat.compare v1  v2 with 
@@ -184,7 +224,7 @@ Module Inner.
       | S depth => match a with 
                       | T => Some true
                       | F => Some false
-                      | N n => do x <- assoc Pos.eqb n (tmap bdd);
+                      | N n => do x <- PMap.find n (tmap bdd);
                           match x with 
                             | (l,v,h) => 
                                 do b <- List.nth_error env v;

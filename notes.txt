@@ -1,3 +1,21 @@
+08/27/2012
+timing for divide and conquer add:
+- 5 size 470 time 10s
+- 6 size 942 time 62s
+- 7 size 1886 time 408s
+- 8 size 3774 time 2836s
+
+With better bdds
+- 5 size 470 time 10s
+- 6 size 942 time 61s
+- 7 size 1886 time 392s
+
+With better bdds
+- 5 size 470 time 10s
+- 6 size 942 time 58s
+- 7 size 1886 time 372s
+
+
 06/01/2012 Discussion with Adam 
 
 - Mentionned the semantics issues with double-update errors treated as

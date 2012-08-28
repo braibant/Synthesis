@@ -16,6 +16,10 @@ Section attic.
       | t :: q => if mem t j then union q j else union q (t :: j)
     end%list. 
 End attic. 
+Require  MSets. Require Orders.
+Print Orders.OrderedType. 
+Module N := OrdersEx.Nat_as_OT. 
+Module NS := MSetAVL.Make(N).
 
 Section t. 
   Variable Phi: Core.state.  
@@ -24,21 +28,25 @@ Section t.
   Definition Var_eqb {t} (x: Var t) t'  (y: Var t') : bool :=
     (Core.type_eqb t t' && let (x) := x in let (y) := y in (NPeano.Nat.eqb x y))%bool. 
 
-  Notation "x ?= y" := (Var_eqb x _ y) (at level 30). 
-  
+  Notation "x ?= y" := (Var_eqb x _ y) (at level 30).  
+  Definition unbox {t} (v:  Var t) := let (x) := v in x.
+  Notation "! x" := (unbox x) (at level 80).
+  Notation "[::]" := (NS.empty).
+  Notation "[:: x ; .. ; y ]" := (NS.add x .. (NS.add y NS.empty) ..).
+
   (** We define what it means for an expression to use a given variable *)
-  Definition use {t t'} (n:Var t) (x: RTL.expr Phi Var t') : bool :=
+  Definition used_expr {t} (x: RTL.expr Phi Var t) : NS.t :=
     match x with
-      | RTL.Evar t' m => n ?= m
-      | RTL.Eread t x => false
-      | RTL.Eread_rf n t x x0 => false
-      | RTL.Ebuiltin tys res f args => DList.existb (Var_eqb n) args
-      | RTL.Econstant ty x => false
-      | RTL.Emux t c l r => n ?= c || n ?= l || n ?= r
-      | RTL.Efst l t x => n ?= x 
-      | RTL.Esnd l t x => n ?= x
-      | RTL.Enth l t v x => n ?= x
-      | RTL.Etuple tys args => DList.existb (Var_eqb n) args
+      | RTL.Evar t' m => NS.singleton (!m)
+      | RTL.Eread t x => [::]
+      | RTL.Eread_rf n t x x0 => [::]
+      | RTL.Ebuiltin tys res f args => DList.fold (fun _ x acc => NS.add (!x) acc  )  args [::]
+      | RTL.Econstant ty x => [::]
+      | RTL.Emux t c l r => [:: !c; !l; !r]
+      | RTL.Efst l t x => [:: !x ]
+      | RTL.Esnd l t x => [:: !x ]
+      | RTL.Enth l t v x => [:: !x ]
+      | RTL.Etuple tys args => DList.fold (fun _ x acc => NS.add (!x) acc  )  args [::]
     end%bool.
 
   Notation Gamma := (list ({t: Core.type & RTL.expr Phi Var t})). 
@@ -83,24 +91,20 @@ Section t.
     end%bool.
   
   (** [ise_used n G] tests whether the variable [n] is used in the bindings [G]  *)
-  Fixpoint is_used {t} (n: Var t) (G: Gamma) : bool :=
-    match G with 
-      | nil => false
-      | cons (existT  _ e) q => use n e || is_used (n) q 
-    end%bool. 
+  Definition is_used {t}(x:Var t) s := NS.mem (!x) s.
 
   (** [crop preserve _ _ map G] sift through the bindings [G] to remove
   the unused ones, and accumulates a substitution [map] that is used
   to update the bindings that are kept.  *)
 
   Section crop. 
-    Variable preserve: list nat.
+    Variable preserve: NS.t.
  
     Fixpoint crop old next (map: list (nat * nat)) (G: Gamma) : option (list (nat * nat) * Gamma) :=
       match G with 
         | nil => Some ((old, next) :: map, nil)
         | cons (existT t e) q => 
-            if (mem old preserve) || is_used (box t old) q
+            if (NS.mem old preserve) 
             then 
               do e <- (subst_expr map e);
               do map, q <- crop (S old) (S next) ((old,next) :: map) q;
@@ -138,17 +142,11 @@ Section t.
                   end) dl. 
 
   (** [used e] gather the set of variables used by the effect [e]   *)
-  Definition used {t} (e: RTL.effect Var t) := 
+  Definition used_effect {t} (e: RTL.effect Var t) := 
     match e with 
-      | RTL.effect_reg_write _ v g => 
-          let (v) := v in 
-          let (g) := g in                                                
-          [v; g]%list
+      | RTL.effect_reg_write _ v g => [:: !v;!g] 
       | RTL.effect_regfile_write _ _ v a g =>
-          let (v) := v in 
-          let (g) := g in                                                
-          let (a) := a in 
-          [v; g; a]%list
+          [:: !v; !g; !a]
     end. 
       
   (** [used_effects x l] gather the set of variables used by the
@@ -158,15 +156,25 @@ Section t.
     DList.fold (fun _ e acc => 
             match e with 
                 None => acc 
-              | Some e => union (used e) acc
+              | Some e => NS.union (used_effect e) acc
             end) x l. 
+
+  Fixpoint used (G : Gamma) n acc := 
+    match G with
+      | nil => acc
+      | cons (existT _  t ) q => 
+          let acc :=  (used q  (S n) acc) in
+            if NS.mem n acc then NS.union (used_expr t) acc else acc
+    end.
+  
             
   
   Definition compile {t} (b: block Phi t) :=
     let (guard) := guard _ _ b in 
     let (value) := value _ _ b in 
     let effects := effects _ _ b in 
-    let preserve := used_effects (effects) [guard;value]%list in
+    let preserve := used_effects (effects) [:: guard;value] in
+      let preserve := used (bindings _  _ b) 0 preserve in 
     do map, bindings <- crop preserve 0 0 nil (bindings _ _ b);
     do guard <- BDD.assoc NPeano.Nat.eqb guard map;
     do value <- BDD.assoc NPeano.Nat.eqb value map;
