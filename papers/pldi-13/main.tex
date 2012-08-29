@@ -13,11 +13,27 @@
            {MIT}
            {adamc@csail.mit.edu}
 \title{Formal verification of hardware synthesis}
-\newcommand{\project}{Toy}
+\newcommand{\project}{Fe-Si}
 \begin{document}
 \maketitle
 
 \begin{abstract}
+  We report on the implementation of a certified compiler for an
+  high-level hardware description language (HDL) called \emph{Fe-Si}
+  (Featherweight Synthesis).
+
+  Fe-Si is a simplified version of Bluespec, an HDL based on a notion
+  of \emph{guarded atomic actions}. Fe-Si is defined as a
+  dependently-typed deep-embedding in Coq. The target language of the
+  compiler corresponds to a synthesisable subset of Verilog or VHDL.
+  
+  One key of our approach is that input programs to the compiler can
+  be defined and proved correct inside Coq. Then, we use extraction
+  and a Verilog back-end (written in OCaml) to get a certified version
+  of some hardware-designs.
+\end{abstract}
+
+\section*{Introduction}
 Verification of hardware designs has been thoroughly investigated, and
 yet, obtaining provably correct hardware of significant complexity is
 usually considered challenging and time-consuming. 
@@ -59,13 +75,10 @@ program, making verification on the high-level program useless in the
 presence of compiler-introduced bugs.
 %
 
-\medskip
-
-We are currently working on a project that address this issue.  That
-is, we investigate the formal verification of a (toy) compiler from a
-Bluespec-inspired language called \project{} to RTL, quite
-literally applying the ideas behind the CompCert
-project~\cite{Leroy-Compcert-CACM} to hardware synthesis. 
+\medskip In this paper, we investigate the formal verification of a
+lightly optimizing compiler from a Bluespec-inspired language called
+\project{} to RTL, quite literally applying the ideas behind the
+CompCert project~\cite{Leroy-Compcert-CACM} to hardware synthesis.
 
 \medskip
 
@@ -93,14 +106,21 @@ assignements. (Note that we do not investigate yet the correctness of an
 \emph{actual} implementation of this RTL description using the
 synthesisable subsets of Verilog or VHDL.)
 
-\medskip
 
-In this talk, we shall present the current state of our development,
-and highlight some of its features. For instance, we look forward to
-discuss the oddities of the semantics of our hardware description
-languages, as well as the payoffs of our various  implementation choices,
-including the use of PHOAS. 
-\end{abstract}
+\section{Testing designs}
+In order to gain confidenced in the fact that there is no lapse in
+either the semantics of the source language, nor the semantics of the
+target language, we test the simulated execution of compiled designs
+against our semantics. 
+
+Indeed, our use of program extraction is more delicate than what is
+done in, e.g., CompCert, because our program transformations use
+dependent type intensively. Either Coq extraction mechanism or
+our Verilog back-end could introduce bugs in the generated code.
+
+Moreover, since the long-term idea is to generate high-confidence
+hardware, one should not blindly trust formally certified code that
+has not been tested. 
 
 % \category{CR-number}{subcategory}{third-level}
 

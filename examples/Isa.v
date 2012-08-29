@@ -305,15 +305,16 @@ Import  Common DList.
 Eval vm_compute in
       Compiler.Fo_compile _ _ (Ex2.Code 4).
 
-Extract Inductive list => "list" [ "[]" "(::)" ].
-Extract Inductive bool => "bool" [ "true" "false" ].
-Extract Inductive unit => "unit" [ "()" ].
-Extract Inductive prod => "(*)"  [ "(,)" ].
+Require Import ExtrOcamlBasic.
+Require Import ExtrOcamlNatInt.
 
- Extract Inductive nat => int [ "0" "succ" ] "(fun fO fS n -> if n=0 then fO () else fS (n-1))".
 
 Definition t := (Compiler.copt _ _ (Ex2.Code 4)). 
-Extraction "teest.ml" t.  
+
+Extract Inductive nat => int [ "0" "Pervasives.succ" ]
+ "(fun fO fS n -> if n=0 then fO () else fS (n-1))".
+
+Extraction "test.ml" t.  
 
 Eval vm_compute in
   (do x <- (Compiler.copt _ _ (Ex2.Code 4));
