@@ -26,7 +26,8 @@ Section t.
   Qed.
 
   Lemma CompOpp_move x y : CompOpp x = y <-> x = CompOpp y. 
-  Admitted.
+    destruct x; destruct y; simpl; intuition discriminate.  
+  Qed. 
   
   Lemma Hf_sym' c x y : f x y = CompOpp c -> f y x = c. 
   Proof.   

@@ -41,7 +41,9 @@ Fixpoint assoc {A B} (eq: A -> A ->  bool) x l : option B :=
 
 Module Inner. 
   Require Import FMapPositive FMapAVL OrderedTypeAlt.
+  Require FMapFacts. 
   Module PMap := PositiveMap.
+  Module PMapFacts := FMapFacts.Facts(PMap).
 
   (** Rather painful proof of the fact that nodes form an ordered type *)
   Module N <: OrderedTypeAlt.
@@ -106,9 +108,10 @@ Module Inner.
     Qed. 
   End N.
   Module NO := OrderedType_from_Alt(N).
-  
 
   Module NMap := FMapAVL.Make (NO).
+  Module NMapFacts := FMapFacts.Facts (NMap). 
+
   Notation pmap := PMap.t.
   Notation nmap := NMap.t.
   
@@ -133,16 +136,15 @@ Module Inner.
     match x with 
       | N x => 
         match PMap.find x (tmap b) with
-          | Some (y,v,z) => Some y
+          | Some (y,v,z) => Some z
           | _ => None
         end
       | _ => None end.
 
 
-  Definition order (b: BDD) x y :=
-    low b x = Some y \/ high b x = Some y. 
+  Definition order (b: BDD) x y : Type :=
+    ((low b x = Some y) + (high b x = Some y))%type. 
   
-  Definition wf (b:BDD) := well_founded (order b).
   
   Definition empty :=
     {|
@@ -151,12 +153,12 @@ Module Inner.
       next := 1
     |}.         
 
-  Lemma wf_empty : wf empty. 
-  Proof.
-    intro x. apply Acc_intro. intros y o. 
-    red in o; destruct o; unfold low, high, empty in H; simpl in H;
-    destruct y; try rewrite PMap.gempty in H; discriminate.
-  Qed.
+  Definition upd b u :=
+    {| 
+      tmap := PMap.add (next b) u (tmap b);
+      hmap := NMap.add u (next b) (hmap b);
+      next := (1 + next b)
+    |}. 
 
   Definition mk_node bdd (l : expr) (v: var) (h : expr) :=
     if expr_eqb l  h then (l,bdd)
@@ -165,266 +167,913 @@ Module Inner.
           | Some x => (N x, bdd)
           | None => let n := (l,v,h) in 
                     let u := next bdd in 
-                    let bdd := {|  tmap := PMap.add u n (tmap bdd);
-                                   hmap := NMap.add n u (hmap bdd);
-                                   next := (u + 1)%positive |} in
-                      (N u, bdd)
+                    (N u, upd bdd n)
        end. 
   
-  Section lex. 
-    Context {A B: Type}. 
-    Variable leA : A -> A -> Prop.
-    Variable leB : B -> B -> Prop.
-    Hypothesis HA : well_founded leA.
-    Hypothesis HB : well_founded leB. 
-    
-    Inductive lex : A * B -> A * B -> Prop := 
-    | left_lex :
-        forall (x x' :A) (y y':B),
-          leA x x' -> lex (x,y) (x',y')
-    | right_lex :
-        forall (x:A) (y y':B),
-          leB y y' -> lex (x,y) (x,y'). 
-
-    Lemma lex_wf : well_founded lex. 
-    Proof. 
-    Admitted.
-  End lex. 
-
-  Definition porder bdd : expr * expr -> expr * expr -> Prop := lex (order bdd) (order bdd).
-
-  Section operations.
-
-    Fixpoint eval bdd depth env (a: expr) : option bool :=
-      match depth with 
-        | 0 => None
-        | S depth =>
-          match a with 
-            | T => Some true
-            | F => Some false
-            | N n =>    
-              (        
-              do x <- PMap.find n (tmap bdd);
-              match x with 
-                | (l,v,h) => 
-                  (
-                    do b <- List.nth_error env v;
-                    if (b: bool) 
-                    then eval bdd depth env h
-                    else eval bdd depth env l)              
-              end
-              )
-          end
-      end. 
-
-    Require Import Program.Wf.                  
-
-    Program Fixpoint andb (bdd: BDD) (ab : expr * expr) {wf (porder bdd) ab} : option (expr * BDD) :=
-      match ab with 
-        | (F, _) => Some (F, bdd)
-        | (_, F) => Some (F, bdd)
-        | (T, x) => Some (x, bdd)
-        | (x, T) => Some (x, bdd)
-        | (N na, N nb) => 
-          let a := N na in 
-          let b := N nb in 
-          do na <- PMap.find na (tmap bdd);
-          do nb <- PMap.find nb (tmap bdd);
-            let '(l1,v1,h1) := na in 
-            let '(l2,v2,h2) := nb in 
-            match NPeano.Nat.compare v1  v2 with 
-              | Eq =>
-                do x, bdd <- andb bdd (l1,l2);
-                do y, bdd <- andb bdd (h1,h2);
-                  Some (mk_node bdd x v1 y)
-              | Lt =>
-                  do x, bdd <- andb bdd (l1,b);
-                  do y, bdd <- andb bdd (h1,b);
-                  Some (mk_node bdd x v1 y)
-                | _ => 
-                  do x, bdd <- andb bdd (a,l2);
-                  do y, bdd <- andb bdd (a,h2);
-                  Some (mk_node bdd x v2 y)
-                       
+  Section t. 
+    Variable env: nat -> bool. 
+    Section operations.
+      Fixpoint interp bdd depth (a : expr) : option bool :=
+        match depth with 
+          | 0 => None
+          | S depth =>
+            match a with 
+              | T => Some true
+              | F => Some false
+              | N n =>    
+                (        
+                  do x <- PMap.find n (tmap bdd);
+                  match x with 
+                    | (l,v,h) => 
+                      ( if env v
+                        then interp bdd depth h
+                        else interp bdd depth l)              
+                  end
+                )
             end
-      end.
-                  Next Obligation. 
-  End operations.
-  
-  Lemma and_correct bdd n env a b x y ab bdd' :
-    eval bdd n env a = Some x ->
-    eval bdd n env b = Some y ->
-    andb bdd n a b = Some (ab, bdd') ->
-    eval bdd' n env ab = Some (x && y)%bool.
-  Proof.
-     Ltac t := 
-      repeat match goal with 
-               | H : Some _ = Some _ |- _ => injection H; clear H; intros ?
-             end.
-    induction n; intros Ha Hb Hab. 
-    - simpl in *.  discriminate. 
-    - simpl eval in *. 
-      destruct a; destruct b; simpl in Hab; t; intros; subst; f_equal.
-      * auto. 
-      * rewrite Bool.andb_comm. reflexivity. 
-      * rewrite Bool.andb_comm. simpl.  auto. 
-      * invert_do Ha; invert_do Hb. rewrite EQ, EQ1 in Hab. simpl in Hab. 
-        destruct x1 as [[l1 v1] h1]. 
-        destruct x0 as [[l0 v0] h0].       
-        invert_do EQ0; invert_do EQ2.
-        destruct x0; destruct x1. 
-      auto. auto. auto.
-
- 
-invert_do Hb. rewrite EQ.  simpl. auto. 
-      repeat match goal with 
-          H: (do _ <- _ ; _ = Some _) |- _ => invert_do H
-      end. 
-      + t. exists F. simpl. exists bdd. subst. simpl. intuition. 
-      + t. destruct b. 
-        * t. subst. exists F. exists bdd. simpl; intuition. 
-        * t. subst. exists T. exists bdd; simpl; intuition.
-        *  simpl. exists (N p); exists (bdd). intuition. subst. simpl. apply Hb. 
-      + destruct b;t; subst; simpl. 
-        * exists F; exists bdd. intuition. destruct x; reflexivity.  
-        * exists (N p); exists bdd. intuition. Require Import Bool. rewrite andb_comm. simpl. apply Ha. 
-        * invert_do Ha.  invert_do Hb. rewrite EQ1, EQ.  simpl. 
-          destruct x0; destruct p1; destruct x1. destruct p1.
-          destruct (NPeano.Nat.compare n0 n1). 
-          simpl. invert_do EQ0.  invert_do EQ2. simpl. 
-          
-      Ltac simpl. 
+        end. 
       
-    Fixpoint orb depth (a b : expr) : option (expr * BDD) :=
-      match depth with 
-        | 0 => None
-        | S depth => 
-          match a,b with 
-          | F, x => Some (x, bdd)
-          | x, F => Some (x, bdd)
-          | T, _ => Some (T, bdd)
-          | _, T => Some (T, bdd)
-          | N na, N nb => 
-            do na <- PMap.find na (tmap bdd);
-            do nb <- PMap.find nb (tmap bdd);
-            match na,nb with 
-              | (l1,v1,h1),(l2,v2,h2) =>
+      Fixpoint andb (bdd: BDD) depth (a b : expr)  : option (expr * BDD) :=
+        match depth with 
+          | 0 => None 
+          | S depth => 
+            match a,b with 
+              | F, _ => Some (F, bdd)
+              | _, F => Some (F, bdd)
+              | T, x => Some (x, bdd)
+              | x, T => Some (x, bdd)
+              | N na, N nb => 
+                let a := N na in 
+                let b := N nb in 
+                do na <- PMap.find na (tmap bdd);
+                do nb <- PMap.find nb (tmap bdd);
+                let '(l1,v1,h1) := na in 
+                let '(l2,v2,h2) := nb in 
                 match NPeano.Nat.compare v1  v2 with 
                   | Eq =>
-                    do x, bdd <- orb depth l1 l2;
-                    do y, bdd <- orb depth h1 h2;
-                      Some (mk_node bdd x v1 y)
+                    do x, bdd <- andb bdd depth l1 l2;
+                    do y, bdd <- andb bdd depth h1 h2;
+                    Some (mk_node bdd x v1 y)
                   | Lt =>
-                    do x, bdd <- orb depth l1 b;
-                    do y, bdd <- orb depth h1 b;
+                    do x, bdd <- andb bdd depth l1 b;
+                    do y, bdd <- andb bdd depth h1 b;
                     Some (mk_node bdd x v1 y)
                   | _ => 
-                    do x, bdd <- orb depth a l2;
-                    do y, bdd <- orb depth a h2;
+                    do x, bdd <- andb bdd depth a l2;
+                    do y, bdd <- andb bdd depth a h2;
                     Some (mk_node bdd x v2 y)
-                end
+                end                       
             end
-          end
-      end.
-  
-  
-  
-  Fixpoint negb bdd depth (a : expr) : option (expr * BDD) :=
-    match depth with 
-      | 0 => None
-      | S depth => 
-        match a with 
-          | F => Some (T, bdd)
-          | T => Some (F, bdd)
-          | N na => 
-            do na <- PMap.find na (tmap bdd);
-              match na with 
-                | (l,v,h) =>
-                  do x, bdd <- negb bdd depth l;
-                    do y, bdd <- negb bdd depth h;
-                    Some (mk_node bdd x v y)
-              end
-        end
-    end.
-  
-  Fixpoint xorb bdd depth (a b : expr) : option (expr * BDD) :=
-    match depth with 
-      | 0 => None
-      | S depth => 
-        match a,b with 
-          | F, x => Some (x, bdd)
-          | x, F => Some (x, bdd)
-          | T, x => negb bdd depth x (* is this depth enough ?? *)
-          | x, T => negb bdd depth x (* is this depth enough ?? *)
-          | N na, N nb => 
-            do na <- PMap.find na (tmap bdd);
-              do nb <- PMap.find nb (tmap bdd);
-              match na,nb with 
-                | (l1,v1,h1),(l2,v2,h2) =>
-                  match NPeano.Nat.compare v1  v2 with 
-                    | Eq =>
-                      do x, bdd <- xorb bdd depth l1 l2;
-                        do y, bdd <- xorb bdd depth h1 h2;
-                        Some (mk_node bdd x v1 y)
-                    | Lt =>
-                      do x, bdd <- xorb bdd depth l1 b;
-                        do y, bdd <- xorb bdd depth h1 b;
-                        Some (mk_node bdd x v1 y)
-                    | _ => 
-                      do x, bdd <- xorb bdd depth a l2;
-                        do y, bdd <- xorb bdd depth a h2;
-                        Some (mk_node bdd x v2 y)
+        end.
+      
+      Fixpoint orb bdd depth (a b : expr) : option (expr * BDD) :=
+        match depth with 
+          | 0 => None
+          | S depth => 
+            match a,b with 
+              | F, x => Some (x, bdd)
+              | x, F => Some (x, bdd)
+              | T, _ => Some (T, bdd)
+              | _, T => Some (T, bdd)
+              | N na, N nb => 
+                do na <- PMap.find na (tmap bdd);
+                  do nb <- PMap.find nb (tmap bdd);
+                  match na,nb with 
+                    | (l1,v1,h1),(l2,v2,h2) =>
+                      match NPeano.Nat.compare v1  v2 with 
+                        | Eq =>
+                          do x, bdd <- orb bdd depth l1 l2;
+                            do y, bdd <- orb bdd depth h1 h2;
+                            Some (mk_node bdd x v1 y)
+                        | Lt =>
+                          do x, bdd <- orb bdd depth l1 b;
+                            do y, bdd <- orb bdd depth h1 b;
+                            Some (mk_node bdd x v1 y)
+                        | _ => 
+                          do x, bdd <- orb bdd depth a l2;
+                            do y, bdd <- orb bdd depth a h2;
+                            Some (mk_node bdd x v2 y)
+                      end
                   end
-              end
-        end
-    end.
-  
-  Definition var bdd x :=
-    mk_node bdd F x T. 
+            end
+        end.
+      
+      
+      
+      Fixpoint negb bdd depth (a : expr) : option (expr * BDD) :=
+        match depth with 
+          | 0 => None
+          | S depth => 
+            match a with 
+              | F => Some (T, bdd)
+              | T => Some (F, bdd)
+              | N na => 
+                do na <- PMap.find na (tmap bdd);
+                  match na with 
+                    | (l,v,h) =>
+                      do x, bdd <- negb bdd depth l;
+                        do y, bdd <- negb bdd depth h;
+                        Some (mk_node bdd x v y)
+                  end
+            end
+        end.
+      
+      Fixpoint xorb bdd depth (a b : expr) : option (expr * BDD) :=
+        match depth with 
+          | 0 => None
+          | S depth => 
+            match a,b with 
+              | F, x => Some (x, bdd)
+              | x, F => Some (x, bdd)
+              | T, x => negb bdd depth x (* is this depth enough ?? *)
+              | x, T => negb bdd depth x (* is this depth enough ?? *)
+              | N na, N nb => 
+                do na <- PMap.find na (tmap bdd);
+                  do nb <- PMap.find nb (tmap bdd);
+                  match na,nb with 
+                    | (l1,v1,h1),(l2,v2,h2) =>
+                      match NPeano.Nat.compare v1  v2 with 
+                        | Eq =>
+                          do x, bdd <- xorb bdd depth l1 l2;
+                            do y, bdd <- xorb bdd depth h1 h2;
+                            Some (mk_node bdd x v1 y)
+                        | Lt =>
+                          do x, bdd <- xorb bdd depth l1 b;
+                            do y, bdd <- xorb bdd depth h1 b;
+                            Some (mk_node bdd x v1 y)
+                        | _ => 
+                          do x, bdd <- xorb bdd depth a l2;
+                            do y, bdd <- xorb bdd depth a h2;
+                            Some (mk_node bdd x v2 y)
+                      end
+                  end
+            end
+        end.
+      
+      Definition mk_var bdd x :=
+        mk_node bdd F x T. 
+    End operations.
+    
+    Inductive value bdd : expr -> bool -> Type :=
+    | value_F : value bdd F false
+    | value_T : value bdd T true
+    | value_N : forall p l v h, 
+                  PMap.find p (tmap bdd) = Some (l,v,h) -> 
+                  forall vl, value bdd l vl -> 
+                  forall vh, value bdd h vh -> 
+                        value bdd (N p) (if env v then vh else vl).    
+    
+    
+    Lemma value_T_inversion bdd v : value bdd T v -> v = true. 
+    Proof. 
+      intros H; inversion H; intuition. 
+    Qed. 
+    
+    Lemma value_F_inversion bdd v : value bdd F v -> v = false. 
+    Proof. 
+      intros H; inversion H; intuition. 
+    Qed. 
+    
+    Lemma value_N_inversion bdd a va : value bdd (N a) va -> 
+                                       forall l x h, PMap.find a (tmap bdd) = Some (l, x, h) -> 
+                                       { vl : bool & 
+                                       {vh : bool & 
+                                                  (value bdd l vl * 
+                                                   value bdd h vh * 
+                                                   value bdd (N a) (if env x then vh else vl))%type }}. 
+    Proof. 
+      intros. inversion H. subst.
+      exists vl.  exists vh. intuition; try  congruence. 
+      assert (x = v) by congruence. subst.  congruence. 
+    Qed. 
+    
+    Lemma value_inj bdd x v1:
+      value bdd x v1 -> 
+      forall v2, value bdd x v2 -> 
+            v1 = v2. 
+    Proof. 
+      induction 1. 
+      intros. apply value_F_inversion in H;congruence. 
+      intros. apply value_T_inversion in H;congruence. 
+      intros v2 Hv2. 
+      inversion Hv2; subst. 
+      rewrite e in H2. injection H2; intros; clear e H2; subst. 
+      specialize (IHvalue1 _ H3). 
+      specialize (IHvalue2 _ H4). subst. 
+      reflexivity. 
+    Qed. 
+  End t. 
 
+  Record wf (env : nat -> bool) (b: BDD) : Type :=
+    {
+      wf_bijection : forall p n, NMap.find n (hmap b) = Some p 
+                            <-> PMap.find p (tmap b) = Some n;
+      wf_lt_next : forall p x, PMap.find p (tmap b) = Some x -> 
+                          (p < next b)%positive;
+      wf_depth : nat;
+      wf_value_interp: forall x vx, value env b x vx -> 
+                               interp env b wf_depth x = Some vx;
+      wf_value_order x vx : value env b x vx -> 
+                            forall y, order b x y ->
+                                 {vy : bool & value env b y vy};
+      wf_find_value : forall p x, PMap.find p (tmap b) = Some x -> 
+                             {vp : bool & value env b (N p) vp}
+                               
+    }.
+     
+  Hint Constructors value. 
+  Hint Resolve value_inj. 
+  
+   
+  Lemma pmap_order_left {b} {x l v h}: 
+    PMap.find x (tmap b) = Some (l, v, h) -> 
+    order b (N x) l. 
+  Proof. 
+    intros H; left; simpl; rewrite H. reflexivity. 
+  Qed. 
+  
+  Lemma pmap_order_right {b} {x l v h}: 
+    PMap.find x (tmap b) = Some (l, v, h) -> 
+    order b (N x) h. 
+  Proof. 
+    intros H; right; simpl; rewrite H. reflexivity. 
+  Qed. 
+  
+  Hint Resolve pmap_order_left pmap_order_right. 
+  
+  Record incr env (b1 b2 : BDD) :=
+    {
+      incr_order : forall x y, order b1 x y -> order b2 x y;
+      incr_value : forall x v, value env b1 x v -> 
+                              value env b2 x v;
+      incr_wf : wf env b1 -> wf env b2 
+    }.
+  
+  Hint Resolve incr_value incr_order incr_wf. 
+  
+  Remark bind2_inversion:
+    forall {A B C: Type} (f: option (A*B)) (g: A -> B -> option C) (y: C),
+      bind2 f g = Some y ->
+      {x1 : A & {x2 : B | f = Some (x1,x2) /\ g x1 x2 = Some y}}.
+  Proof. 
+    intros ? ? ? [ [x y] | ] ? ? H; simpl in H; eauto.
+    discriminate. 
+  Qed.
+  
+  Lemma incr_refl env bdd : incr env bdd bdd. 
+  Proof. 
+    constructor; tauto. 
+  Qed. 
+  
+  Lemma incr_trans env a b c : incr env a b -> incr env b c -> incr env a c. 
+  Proof. 
+    intros Hab Hbc. 
+    constructor; 
+      intros; apply Hbc; apply Hab; auto.   
+  Qed. 
+  
+  Hint Resolve incr_trans incr_refl. 
+  
+  
+  Lemma interp_S n: 
+    forall {env bdd p x}, 
+      interp env bdd n p = Some x ->
+      interp env bdd (S n) p = Some x.
+  Proof.
+    induction n. 
+    - discriminate. 
+    - intros. 
+      simpl in H. 
+      destruct p; simpl; try tauto.
+      
+      Ltac t := 
+        repeat 
+          match goal with 
+            | H : Some _ = Some _ |- _ => injection H; clear H; intros ?
+            | H : (None = Some _) |- _ => discriminate
+            | H : (bind ?F ?G = Some ?X) |- _ => 
+              destruct (bind_inversion _ _ F G _ H) as [?x [?h ?h]]; clear H
+            | H : (bind2 ?F ?G = Some ?X) |- _ => 
+              destruct (bind2_inversion F G _ H) as [?x [?x [?h ?h]]]; clear H
+            | |- context [(bind (Some _) ?G)] => simpl
+            | H : (bind ?x ?f = None) |- _ => 
+              destruct (bind_inversion_None x f H) as [?h | [?x [?h ?h]]]
+            | H : ?x = Some ?y |- context [?x] => rewrite H
+          end. 
+      t. 
+      destruct x0 as [[l1 v1] h1].
+      destruct (env v1);
+      apply IHn in h0; assumption. 
+  Qed.       
+
+  Hint Resolve interp_S. 
+  
+  Lemma value_upd  env bdd (Hwf: wf env bdd) l v h:
+    NMap.find (l,v,h) (hmap bdd) = None ->
+    forall vl, value env bdd l vl -> 
+          forall vh, value env bdd h vh -> 
+                forall x vx, value env bdd x vx -> 
+                        value env (upd bdd (l,v,h)) x vx. 
+  Proof.              
+    intros Hbdd vl Hvl vh Hvh x vx H.
+    induction H. 
+    constructor. 
+    constructor. 
+    econstructor; eauto. 
+    simpl. rewrite PMap.gso. auto. 
+    destruct Hwf as [ _ Hwf]. apply Hwf in e. clear - e. zify; omega. 
+  Qed. 
+  Hint Resolve value_upd.   
+  
+  Lemma expr_eq_dec (e1 e2: expr) : ({e1 = e2} + {e1 <> e2})%type.  
+  Proof.
+    decide equality. 
+    apply Pos.eq_dec. 
+  Qed. 
+  
+  Lemma node_eq_dec (n1 n2: node) : {n1 = n2} + {n1 <> n2}.  
+  Proof. 
+    decide equality. 
+    apply expr_eq_dec. 
+    decide equality. 
+    apply NPeano.Nat.eq_dec.  
+    apply expr_eq_dec. 
+  Qed. 
+  
+  Lemma expr_compare_refl e : expr_compare e e = Eq.  
+  Proof.
+    destruct e; trivial.
+    simpl. 
+    apply Pos.compare_refl. 
+  Qed. 
+  
+  Lemma node_compare_refl n : N.compare n n = Eq.  
+  Proof.
+    clear. 
+    destruct n as [[e1 v] e2]. unfold N.compare. 
+    rewrite expr_compare_refl; simpl. 
+    rewrite expr_compare_refl; simpl. 
+    rewrite nat_compare_eq_iff. reflexivity. 
+  Qed.
+  
+  Lemma node_compare_eq_iff n1 n2 : N.compare n1 n2 = Eq <-> n1 = n2. 
+  Proof. 
+    clear; split; intros. 
+    
+    2:subst; apply node_compare_refl. 
+    unfold N.compare in H. 
+    destruct (expr_compare (snd n1) (snd n2)) eqn:H3; try discriminate. 
+    destruct n1 as [[a b] c]; destruct n2 as [[a' b'] c']. simpl in H. 
+    destruct (expr_compare a a') eqn: H1; try discriminate. 
+    rewrite nat_compare_eq_iff in H. subst. 
+    simpl in H3. 
+    Lemma expr_compare_eq a b: expr_compare a b = Eq -> a = b.  
+    Proof. 
+      destruct a ; destruct b; simpl; intros; subst;  try discriminate; try reflexivity.  
+      rewrite Pos.compare_eq_iff in H. subst. auto. 
+    Qed. 
+    apply expr_compare_eq in H1. apply expr_compare_eq in H3. subst; reflexivity.
+  Qed. 
+
+  Remark wf_neq env bdd (Hwf : wf env bdd) p x : PMap.find p (tmap bdd) = Some x -> p <> next bdd. 
+  Proof. 
+    intros H. apply (wf_lt_next _ _ Hwf) in H; auto.  zify; omega. 
+  Qed. 
+  Hint Resolve wf_neq. 
+    
+
+  Section wf_upd.  
+    Variable env : nat -> bool. 
+    Variable bdd : BDD. 
+    Hypothesis Hwf : wf env bdd.
+    Variable (l:expr) (v:nat) (h:expr). 
+    Variable vl vh : bool. 
+    Hypothesis Hvl : value env bdd l vl. 
+    Hypothesis Hvh : value env bdd h vh. 
+    Hypothesis Hnode : NMap.find (elt:=positive) (l, v, h) (hmap bdd) = None.
+
+    Remark value_upd_left : value env (upd bdd (l,v,h)) l vl. 
+    Proof. 
+      eapply value_upd; eauto. 
+    Qed. 
+    Remark value_upd_right : value env (upd bdd (l,v,h)) h vh. 
+    Proof. 
+      eapply value_upd; eauto. 
+    Qed. 
+    
+    Lemma order_upd : forall x y : expr, order bdd x y -> order (upd bdd (l, v, h)) x y.
+    Proof. 
+      intros x y [Hxy | Hxy]; [left | right].
+      + unfold low in *; destruct x; auto. 
+        case_eq (PMap.find p (tmap bdd)); [intros [[l1 v1] h1] H| intros H].
+        *  simpl; rewrite H in Hxy.
+           rewrite PMap.gso by eauto. setoid_rewrite H; assumption.
+        *  rewrite H in Hxy. discriminate.
+      +  unfold high in *; destruct x; auto.
+         case_eq (PMap.find p (tmap bdd)); [intros [[l1 v1] h1] H| intros H].
+         *  simpl; rewrite H in Hxy.
+            rewrite PMap.gso by eauto. setoid_rewrite H; assumption.
+         * rewrite H in Hxy. discriminate.
+    Qed.  
+           
+    Lemma value_upd_inj x vx vy : value env bdd x vx -> 
+                          value env (upd bdd (l,v,h)) x vy -> 
+                          vx = vy. 
+    Proof.
+      intros. 
+      eapply value_upd in H; eauto. 
+    Qed. 
+      
+    Lemma interp_upd : forall (n : var) (x : expr) (y : bool),
+                         interp env bdd n x = Some y -> interp env (upd bdd (l, v, h)) n x = Some y.
+    Proof.
+      induction n; intros. discriminate.
+      simpl in *.
+      destruct x; intuition.
+      t; destruct x as [[l2 v2] h2]; t.
+      
+      rewrite PMap.gso by eauto. setoid_rewrite h0; simpl.
+      destruct (env v2) eqn: Heq;t; intuition.
+    Qed.
+      
+    Lemma wf_value_lt x vx : value env bdd (N x) vx -> 
+                             (x < next bdd)%positive. 
+    Proof.
+      clear - Hwf. 
+      intros H. inversion H.  subst.
+      destruct Hwf; eauto. 
+    Qed. 
+    
+    Hint Resolve wf_value_lt wf_value_order.
+
+    Lemma value_upd_neq x vx :  value env (upd bdd (l, v, h)) x vx ->
+                                N (next bdd) <> x ->
+                                value env bdd x vx.
+    Proof.
+      intros. 
+      induction H;  auto. 
+      simpl in e. rewrite PMap.gso in e by congruence. 
+      destruct (wf_find_value _ _ Hwf  _ _ e) as [vp Hvp]. 
+
+      refine (let IH1 := IHvalue1 _ in 
+              let IH2 := IHvalue2 _ in _). 
+      destruct l0 as [ | | X ]; try discriminate;  
+      assert (HX : (X < next bdd)%positive) by
+          (refine (let H := wf_value_order _ _ Hwf _ _ Hvp  (N X) _ in 
+                   let (x, Hx) := H in wf_value_lt _ _ Hx 
+                 ); [eauto ]). 
+      clear - HX. intros H; injection H; clear H. zify; omega. 
+      destruct h0 as [ | | X ]; try discriminate;  
+      assert (HX : (X < next bdd)%positive) by
+          (refine (let H := wf_value_order _ _ Hwf _ _ Hvp  (N X) _ in 
+                   let (x, Hx) := H in wf_value_lt _ _ Hx 
+                 ); [eauto ]). 
+      clear - HX. intros H; injection H; clear H; intros. zify; omega. 
+      econstructor; eauto. 
+    Qed.
+
+    
+    (* Lemma value_upd_eq x vx : value env (upd bdd (l,v,h)) x vx -> *)
+    (*                           x = N (next bdd) ->  *)
+    (*                           value env (upd bdd (l,v,h)) x (if env v then vh else vl).  *)
+    
+    Lemma order_upd_eq x y : order (upd bdd (l,v,h)) x y -> 
+                             x = N (next bdd) -> 
+                             forall vx, value env (upd bdd (l,v,h)) x vx ->
+                                   (y = l) + (y = h). 
+    Proof. 
+      intros H H' vx Hvx. subst. 
+      destruct H as [H | H];  
+        simpl in H; inversion Hvx; subst;
+        simpl in H1; rewrite H1 in H; injection H; intros; subst; clear H; 
+        rewrite PMap.gss in H1 by eauto.
+      left; congruence. 
+      right; congruence. 
+    Qed. 
+    
+    Lemma order_upd_neq x y : order (upd bdd (l,v,h)) x y -> 
+                              x <> N (next bdd) -> 
+                              forall vx, value env (upd bdd (l,v,h)) x vx ->
+                                    order bdd x y. 
+    Proof. 
+      intros H H' vx Hvx.
+      destruct x as [ | | x]. 
+      destruct H as [ H | H]; simpl in H; discriminate. 
+      destruct H as [ H | H]; simpl in H; discriminate. 
+      destruct H as [ H | H]; simpl in H; rewrite PMap.gso in H by (clear - H'; congruence). 
+      left; apply H. 
+      right; apply H. 
+    Qed. 
+    
+    Lemma wf_upd : wf env (upd bdd (l, v, h)).
+    Proof. 
+      
+      refine ((fun wf_equiv wf_lt_next wf_depth wf_value_interp wf_value_order wf_find_value =>
+                Build_wf env _
+                         wf_equiv wf_lt_next wf_depth 
+                         wf_value_interp 
+                         (wf_value_order (* wf_find_value env wf_value_interp *))
+                         wf_find_value
+              ) _ _ (1 + wf_depth env _ Hwf) _ _  _). 
+
+      - clear Hvl Hvh. revert Hnode.   generalize (l,v,h) as n1; intros n1 Hn1 p n2. 
+        simpl. 
+        destruct (node_eq_dec n1 n2) as [Hn | Hn]; [subst|].
+        + rewrite NMapFacts.add_eq_o. 
+          split; intros H.
+          * injection H; clear H; intros; subst.  
+            rewrite PMap.gss. reflexivity. 
+          * f_equal. 
+            destruct (Pos.eq_dec (next bdd) p); [trivial|]. 
+            exfalso. 
+            rewrite PMap.gso in H by congruence. 
+            rewrite <- (wf_bijection _ _ Hwf) in H; congruence. 
+          * apply node_compare_refl. 
+            
+        + rewrite NMapFacts.add_neq_o by (rewrite node_compare_eq_iff; tauto).
+          split; intros. 
+          rewrite (wf_bijection _ _ Hwf) in H. 
+          rewrite PMap.gso; eauto. 
+          rewrite PMap.gso in H. 
+          destruct Hwf as [ H' H'' _ _ ].
+          rewrite H'. auto.
+          intros Hp. subst. 
+          rewrite PMap.gss in H. congruence. 
+      - intros. simpl in H. 
+        destruct (Pos.eq_dec (next bdd) p). subst. unfold upd. unfold next at 2.  
+        zify; omega. 
+        unfold upd. unfold next at 1. 
+        rewrite PMap.gso in H by eauto. 
+        apply (wf_lt_next _ _ Hwf) in H; zify; omega. 
+      - intros.
+        destruct (expr_eq_dec (N (next bdd)) x). 
+        + subst; simpl. 
+          inversion H. subst. simpl in H1. 
+          pose proof Hvl. clear Hvl. 
+          pose proof Hvh. clear Hvh. 
+          
+          rewrite H1.
+          rewrite PMap.gss in H1.
+          injection H1; intros. destruct H5. destruct H6. destruct H7. simpl. 
+          simpl.                  
+          destruct (env v). 
+          * apply interp_upd. 
+            apply Hwf.
+            assert (vh = vh0). eapply value_upd_inj; eauto.  subst. eauto. 
+          *  apply interp_upd. 
+             apply Hwf.
+             assert (vl = vl0). eapply value_upd_inj; eauto.  subst. eauto. 
+        + apply interp_upd. apply interp_S. apply Hwf.
+          apply value_upd_neq; assumption.  
+      - intros.
+        
+        destruct (expr_eq_dec (N (next bdd)) x).
+        eapply order_upd_eq in X; eauto. destruct X; subst; eauto.
+        eapply order_upd_neq in X; eauto. 
+        eapply value_upd_neq in H; eauto. 
+        pose proof (wf_value_order _ _ Hwf _ _ H _ X). destruct H0 as [vy Hvy]. exists vy. eauto. 
+      - intros. 
+        simpl in H. 
+        destruct (Pos.eq_dec p (next bdd)); subst. 
+        pose proof H.
+        rewrite PMap.gss in H. injection H; intros; subst; clear H. 
+        exists (if env v then vh else vl). econstructor; eauto. 
+        
+        rewrite PMap.gso in H by eassumption. apply (wf_find_value env _ Hwf) in H. destruct H.
+        eapply value_upd in v0; eauto. 
+    Qed. 
+    Print Assumptions wf_upd. 
+  End wf_upd. 
+
+  Lemma mk_node_correct {env bdd} (Hwf: wf env bdd) {l v h e bdd'}: 
+    mk_node bdd l v h = (e,bdd') -> 
+    forall vl, value env bdd l vl -> 
+    forall vh, value env bdd h vh -> 
+          (value env bdd' e (if env v then vh else vl) * incr env bdd bdd')%type.       
+  Proof. 
+    intros.
+    unfold mk_node in H. 
+    case_eq (expr_eqb l h). 
+    - intros H'; rewrite H' in H. injection H; intros; subst; clear H.
+      Lemma expr_eqb_correct e f : expr_eqb e f = true -> e = f.
+      Proof.
+        destruct e; destruct f; simpl; trivial || (try discriminate).
+        intros. f_equal. apply Peqb_true_eq; auto. 
+      Qed. 
+      apply expr_eqb_correct in H'; subst. 
+      assert (vh = vl) by (eapply value_inj; eauto); subst. 
+      destruct (env v); split; eauto. 
+    - intros H'. rewrite H' in H.
+      case_eq (NMap.find (l,v,h) (hmap bdd)); [intros node Hnode | intros Hnode].
+      + rewrite Hnode in H.
+        injection H; intros; subst; clear H.
+        split ; [|auto]. 
+        rewrite (wf_bijection _ _ Hwf) in Hnode. econstructor; eauto. 
+      + rewrite Hnode in H.
+        injection H; intros; subst; clear H.
+        refine ((fun H H' => ((H' H), H)) _ _). 
+        {                       (* proof of incr *)
+          constructor. 
+          - apply (order_upd env); auto.  
+          - eapply value_upd; eauto. 
+          - intros _.
+            {
+              eapply wf_upd; eauto.  
+            }
+            
+        }
+        {
+          intros. econstructor; 
+                  [
+                  | eapply value_upd; eauto
+                  | eapply value_upd; eauto
+                  ].  
+          simpl. apply PMap.gss. 
+         }
+  Qed.
+  Print Assumptions mk_node_correct. 
+  Ltac t s ::= 
+       repeat 
+       ((match goal with 
+         | H : Some _ = Some _ |- _ => injection H; clear H; intros; subst
+         | H : (None = Some _) |- _ => discriminate
+         | H : (bind ?F ?G = Some ?X) |- _ => 
+           destruct (bind_inversion _ _ F G _ H) as [?x [?I ?I]]; clear H
+         | H : (bind2 ?F ?G = Some ?X) |- _ => 
+           destruct (bind2_inversion F G _ H) as [?x [?x [?I ?I]]]; clear H
+         | |- context [(bind (Some _) ?G)] => simpl
+         | H : (bind ?x ?f = None) |- _ => 
+           destruct (bind_inversion_None x f H) as [?H | [?x [?I ?I]]]
+         | H : ?x = Some ?y |- context [?x] => rewrite H
+         | |- (_ * incr ?env ?x ?x)%type => refine ( _ , incr_refl env x )                              
+         | H : value ?env ?b T _ |- _ => apply (value_T_inversion env b) in H
+         | H : value ?env ?b F _ |- _ => apply (value_F_inversion env b) in H
+         | |- value ?env _ T _ => constructor
+         | |- value ?env _ F _ => constructor
+         | |- _ => subst           
+        end) || s); trivial.
+
+  Section cases. 
+    Ltac inj :=
+      repeat match goal with 
+               | H : value ?env ?b ?x ?vx , H' : value ?env ?b ?x ?vy |- _ =>  
+                 let H'' := fresh in 
+                 assert (H'' := value_inj env b x vx H vy H'); 
+                   clear H'; subst
+             end. 
+    
+    Variables
+      (env : var -> bool)
+      (bdd : BDD)
+      (Hwf : wf env bdd)
+      (op : bool -> bool -> bool)
+      (opb: BDD -> nat -> expr -> expr -> option (expr * BDD))
+      (n : nat)
+      (IH:  forall bdd : BDD,
+              wf env bdd ->
+              forall (a b ab : expr) (bdd' : BDD),
+                opb bdd n a b = Some (ab, bdd') ->
+                forall va : bool,
+                  value env bdd a va ->
+                  forall vb : bool,
+                    value env bdd b vb ->
+                    value env bdd' ab (op va vb) * incr env bdd bdd')
+      (a b: positive)
+      (va vb: bool)
+      (Hva : value env bdd (N a) va)
+      (Hvb : value env bdd (N b) vb)
+      (la : expr) (xa: var) (ha: expr) (Ha : PMap.find a (tmap bdd) = Some (la, xa, ha))
+      (lb : expr) (xb: var) (hb: expr) (Hb : PMap.find b (tmap bdd) = Some (lb, xb, hb)).
+    
+    
+    Lemma binop_correct_lt : forall
+                               l bdd1 (H1 : opb bdd n la (N b) = Some (l, bdd1))
+                               h bdd2 (H2 : opb bdd1 n ha (N b) = Some (h, bdd2))
+                               ab bdd3 (H3 : mk_node bdd2 l xa h = (ab, bdd3)),
+                               (value env bdd3 ab (op va vb) * incr env bdd bdd3). 
+    Proof. 
+      intros. 
+      destruct (value_N_inversion env bdd a va Hva _ _ _ Ha) as [vla [vha [[Hla Hha] Hwa]]].
+      destruct (value_N_inversion env bdd b vb Hvb _ _ _ Hb) as [vlb [vhb [[Hlb Hhb] Hwb]]].
+      destruct (IH _ Hwf _ _ _ _ H1 _ Hla _ Hwb) as [Hvx Hincr]. 
+      refine (let (Hvx1,Hincr2) := IH bdd1 (_ : wf env bdd1) _ _ _ _ H2 
+                                       _ (_: value env bdd1 ha vha) 
+                                       _ (_: value env bdd1 (N b) _) in _
+             ); eauto. 
+      inj. 
+      refine (let (Hab, Hincr2) := mk_node_correct ( _ : wf env bdd2) H3 _ _ _ _ in _
+             ); eauto. 
+      destruct (env xa); destruct (env xb); split; eauto. 
+    Qed. 
+     
+    Lemma binop_correct_gt : forall
+                               l bdd1 (H1 : opb bdd n (N a) lb  = Some (l, bdd1))
+                               h bdd2 (H2 : opb bdd1 n (N a) hb = Some (h, bdd2))
+                               ab bdd3 (H3 : mk_node bdd2 l xb h = (ab, bdd3)),
+                               (value env bdd3 ab (op va vb) * incr env bdd bdd3). 
+    Proof. 
+      intros. 
+      destruct (value_N_inversion env bdd a va Hva _ _ _ Ha) as [vla [vha [[Hla Hha] Hwa]]].
+      destruct (value_N_inversion env bdd b vb Hvb _ _ _ Hb) as [vlb [vhb [[Hlb Hhb] Hwb]]].
+      destruct (IH _ Hwf _ _ _ _ H1 _ Hwa _ Hlb) as [Hvx Hincr]. 
+      refine (let (Hvx1,Hincr2) := IH bdd1 (_ : wf env bdd1) _ _ _ _ H2 
+                                       _ (_: value env bdd1 (N a) _) 
+                                       _ (_: value env bdd1 hb vhb) in _
+             ); eauto. 
+      inj. 
+      refine (let (Hab, Hincr2) := mk_node_correct _ H3 _ _ _ _ in _
+             ); eauto. 
+      split. destruct (env xa); destruct (env xb); auto.  
+      eauto. 
+    Qed.
+    
+    Lemma binop_correct_eq (Heq: xa = xb) : forall
+                               l bdd1 (H1 : opb bdd n la lb  = Some (l, bdd1))
+                               h bdd2 (H2 : opb bdd1 n ha hb = Some (h, bdd2))
+                               ab bdd3 (H3 : mk_node bdd2 l xa h = (ab, bdd3)),
+                               (value env bdd3 ab (op va vb) * incr env bdd bdd3). 
+    Proof. 
+      intros. subst.  
+      destruct (value_N_inversion env bdd a va Hva _ _ _ Ha) as [vla [vha [[Hla Hha] Hwa]]].
+      destruct (value_N_inversion env bdd b vb Hvb _ _ _ Hb) as [vlb [vhb [[Hlb Hhb] Hwb]]].
+      destruct (IH _ Hwf _ _ _ _ H1 _ Hla _ Hlb) as [Hvx Hincr]. 
+      refine (let (Hvx1,Hincr2) := IH bdd1 (_ : wf env bdd1) _ _ _ _ H2 
+                                       _ (_: value env bdd1 ha vha) 
+                                       _ (_: value env bdd1 hb vhb) in _
+             ); eauto. 
+      inj. 
+      refine (let (Hab, Hincr2) := mk_node_correct _ H3 _ _ _ _ in _
+             ); eauto. 
+      split; destruct (env xb); eauto.  
+    Qed. 
+  End cases. 
+
+  Lemma andb_correct env bdd (Hwf: wf env bdd) n a b ab bdd' :
+    andb bdd n a b = Some (ab, bdd') ->
+    forall va, value env bdd a va -> 
+          forall vb, value env bdd b vb -> 
+                (value env bdd' ab (va && vb)%bool * incr env bdd bdd').
+  Proof.
+    revert bdd Hwf a b ab bdd'. 
+    induction n; intros bdd Hwf a b ab bdd' Hand va Hva vb Hvb. 
+    - discriminate. 
+    - simpl in Hand. 
+      Ltac s := 
+        try match goal with 
+          | |- context [(_ && false)%bool]  => rewrite Bool.andb_comm; simpl Datatypes.andb
+          | |- context [(_ && true)%bool]  => rewrite Bool.andb_comm; simpl  Datatypes.andb
+          | |- context [(false && _ )%bool]  => simpl  Datatypes.andb
+          | |- context [(true  && _ )%bool]  => simpl  Datatypes.andb
+        end.  
+      destruct a as [ | | a]; destruct b as [ | | b]; simpl in *; t s.  
+      destruct x as [[la xa] ha]. destruct x0 as [[lb xb] hb]. 
+      destruct (NPeano.Nat.compare xa xb) eqn: Heq.
+      + apply nat_compare_eq in Heq; subst; t s. 
+        eauto using binop_correct_eq. 
+      + t s; eauto using binop_correct_lt.
+        
+      + t s; eauto using binop_correct_gt. 
+  Qed.
+
+  Print Assumptions andb_correct. 
+
+  Lemma orb_correct env bdd (Hwf: wf env bdd) n a b ab bdd' :
+    orb bdd n a b = Some (ab, bdd') ->
+    forall va, value env bdd a va -> 
+    forall vb, value env bdd b vb -> 
+    (value env bdd' ab (va || vb)%bool * incr env bdd bdd').
+  Proof.
+    revert bdd Hwf a b ab bdd'. 
+    induction n; intros bdd Hwf a b ab bdd' Hand va Hva vb Hvb. 
+    - discriminate. 
+    - simpl in Hand. 
+    Ltac s ::= 
+         try 
+         match goal with 
+          | |- context [(_ || false)%bool]  => rewrite Bool.orb_comm; simpl Datatypes.orb
+          | |- context [(_ || true)%bool]  => rewrite Bool.orb_comm; simpl  Datatypes.orb
+          | |- context [(false || _ )%bool]  => simpl  Datatypes.orb
+          | |- context [(true  || _ )%bool]  => simpl  Datatypes.orb
+         end.
+    destruct a as [ | | a]; destruct b as [ | | b]; simpl in *; t s.
+    destruct x as [[la xa] ha]. destruct x0 as [[lb xb] hb]. 
+    destruct (NPeano.Nat.compare xa xb) eqn: Heq.
+      + apply nat_compare_eq in Heq; subst; t s. 
+        eauto using binop_correct_eq. 
+      + t s; eauto using binop_correct_lt.        
+      + t s; eauto using binop_correct_gt.
+  Qed.  
+
+  Lemma negb_correct env bdd (Hwf: wf env bdd) n a a' bdd' :
+    negb bdd n a = Some (a', bdd') ->
+    forall va, value env bdd a va -> 
+    (value env bdd' a' (Datatypes.negb va)%bool * incr env bdd bdd').
+  Proof.
+    revert bdd Hwf a a' bdd'. 
+    induction n; intros bdd Hwf a a' bdd' Hnegb va Hva. 
+    - discriminate. 
+    - simpl in Hnegb. 
+    Ltac s ::= 
+         try
+         match goal with 
+          | |- context [(Datatypes.negb false)%bool] =>  simpl Datatypes.negb 
+          | |- context [(Datatypes.negb true)%bool]  =>  simpl Datatypes.negb
+         end. 
+    destruct a as [ | | a]; simpl in *; t s.
+    destruct x as [[la xa] ha]; t s.
+    destruct (value_N_inversion env bdd a va Hva _ _ _ I) as [vla [vha [[Hla Hha] Hwa]]].
+    destruct (IHn _ Hwf _ _ _ I1 _ Hla) as [Hvx Hincr]; clear I1. 
+    refine (let (Hvx1,Hincr2) := IHn x0 (_ : wf env x0) _ _ _ I0 
+                             _ (_: value env _ ha vha) 
+                             in _
+               ); eauto.
+    pose proof (value_inj _ _ _ _ Hva _ Hwa); subst. 
+    refine (let (Hab, Hincr2) := mk_node_correct (_ : wf env x2) H _ _ _ _ in _
+           ); eauto. 
+    split; destruct (env xa); eauto. 
+  Qed.
+
+  Lemma xorb_correct env bdd (Hwf: wf env bdd) n a b ab bdd' :
+    xorb bdd n a b = Some (ab, bdd') ->
+    forall va, value env bdd a va -> 
+    forall vb, value env bdd b vb -> 
+    (value env bdd' ab (Datatypes.xorb va vb)%bool * incr env bdd bdd').
+  Proof.
+    revert bdd Hwf a b ab bdd'. 
+    induction n; intros bdd Hwf a b ab bdd' Hand va Hva vb Hvb. 
+    - discriminate. 
+    - simpl in Hand. 
+      Ltac s ::= 
+      repeat 
+        match goal with 
+          | |- context [(Datatypes.xorb _ false)%bool]  => rewrite Bool.xorb_false_r
+          | |- context [(Datatypes.xorb _ true)%bool]  => rewrite Bool.xorb_true_r
+          | |- context [(Datatypes.xorb false  _ )%bool]  => rewrite Bool.xorb_false_l
+          | |- context [(Datatypes.xorb true _ )%bool]  => rewrite Bool.xorb_true_l                   
+        end.
+    destruct a as [ | | a]; destruct b as [ | | b]; simpl in *; t s; eauto using negb_correct. 
+    
+    destruct x as [[la xa] ha]. destruct x0 as [[lb xb] hb]. 
+    destruct (NPeano.Nat.compare xa xb) eqn: Heq.
+      + apply nat_compare_eq in Heq; subst; t s. 
+        eauto using binop_correct_eq. 
+      + t s; eauto using binop_correct_lt. 
+      + t s; eauto using binop_correct_gt. 
+  Qed.
 End Inner.
 
 Record BDD := 
   mk
     {
-      content: Inner.BDD;
-      depth: nat
+      content:> Inner.BDD;
+      wf : forall env,  Inner.wf env content
     }.
 
 Section t.   
+  Variable env : nat -> bool. 
+  Let depth (bdd: BDD) := (Inner.wf_depth env bdd (wf bdd env)). 
 
-
-Definition eval bdd env (a: expr) : option bool :=
-  Inner.eval (content bdd) (depth bdd) env a. 
-
-Definition andb bdd a b :=
-  do e, r <- Inner.andb (content bdd) (depth bdd) a b;
-  Some (e,mk r (depth bdd)).
-
-Definition orb bdd a b :=
-  do e, r <- Inner.orb (content bdd) (depth bdd) a b;
-  Some (e,mk r (depth bdd)).
-
-Definition negb bdd a  :=
-  do e, r <- Inner.negb (content bdd) (depth bdd) a;
-  Some (e, mk r (depth bdd)). 
-
-Definition xorb bdd a b :=
-  do e, r <- Inner.xorb (content bdd) (depth bdd) a b;
-  Some (e,mk r (depth bdd)).
-
-Definition ite bdd c l r:=
-  do cl, bdd  <- andb bdd c l;
-  do nc, bdd  <- negb bdd c;
-  do ncr, bdd <- andb bdd nc r;
-  orb bdd cl ncr.
-
-Definition empty := mk Inner.empty 0.
-
-Definition mk_var bdd x :=
-  let (e, r) := Inner.var (content bdd) x in 
+  Definition interp bdd  (a: expr) : option bool :=
+    Inner.interp env (content bdd) (depth bdd) a. 
+  
+  Definition andb bdd a b : option (expr * BDD):=
+    do e, r <- Inner.andb (content bdd) (depth bdd) a b;
+    Some (e, mk _ _).
+  Next Obligation. 
+    unfold andb_obligation_1. 
+  Definition orb bdd a b :=
+    do e, r <- Inner.orb (content bdd) (depth bdd) a b;
+    Some (e,mk r (depth bdd)).
+  
+  Definition negb bdd a  :=
+    do e, r <- Inner.negb (content bdd) (depth bdd) a;
+    Some (e, mk r (depth bdd)). 
+  
+  Definition xorb bdd a b :=
+    do e, r <- Inner.xorb (content bdd) (depth bdd) a b;
+    Some (e,mk r (depth bdd)).
+  
+  Definition ite bdd c l r:=
+    do cl, bdd  <- andb bdd c l;
+    do nc, bdd  <- negb bdd c;
+    do ncr, bdd <- andb bdd nc r;
+    orb bdd cl ncr.
+  
+  Definition empty := mk Inner.empty 0.
+  
+  Definition mk_var bdd x :=
+    let (e, r) := Inner.mk_var (content bdd) x in 
     (e, mk r (S (max x (depth bdd)))). 
-
+  
+  Section props. 
+    Variable env : var -> bool. 
+    Lemma andb_correct bdd a b : 
+      forall va, interp bdd a = Some va -> 
+      forall vb, interp bdd b = Some vb -> 
+      forall ab bdd', andb bdd a b = Some (ab, bdd') -> 
+                 interp bdd' ab = 
+      
+      
 End t. 
 
 Definition test :=
