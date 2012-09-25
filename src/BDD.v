@@ -33,6 +33,13 @@ Definition node_eqb (a b: node) :=
         end
   end. 
 
+
+Fixpoint assoc {A B} (eq: A -> A ->  bool) x l : option B :=
+  match l with 
+    | nil => None
+    | cons (u,v) q => if eq x u then Some v else assoc eq x q
+  end. 
+
 Module Inner. 
   Require Import FMapPositive FMapAVL OrderedTypeAlt.
   Require FMapFacts. 
@@ -789,7 +796,6 @@ Module Inner.
         rewrite PMap.gso in H by eassumption. apply (wf_find_value env _ Hwf) in H. destruct H.
         eapply value_upd in v0; eauto. 
     Qed. 
-    Print Assumptions wf_upd. 
   End wf_upd. 
 
   Lemma mk_node_correct {env bdd} (Hwf: wf env bdd) {l v h e bdd'}: 
@@ -838,7 +844,6 @@ Module Inner.
           simpl. apply PMap.gss. 
          }
   Qed.
-  Print Assumptions mk_node_correct. 
   Ltac t s ::= 
        repeat 
        ((match goal with 
@@ -982,7 +987,6 @@ Module Inner.
       + t s; eauto using binop_correct_gt. 
   Qed.
 
-  Print Assumptions andb_correct. 
 
   Lemma orb_correct env bdd (Hwf: wf env bdd) n a b ab bdd' :
     orb bdd n a b = Some (ab, bdd') ->
@@ -1130,16 +1134,16 @@ Section t.
   | wf_expr_N : forall p, (p < Inner.next bdd)%positive -> wf_expr bdd (N p). 
 End t. 
 
-Definition test :=
-  let bdd := empty in 
-  let (a,bdd) := mk_var bdd 10 in 
-  let (b,bdd) := mk_var bdd 11 in 
-  do a,bdd <- orb bdd a b;
-  do na,bdd <- negb bdd a;
-  do r,bdd <- orb bdd a na;
-  do nr,bdd <- negb bdd r;
-  do nnr,bdd <- negb bdd nr;
-  do x, bdd <- orb bdd nnr a;
-  Some (r, bdd). 
+(* Definition test := *)
+(*   let bdd := empty in  *)
+(*   let (a,bdd) := mk_var bdd 10 in  *)
+(*   let (b,bdd) := mk_var bdd 11 in  *)
+(*   do a,bdd <- orb bdd a b; *)
+(*   do na,bdd <- negb bdd a; *)
+(*   do r,bdd <- orb bdd a na; *)
+(*   do nr,bdd <- negb bdd r; *)
+(*   do nnr,bdd <- negb bdd nr; *)
+(*   do x, bdd <- orb bdd nnr a; *)
+(*   Some (r, bdd).  *)
 
-Eval compute in test. 
+(* Eval compute in test.  *)

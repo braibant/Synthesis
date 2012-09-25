@@ -1,5 +1,6 @@
 Require Import Common DList Core ZArith. 
 Require BDD.
+
 (* In this compilation pass, we implement boolean simplification using BDDs. *)
 
 Section t. 
@@ -19,7 +20,7 @@ Section t.
         | SNone t => SNone t
         | SSome x => (F x) end. 
 
-  Notation "'dob' X <- A ; B" := 
+  Notation "'do' X <- A ; B" := 
   (bind (fun X => B) A)
     (at level 200, X ident, A at level 100, B at level 200). 
 
@@ -46,8 +47,8 @@ Section t.
   Notation bop op dl:= 
   (let a := DList.hd dl in 
    let b := DList.hd (DList.tl dl) in 
-     dob a <- (snd a);
-     dob b <- (snd b);
+     do a <- (snd a);
+     do b <- (snd b);
      SSome (op a b)). 
 
   Require Import RTL. 
@@ -71,9 +72,9 @@ Section t.
                 (_ ,
                  match ty as t return V t -> V t  -> toption bexpr t with 
                    | Tbool => fun l r =>  
-                               (dob c <- (snd c);
-                                dob l <- (snd l);
-                                dob r <- (snd r);
+                               (do c <- (snd c);
+                                do l <- (snd l);
+                                do r <- (snd r);
                                 SSome (Ite c l r))
                    | _ => fun _ _ => !! end l r)
             | Efst l t v => (Efst (fst v) , !!)
@@ -85,16 +86,15 @@ Section t.
             | BI_andb => fun dl =>  bop And dl
             | BI_orb  => fun dl =>  bop Or  dl
             | BI_xorb => fun dl =>  bop Xor dl
-            | BI_negb => fun dl =>  dob e <- (snd (DList.hd dl)); SSome (Not e)
+            | BI_negb => fun dl =>  do e <- (snd (DList.hd dl)); SSome (Not e)
             | _ => fun _ => !!
           end args); simpl.
   refine (match snd c with 
                    | SSome BDD.T => (Evar (fst l))
                    | SSome BDD.F => (Evar (fst r))
-                   |  _ => Emux (fst c) (fst l) (fst r) end).  Show Proof.
+                   |  _ => Emux (fst c) (fst l) (fst r) end).  
   Defined. 
 
-     
   Record Env := mk
     {
       Ebdd : BDD.BDD;
