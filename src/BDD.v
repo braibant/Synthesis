@@ -33,12 +33,6 @@ Definition node_eqb (a b: node) :=
         end
   end. 
 
-Fixpoint assoc {A B} (eq: A -> A ->  bool) x l : option B :=
-  match l with 
-    | nil => None
-    | cons (u,v) q => if eq x u then Some v else assoc eq x q
-  end. 
-
 Module Inner. 
   Require Import FMapPositive FMapAVL OrderedTypeAlt.
   Require FMapFacts. 
@@ -115,7 +109,16 @@ Module Inner.
   Notation pmap := PMap.t.
   Notation nmap := NMap.t.
   
-  (** We are now ready to start speaking about BDDs  *)
+  (** We are now ready to start speaking about BDDs. 
+      [tmap] is a map from indexes to nodes;
+      [hmap] is used to hash-cons nodes;
+      [next] is the index of the next usable node.  
+
+      All the nodes below than [next] have a value: this means that
+      the graph underlying [hmap] is acyclic, yet we do not express
+      that fact (this maybe a good idea to express that fact in the
+      invariant.)  *)
+
   Record BDD :=
     {
       tmap : pmap node;
@@ -123,6 +126,7 @@ Module Inner.
       next : positive
     }. 
 
+  
   Definition low b (x:expr) : option expr :=
     match x with 
       | N x => 
@@ -160,6 +164,8 @@ Module Inner.
       next := (1 + next b)
     |}. 
 
+  (** [mk_node bdd l v h] creates a node corresponding to the triple [l,v,h] if needed. *)
+
   Definition mk_node bdd (l : expr) (v: var) (h : expr) :=
     if expr_eqb l  h then (l,bdd)
     else
@@ -173,6 +179,7 @@ Module Inner.
   Section t. 
     Variable env: nat -> bool. 
     Section operations.
+
       Fixpoint interp bdd depth (a : expr) : option bool :=
         match depth with 
           | 0 => None
@@ -192,7 +199,20 @@ Module Inner.
                 )
             end
         end. 
-      
+
+      (** All the binary operations on the bdd follow the same
+      structure. We define partial operations that use an explicit
+      bound on the number of recursive calls, and fail if that number
+      is not sufficent. We cannot easily use open-recursion and a
+      common skeleton for these operations, as we would in OCaml
+      (problem of termination), and this is the reason why the code is
+      verbose.
+
+      Note that we cannot esasily use Program or Function, because we use
+      nested calls to the function we define (that is, the
+      well-founded relation that terminates shall mention the fact
+      that our bdds are well-formed, and refinements of each other)*)
+
       Fixpoint andb (bdd: BDD) depth (a b : expr)  : option (expr * BDD) :=
         match depth with 
           | 0 => None 
@@ -314,6 +334,15 @@ Module Inner.
         mk_node bdd F x T. 
     End operations.
     
+    
+    (** This is the base inductive that defines the value that is
+    associated to any expression within the [bdd]. 
+
+    With hindsight, we could have defined a predicate of type bdd ->
+    expr -> Prop, that only define the shape of the (possible)
+    recursive calls, and use it as the basis to define all subsequent
+    recursion. *)
+
     Inductive value bdd : expr -> bool -> Type :=
     | value_F : value bdd F false
     | value_T : value bdd T true
@@ -364,12 +393,19 @@ Module Inner.
     Qed. 
   End t. 
 
+  (** Our bdds are well-formed, according to the following
+  definition. As was hinted at before, we could have used another
+  invariant here (making the acyclicity/well-foundedness more
+  explicit). *)
+
   Record wf (env : nat -> bool) (b: BDD) : Type :=
     {
       wf_bijection : forall p n, NMap.find n (hmap b) = Some p 
                             <-> PMap.find p (tmap b) = Some n;
       wf_lt_next : forall p x, PMap.find p (tmap b) = Some x -> 
                           (p < next b)%positive;
+      wf_lt_next_find : forall p, (p < next b)%positive ->
+                          {x : node | PMap.find p (tmap b) = Some x};                         
       wf_depth : nat;
       wf_value_interp: forall x vx, value env b x vx -> 
                                interp env b wf_depth x = Some vx;
@@ -601,7 +637,7 @@ Module Inner.
     Proof.
       clear - Hwf. 
       intros H. inversion H.  subst.
-      destruct Hwf; eauto. 
+      apply (wf_lt_next _ _ Hwf) in H1. auto. 
     Qed. 
     
     Hint Resolve wf_value_lt wf_value_order.
@@ -674,7 +710,7 @@ Module Inner.
                          wf_value_interp 
                          (wf_value_order (* wf_find_value env wf_value_interp *))
                          wf_find_value
-              ) _ _ (1 + wf_depth env _ Hwf) _ _  _). 
+              ) _ _ _ (1 + wf_depth env _ Hwf) _ _  _). 
 
       - clear Hvl Hvh. revert Hnode.   generalize (l,v,h) as n1; intros n1 Hn1 p n2. 
         simpl. 
@@ -695,16 +731,27 @@ Module Inner.
           rewrite (wf_bijection _ _ Hwf) in H. 
           rewrite PMap.gso; eauto. 
           rewrite PMap.gso in H. 
-          destruct Hwf as [ H' H'' _ _ ].
-          rewrite H'. auto.
+          rewrite (wf_bijection _ _ Hwf ); auto. 
+
           intros Hp. subst. 
           rewrite PMap.gss in H. congruence. 
-      - intros. simpl in H. 
+      - intros. 
+        simpl in H. 
         destruct (Pos.eq_dec (next bdd) p). subst. unfold upd. unfold next at 2.  
         zify; omega. 
         unfold upd. unfold next at 1. 
         rewrite PMap.gso in H by eauto. 
         apply (wf_lt_next _ _ Hwf) in H; zify; omega. 
+      - intros. 
+        {
+          unfold upd in H. unfold next at 1 in H. 
+          destruct (Pos.eq_dec p (next bdd)). subst. simpl. 
+          exists (l,v,h). rewrite PMap.gss. reflexivity. 
+          assert ((p < next bdd)%positive). 
+          zify;omega. 
+          destruct (wf_lt_next_find env bdd Hwf _ H0) as [x Hx]. 
+          exists x. simpl. rewrite PMap.gso by eauto. auto. 
+        }
       - intros.
         destruct (expr_eq_dec (N (next bdd)) x). 
         + subst; simpl. 
@@ -1020,27 +1067,39 @@ Module Inner.
       + t s; eauto using binop_correct_lt. 
       + t s; eauto using binop_correct_gt. 
   Qed.
+  
+  Lemma wf_expr env bdd (Hwf: wf env bdd) :forall p, (p < next bdd)%positive -> 
+                                                {vp : bool & value env bdd (N p) vp}.
+  Proof. 
+    intros. 
+    destruct (wf_lt_next_find env bdd Hwf p H) as [x Hx]. 
+    apply (wf_find_value env bdd Hwf p x Hx).
+  Qed. 
+        
 End Inner.
+
+(** We would like to use a definition that states that the bdd is
+well-formed. But in the current state, it is not possible, since the
+various operations only preserve the well-formedness if they are
+called on well-formed expressions. Therefore, we keep the bound along,
+but the user shall unpack the inner module to prove stuff. *)
 
 Record BDD := 
   mk
     {
       content:> Inner.BDD;
-      wf : forall env,  Inner.wf env content
+      depth: nat
     }.
 
 Section t.   
-  Variable env : nat -> bool. 
-  Let depth (bdd: BDD) := (Inner.wf_depth env bdd (wf bdd env)). 
-
-  Definition interp bdd  (a: expr) : option bool :=
+  
+  Definition interp env bdd  (a: expr) : option bool :=
     Inner.interp env (content bdd) (depth bdd) a. 
   
-  Definition andb bdd a b : option (expr * BDD):=
-    do e, r <- Inner.andb (content bdd) (depth bdd) a b;
-    Some (e, mk _ _).
-  Next Obligation. 
-    unfold andb_obligation_1. 
+  Definition andb (bdd: BDD) (a b: expr) : option (expr * BDD) :=
+    do e, r <- Inner.orb (content bdd) (depth bdd) a b;
+    Some (e,mk r (depth bdd)).
+
   Definition orb bdd a b :=
     do e, r <- Inner.orb (content bdd) (depth bdd) a b;
     Some (e,mk r (depth bdd)).
@@ -1065,15 +1124,10 @@ Section t.
     let (e, r) := Inner.mk_var (content bdd) x in 
     (e, mk r (S (max x (depth bdd)))). 
   
-  Section props. 
-    Variable env : var -> bool. 
-    Lemma andb_correct bdd a b : 
-      forall va, interp bdd a = Some va -> 
-      forall vb, interp bdd b = Some vb -> 
-      forall ab bdd', andb bdd a b = Some (ab, bdd') -> 
-                 interp bdd' ab = 
-      
-      
+  Inductive wf_expr bdd : expr -> Prop :=
+  | wf_expr_T : wf_expr bdd T 
+  | wf_expr_F : wf_expr bdd F 
+  | wf_expr_N : forall p, (p < Inner.next bdd)%positive -> wf_expr bdd (N p). 
 End t. 
 
 Definition test :=
