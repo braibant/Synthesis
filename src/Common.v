@@ -16,7 +16,7 @@ Definition bind2 {A B C: Type} (f: option (A * B)) (g: A -> B -> option C) : opt
 Remark bind_inversion:
   forall (A B: Type) (f: option A) (g: A -> option B) (y: B),
   bind f g = Some y ->
-  exists x, f = Some x /\ g x = Some y.
+  {x | f = Some x /\ g x = Some y}.
 Proof. 
   intros; destruct f.  simpl in H.
   exists a; auto. 
@@ -24,7 +24,7 @@ Proof.
 Qed. 
 
 Remark bind_inversion_None {A B} x (f: A -> option B) : bind x f = None -> 
-  (x = None) \/ (exists y, x = Some y /\ f y = None).
+  (x = None) + (exists y, x = Some y /\ f y = None).
 Proof. 
   destruct x; simpl; intuition.
   right. exists a; intuition.  
