@@ -1,4 +1,4 @@
-Require Core Front IR RTL CSE CP FirstOrder DCE. 
+Require Core Front IR RTL CSE CP FirstOrder (* DCE *). 
 
 
 Definition Compile Phi t  (a : forall Var, Front.action Phi Var t) : RTL.Block Phi t :=
@@ -24,12 +24,12 @@ Qed.
 
 Print Assumptions Compile_correct. 
 
-Definition Fo_compile Phi t (A : Front.Action Phi t) :  FirstOrder.block Phi t :=
+Definition Fo_compile Phi t (A : Front.Action Phi t) :=
   let x := Compile Phi t A in 
     FirstOrder.compile Phi t (x _ ).  
 
 
-Definition Fo_CP_compile Phi t (A : Front.Action Phi t) :  FirstOrder.block Phi t :=
+Definition Fo_CP_compile Phi t (A : Front.Action Phi t) :=
   let x := Compile Phi t A in 
   let x := CP.Compile Phi t x in 
     (* Constant propagation may have introduced some extra sharing,
@@ -44,4 +44,4 @@ Definition copt Phi t (A : Front.Action Phi t) (* :  option (FirstOrder.block Ph
     and we may have to remove some occurences of Evar *)
   let x := CSE.Compile Phi t x in 
   let x := FirstOrder.compile Phi t (x _ ) in 
-    DCE.compile Phi  x.
+    (* DCE.compile Phi   *) Some x.

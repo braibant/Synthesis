@@ -453,16 +453,7 @@ Module Inner.
     }.
   
   Hint Resolve incr_value incr_order incr_wf. 
-  
-  Remark bind2_inversion:
-    forall {A B C: Type} (f: option (A*B)) (g: A -> B -> option C) (y: C),
-      bind2 f g = Some y ->
-      {x1 : A & {x2 : B | f = Some (x1,x2) /\ g x1 x2 = Some y}}.
-  Proof. 
-    intros ? ? ? [ [x y] | ] ? ? H; simpl in H; eauto.
-    discriminate. 
-  Qed.
-  
+    
   Lemma incr_refl env bdd : incr env bdd bdd. 
   Proof. 
     constructor; tauto. 

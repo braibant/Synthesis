@@ -30,6 +30,14 @@ Proof.
   right. exists a; intuition.  
 Qed. 
 
+Remark bind2_inversion:
+  forall {A B C: Type} (f: option (A*B)) (g: A -> B -> option C) (y: C),
+    bind2 f g = Some y ->
+      {x1 : A & {x2 : B | f = Some (x1,x2) /\ g x1 x2 = Some y}}.
+Proof. 
+  intros ? ? ? [ [x y] | ] ? ? H; simpl in H; eauto.
+  discriminate. 
+Qed.
 
 Notation "'do' X <- A ; B" := (bind A (fun X => B) )
   (at level 200, X ident, A at level 100, B at level 200). 
@@ -66,7 +74,7 @@ Ltac invert_do H :=
         try (invert_do EQ)
   end. 
   
-Axiom admit : forall {X} , X. 
+Definition admit {X : Type} : X.  Admitted.
 
 Definition ident := string. 
 
@@ -246,16 +254,6 @@ Module Tuple.
         end.  
       Definition fold   : of_list T F l -> B -> B := (prefold  l (fun x v => v)). 
 
-    (*
-    refine (let fold :=
-                fix fold l  : ( forall a, F a -> var l a -> B -> B) -> of_list T F l -> B -> B :=
-                match l as l' return  ( forall a, F a -> var l' a -> B -> B) -> of_list T F l' -> B -> B with
-                    | nil => fun f _ acc => acc
-                    | cons t q => fun f  (X : F t * of_list T F q) acc => 
-                                   let (x,xs) := X in 
-                                   let f' := (fun b (fb : F b) (v : var q b) => f b fb (var_S v)) in
-                                     fold q f' xs (f t x var_0 acc)
-                end in fold l up).  *)
     End inner. 
     Notation lift f := (fun x v => f x (var_S v)). 
   End fold. 
@@ -438,8 +436,3 @@ Definition union {A} (R S : relation A) := fun x y => R x y \/ S x y.
 
 Delimit Scope dlist_scope with dlist. 
 
-
-Module Tactics. 
-  Require Import Equality. 
-  Ltac dep_destruct x := dependent destruction x. 
-End Tactics. 

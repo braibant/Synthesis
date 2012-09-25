@@ -99,3 +99,13 @@ Definition low n m (x : T (n+m)) : T n :=
 
 Definition combineLH n m (low : T n) (high : T m)  : T (n+m) :=
   repr (n + m) ((unsigned high)*[2^n] + unsigned low).
+
+Definition andb : T 1 -> T 1 -> T 1 := mul. 
+Definition orb  : T 1 -> T 1 -> T 1 := fun x y => repr 1 (Z.max x y). 
+Definition negb : T 1 -> T 1 := fun x => repr 1 (1 - x). 
+Definition xorb  : T 1 -> T 1 -> T 1 := fun x y => repr 1 (x + y). 
+
+Definition true := repr 1 1. 
+Definition false := repr 1 0. 
+
+Definition of_bool (b: bool) : T 1 := if b then true else false.

@@ -1,51 +1,434 @@
 Require Import Common DList. 
-Require Core RTL.
+Require Core. 
+
+Require Import Eqdep. 
+Ltac tt :=  subst; 
+          repeat match goal with 
+                     H : existT _ _ _ = existT _ _ _ |- _ => 
+                     apply Eqdep.EqdepTheory.inj_pair2 in H
+                   |   H : context [eq_rect ?t _ ?x ?t ?eq_refl] |- _ => 
+                       rewrite <- eq_rect_eq in H
+                   |   H : context [eq_rect ?t _ ?x ?t ?H'] |- _ => 
+                       rewrite (UIP_refl _ _ H') in H;
+                         rewrite <- eq_rect_eq in H
+                   |   H : existT _ ?t1 ?x1 = existT _ ?t2 ?x2 |- _ => 
+                       let H' := fresh "H'" in 
+                       apply eq_sigT_sig_eq in H; destruct H as [H H']; subst
+                 end; subst.
+
+(* In this firstorder representation, everything ends up being
+represented as packed bytes: a type is the size of the bus *)
+Notation type := nat (only parsing). 
+
+(* A wire is a singleton inductive *)
+Inductive wire (t:type) := box : nat -> wire t. 
+
+(* The type of memory elements depend on the bus size*)
+Inductive sync := 
+  | Treg : type -> sync
+  | Tregfile :  nat -> type -> sync. 
+
+(* The denotation of a memory element is a word *)
+Fixpoint eval_sync s := 
+  match s with
+    | Treg t => Word.T t
+    | Tregfile n t => Regfile.T n (Word.T t)
+  end. 
+
+(* An helper function to compute the size of a bus *)
+Fixpoint sum l : nat :=
+  match l with 
+    | nil => 0
+    | cons t q => t + sum q 
+  end. 
 
 Section t. 
-  Variable Phi : Core.state. 
-  Notation updates := (DList.T (Common.comp option  Core.eval_sync) Phi). 
-  
-  Section defs. 
-    Import Core. 
-    Inductive Var (t : type) := box : nat -> Var t. 
-    
-    Notation expr := (RTL.expr Phi Var). 
-    Notation effect := (RTL.effect Var). 
-    
-    Record block t := mk
-      {
-        bindings : list ({t : type & expr t});
-        value : Var t;
-        guard : Var B;
-        effects : DList.T (option ∘ effect) Phi
-      }. 
-              
-    Definition compile t (b : RTL.block Phi Var t) : block t. 
-    refine (let fold := fix fold t (b : RTL.block Phi Var t) (acc : list ({t : type & expr t})): block t :=
-                match b with 
-                    RTL.telescope_end x => 
-                      match x with 
-                          (r,g,e) => mk _ acc r g e
-                      end
-                  | RTL.telescope_bind a b k => 
-                      let n := List.length acc in 
-                      let acc := List.app acc [(existT _ a b)] in 
-                        fold _ (k (box a n)) acc
-                end in fold t b nil). 
-    Defined. 
+  Context {Phi : list sync}. 
+  Inductive expr : type -> Type :=
+  | E_var : forall t, wire t -> expr t
+  | E_read : forall t,  var Phi (Treg t) -> expr t
+  | E_read_rf : forall n t (rf: var Phi (Tregfile n t))(adr: wire n),  expr t 
+  | E_andb : wire 1 -> wire 1 -> expr 1
+  | E_orb : wire 1 -> wire 1 -> expr 1
+  | E_xorb : wire 1 -> wire 1 -> expr 1
+  | E_negb : wire 1 -> expr 1
+  | E_eq : forall n, wire n -> wire n -> expr 1
+  | E_lt : forall n, wire n -> wire n -> expr 1
+  | E_mux : forall n, wire 1 -> wire n -> wire n -> expr n
+  | E_plus : forall n, wire n -> wire n -> expr n 
+  | E_minus : forall n, wire n -> wire n -> expr n 
+  | E_low : forall n m, wire (n + m) -> expr n
+  | E_high : forall n m, wire (n + m) -> expr m
+  | E_combineLH : forall n m, wire n -> wire m -> expr (n + m)
+  | E_constant : forall n, Word.T n -> expr n
+  | E_nth: forall l t, var l t -> wire (sum l) -> expr t
+  | E_concat: forall l, DList.T wire l -> expr (sum l). 
 
-    Definition Env := list {t : type & eval_type t}. 
-    Definition eval_binding t (b : expr t) (env : Env) : option Env. 
-    Admitted. 
-    Fixpoint eval_bindings (l : list {t : type & expr t}) acc : option Env :=
-      match l with 
-          nil => Some acc
-        | cons (existT t b) q => 
-            do b <- eval_binding t b acc;            
-            let acc := List.app acc b in 
-            eval_bindings q acc
+  Require RTL. 
+  Inductive effect : sync -> Type :=
+    reg_write : forall t,
+                  wire t ->
+                  wire 1 -> effect (Treg t)
+  | regfile_write : forall (n : nat) (t : type),
+                      wire t ->
+                      wire n ->
+                      wire 1 ->
+                      effect (Tregfile n t).
+  
+  Record block := mk
+                    {
+                      t : nat;
+                      bindings : list ({t : type & expr t});
+                      value : wire t;
+                      guard : wire 1;
+                      effects : DList.T (option ∘ effect) Phi
+                    }. 
+
+  Definition Env := list {t : type & Word.T t}. 
+
+  Definition get (env: Env) {t} (x: wire t) : option (Word.T t):=
+    let (x) := x in 
+    do y <- List.nth_error env x; 
+      let (t', y) := y in 
+      match NPeano.Nat.eq_dec t t' with
+        | left e => 
+          eq_rect_r (fun t : type => option (Word.T t)) (Some y)  e
+        | right _ => None
       end. 
+
+  Notation "[ env # x ]" := (get env x). 
+  Definition eval_expr (st: DList.T eval_sync Phi) t (e : expr t) (env : Env) : option (Word.T t). 
+    refine (match e with
+      | E_var t x => [env # x]
+      | E_read t x => Some (DList.get x st)
+      | E_read_rf n t rf adr => 
+        let rf := DList.get rf st in 
+        do adr <- [env # adr];
+        Some (Regfile.get rf adr) 
+      | E_andb a b => do a <- [env # a]; 
+                     do b <- [env # b]; 
+                     Some (Word.andb a b)
+      | E_orb a b => do a <- [env # a]; 
+                     do b <- [env # b]; 
+                     Some (Word.orb a b)
+                         
+      | E_xorb a b => do a <- [env # a]; 
+                     do b <- [env # b]; 
+                     Some (Word.xorb a b)
+      | E_negb x => do x <-  [env # x]; Some (Word.negb x)
+      | E_eq n a b => do a <- [env # a]; 
+                     do b <- [env # b]; 
+                     Some (Word.of_bool (Word.eq a b))
+      | E_lt n a b => do a <- [env # a]; 
+                     do b <- [env # b]; 
+                     Some (Word.of_bool (Word.lt a b))
+      | E_mux n c l r => 
+        do c <- [env # c]; 
+        do l <- [env # l]; 
+        do r <- [env # r]; 
+        Some (if Word.eq c Word.true then l else r)
+      | E_plus n a b => do a <- [env # a]; 
+                       do b <- [env # b]; 
+                       Some (Word.add a b)
+      | E_minus n a b => do a <- [env # a]; 
+                        do b <- [env # b]; 
+                        Some (Word.sub a b)
+                             
+      | E_low n m x => do x <- [env # x]; 
+                      Some (Word.low n m x)
+      | E_high n m x => do x <- [env # x]; 
+                       Some (Word.high n m x)
+      | E_combineLH n m a b => do a <- [env # a]; 
+                              do b <- [env # b]; 
+                              Some (Word.combineLH n m a b)
+      | E_constant n x => Some  x
+      | E_nth l t m x => 
+        (
+          do y <- [env # x]; 
+          let fold := 
+              fix fold t l (m: var l t) (y : Word.T (sum l)) : option (Word.T t) :=
+                match m in var l t return Word.T (sum l) -> option (Word.T t)with
+                  | var_0 E t => fun y => Some (Word.low t (sum E) y)
+                  | var_S E t t' x => fun y => fold _ _ x (Word.high _ _ y)
+                end y in fold t l m y        
+        )
+      | E_concat l x =>
+        let fold := 
+            fix fold l (dl: DList.T wire l) : option (Word.T (sum l)) :=
+                  match dl with
+                    | DList.nil => Some (Word.repr 0 0)
+                    | DList.cons t q dt dq =>
+                      do x <- [env # dt];
+                    do y <- fold q dq; 
+                    Some (Word.combineLH _ _ x y)
+                  end
+        in 
+        fold l x
+            end). 
+  Defined. 
+End t. 
+Implicit Arguments expr [].
+Arguments expr Phi _. 
+
+
+Fixpoint compile_type (t : Core.type) :  type :=
+  match t with 
+    | Core.Tunit => 0
+    | Core.Tbool => 1
+    | Core.Tint n => n
+    | Core.Tfin n => 0
+    | Core.Ttuple l => sum (List.map compile_type l)
+  end.
+
+Definition compile_sync s :=
+  match s with 
+      Core.Treg t => Treg (compile_type t)
+    | Core.Tregfile n t => Tregfile n (compile_type t)
+  end. 
+
+Inductive Var (t: Core.type) :  Type := Box : nat -> Var t. 
+
+Section s. 
+  Definition wire_of_Var {t} (v: Var t) : wire (compile_type t) := 
+    let (n) := v in box (compile_type t) n. 
+  
+  Notation "! x" := (wire_of_Var x) (at level 60). 
+  Notation "[ l @1]" := (! (DList.hd l)). 
+  Notation "[ l @2]" := (! (DList.hd (DList.tl l))). 
+  Notation "[ l @3]" := (! (DList.hd (DList.tl (DList.tl l)))). 
+  
+  Definition compile_expr Phi t (e: RTL.expr Phi Var t) :
+    expr (List.map compile_sync Phi) (compile_type t). 
     
+    refine (match e with 
+              | RTL.Evar t v => E_var (compile_type t) (! v) 
+              | RTL.Eread t m =>  E_read _ (var_map compile_sync Phi _ m)
+              | RTL.Eread_rf n t m adr => E_read_rf n _ (var_map compile_sync Phi _ m) (! adr)
+              | RTL.Ebuiltin tys res f args => 
+                match f in Core.builtin tys res return DList.T Var tys -> expr (List.map compile_sync Phi) (compile_type res)  with
+                  | Core.BI_andb => fun l => E_andb [l @1] [l @2]
+                  | Core.BI_orb =>  fun l => E_orb [l @1] [l @2]
+                  | Core.BI_xorb =>  fun l => E_xorb [l @1] [l @2]
+                  | Core.BI_negb =>  fun l => E_negb [l @1] 
+                  | Core.BI_eq t =>  fun l => E_eq _ [l @1] [l @2]
+                  | Core.BI_lt t =>  fun l => E_lt _ [l @1] [l @2]
+                  | Core.BI_mux t => fun l => E_mux _  [l @1] [l @2] [l @3] 
+                  | Core.BI_plus n => fun l => E_plus _ [l @1] [l @2] 
+                  | Core.BI_minus n => fun l => E_minus _ [l @1] [l @2] 
+                  | Core.BI_low n m => fun l => E_low n m [l @1] 
+                  | Core.BI_high n m => fun l => E_high n m [l @1]
+                  | Core.BI_combineLH n m => fun l => E_combineLH n m [l @1] [l @2]
+                  | Core.BI_next n => admit
+                end args              
+              | RTL.Econstant ty c => _
+              | RTL.Emux t cond l r => E_mux _ (!cond) (!l) (!r)
+              | RTL.Efst l t v => E_low _ _ (!v)
+              | RTL.Esnd l t v => E_high _ _ (!v)
+              | RTL.Enth l t m arg =>  
+                E_nth (List.map compile_type l) (compile_type t)
+                      (var_map compile_type l t m) (!arg)
+              | RTL.Etuple l dl => E_concat (List.map compile_type l)
+                                           (DList.dmap Var wire compile_type
+                                                       (fun (x : Core.type) (H : Var x) => !H) l dl)
+            end). 
+    
+    refine (let compile_constant := 
+              fix compile_constant (ty : Core.type) (c : @Core.Generics.constant _ Core.eval_type ty) : Word.T (compile_type ty) := 
+                match ty return Core.Generics.constant ty -> Word.T (compile_type ty) with 
+                  | Core.Tunit => fun _ => Word.repr 0 0
+                  | Core.Tbool => fun (x: bool) => if x then Word.repr 1 1 else Word.repr 1 0
+                  | Core.Tint n => fun x => x
+                  | Core.Tfin n => fun x => admit
+                  | Core.Ttuple l => fun x => 
+                       let fold :=
+                           fix fold l : Core.Generics.constant (Core.Ttuple l) -> 
+                                        Word.T (compile_type (Core.Ttuple l)):= 
+                             match l with 
+                               | nil => fun x => Word.repr 0 0
+                               | cons t q => fun x =>  Word.combineLH _ _ 
+                                                                    (compile_constant t (fst x)) 
+                                                                    (fold q (snd x))
+                             end
+                       in 
+                       fold l x                            
+                end c in E_constant _ (compile_constant _ c)). 
+  Defined. 
+
+  Inductive value_equiv : forall t,  (Core.eval_type t) -> (Word.T (compile_type t)) -> Prop := 
+  | ve_bool: 
+      forall (x: Word.T 1) b, Word.of_bool b = x -> 
+                         value_equiv Core.Tbool b x
+  | ve_int : forall n (x y : Word.T n), x = y -> 
+                                   value_equiv (Core.Tint n) x y
+  | ve_tuple_cons : forall t q l r, 
+                      value_equiv t (Tuple.fst l) (Word.low _ _ r) -> 
+                      value_equiv (Core.Ttuple q) (Tuple.snd l) (Word.high _ _ r) -> 
+                      value_equiv (Core.Ttuple (t :: q)) l r 
+  | ve_tuple_nil : forall z, 
+      z = Word.repr 0 0 -> 
+      value_equiv (Core.Ttuple nil) tt z.
+
+  Lemma value_equiv_bool_inversion a b : value_equiv Core.Tbool a b -> 
+                                         Word.of_bool a = b. 
+  Proof. 
+    inversion 1; tt.  reflexivity. 
+  Qed. 
+    
+  Lemma value_equiv_int_inversion n a b : value_equiv (Core.Tint n) a b -> 
+                                          a = b. 
+  Proof. 
+    inversion 1; tt. congruence.
+  Qed. 
+
+  Definition R (E : Env) : forall t, Var t -> Core.eval_type t -> Prop :=
+    fun t v1 v2 => 
+      exists x, (get E (! v1) = Some x /\ value_equiv t v2 x). 
+  
+  Inductive value_option_equiv t : 
+    option (Core.eval_type t) -> 
+    option (Word.T (compile_type t)) -> Prop := 
+  | voe_none : value_option_equiv t None None                                
+  | voe_some : forall a b, value_equiv t ( a) ( b) -> 
+                      value_option_equiv t (Some a) (Some b). 
+
+  Notation "x == y" := (value_option_equiv _ x y) (at level 60). 
+  
+  Lemma compile_expr_correct Phi t (e1 : RTL.expr Phi Var t) (e2: RTL.expr Phi Core.eval_type t) 
+        st st'
+        env:
+    RTL.expr_equiv _ _ _ (R env) t e1 e2 -> 
+    Some (RTL.eval_expr Phi st _ e2) == eval_expr st' _ (compile_expr Phi t e1) env. 
+  Proof. 
+    induction 1; simpl; try constructor.
+     
+    admit. 
+    admit. 
+    
+    Ltac t :=
+      repeat DList.inversion; simpl;
+      try constructor;
+      repeat match goal with 
+        | H : DList.pointwise _ (_ :: _)%list _ _ |- _ =>  
+          destruct (DList.inversion_pointwise _ _ _ _ _ _ _ H) as [? ?]; clear H
+        | H : DList.pointwise _ ([])%list _ _ |- _ =>  
+          clear H
+        | H : R _ _ ?x _ |- context [?x] => unfold R in H;                                           
+                                          destruct H as [? [? ?]]
+                                          
+        | H : ?x = _ |- context [?x] => setoid_rewrite H; simpl
+        | H : value_equiv Core.Tbool ?a ?b |- _ => apply value_equiv_bool_inversion in H
+        | H : value_equiv (Core.Tint ?n) ?a ?b |- _ => apply value_equiv_int_inversion in H
+             end; try constructor. 
+      destruct f; 
+      t. 
+      
+      Ltac s := subst; 
+               repeat match goal with 
+                          |- context [Word.of_bool ?x] => is_var x;  destruct x
+                      end; reflexivity.
+      constructor; s. 
+      constructor; s. 
+      constructor; subst.
+      destruct x; destruct x1; try reflexivity. simpl. compute. admit. 
+      constructor; s. 
+      constructor. admit.
+      admit. 
+      admit. 
+      constructor; subst; auto.  
+      constructor; subst; auto.  
+      constructor; subst; auto.  
+      constructor; subst; auto.  
+      constructor; subst; auto.  
+      admit. 
+      admit. 
+      t. subst. 
+      admit. 
+      t. 
+      inversion H0. 
+      Require Import Eqdep. 
+      tt. apply H3. 
+      t. inversion H0. tt. apply H6. 
+      t.
+      clear  dl1 H. 
+      induction v. 
+      simpl.  inversion H0; tt. constructor. apply H2. 
+      
+      simpl. eapply IHv. inversion H0; tt. eauto.
+      induction l.
+      repeat DList.inversion. simpl. constructor. constructor. reflexivity. 
+      simpl. repeat DList.inversion. simpl. t.  tt. simpl. 
+      specialize (IHl _ _ H0). inversion IHl. subst. simpl. constructor. 
+      constructor. simpl. 
+      Lemma low_combine n m x y : Word.low n m (Word.combineLH n m x y) = x. 
+      Admitted. 
+      Lemma high_combine n m x y : Word.high n m (Word.combineLH n m x y) = y. 
+      Admitted. 
+      rewrite low_combine. auto. simpl. 
+      rewrite high_combine. auto. 
+  Qed. 
+Definition compile_effect s (e : RTL.effect Var s) : effect (compile_sync s) :=  
+  match
+    e in (RTL.effect _ s)
+    return (effect (compile_sync s))
+  with
+    | RTL.effect_reg_write t data we =>
+      reg_write (compile_type t) (!data) (!we)
+    | RTL.effect_regfile_write n t data adr we =>
+      regfile_write
+        (compile_type (Core.Tint n))
+        (compile_type t) 
+        (!data) (!adr) (!we)
+  end. 
+
+Definition compile_effects Phi (e : RTL.effects Phi Var) : DList.T (option ∘ effect) (List.map compile_sync Phi) :=
+  DList.dmap _ _ compile_sync (fun s o => 
+                                match o with 
+                                    | Some ef => Some (compile_effect _ ef)
+                                    | None => None
+                                end
+                             ) Phi e. 
+
+Definition compile Phi t (b : RTL.block Phi Var t) : @block (List.map compile_sync Phi) . 
+refine (
+    let Phi' := List.map compile_sync Phi in 
+    let fold := fix fold t (b : RTL.block Phi Var t) (acc : list ({t : type & expr Phi' t})): 
+                  @block Phi' :=
+                  match b with 
+                      RTL.telescope_end x => 
+                      match x with 
+                          (r,g,e) => mk (compile_type t) acc (! r) (! g) (compile_effects Phi e)
+                      end
+                    | RTL.telescope_bind t expr k => 
+                      let n := List.length acc in 
+                      let el :=  existT _ (compile_type t) (compile_expr Phi t expr) in 
+                      let acc := List.app acc [el]
+                      in 
+                      fold _ (k (Box _ n)) acc
+                  end in fold t b nil). 
+Defined. 
+End s. 
+
+Definition Eval Phi st (b : block Phi) Delta := 
+  
+
+Arguments RTL.Eval Phi _ {t} _ _. 
+
+Theorem compile_correct Phi t (b : RTL.block Phi Var t) state :
+  forall Delta,
+    (RTL.Eval Phi state b Delta) == Eval  
+(*
+Definition Env := list {t : type & eval_type t}. 
+Definition eval_binding t (b : expr t) (env : Env) : option Env. Admitted. 
+
+Fixpoint eval_bindings (l : list {t : type & expr t}) acc : option Env :=
+  match l with 
+      nil => Some acc
+    | cons (existT t b) q => 
+      do b <- eval_binding t b acc;            
+        let acc := List.app acc b in 
+        eval_bindings q acc
+  end. 
+
 
     Definition lookup t (v : Var t) (l : Env) : option (eval_type t).
     refine (let (n) :=  v in 
@@ -119,7 +502,7 @@ Section t.
                     else None )end)%list.  
     Defined. 
 End defs.
-End t.  
+*)
 
 Notation "[ e : t ]" := (existT _ t e). 
 Notation "[ 'read' v : t ]" := (existT _ _ (RTL.Eread _ _ t v)).

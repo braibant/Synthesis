@@ -292,33 +292,24 @@ End Ex2.
 Require Compiler. 
 Require Import FirstOrder RTL Core. 
 
-Eval vm_compute in 
+Eval vm_compute in
      let x := Compiler.Fo_compile _ _ (Ex2.Code 4) in 
-       List.length (FirstOrder.bindings _ _ x). 
+       List.length (FirstOrder.bindings  x). 
 
 Eval vm_compute in 
      let x := Compiler.Fo_CP_compile _ _ (Ex2.Code 4) in 
-       List.length (FirstOrder.bindings _ _ x).
+       List.length (FirstOrder.bindings x).
 
 Import  Common DList. 
 
 Eval vm_compute in
       Compiler.Fo_compile _ _ (Ex2.Code 4).
 
-Require Import ExtrOcamlBasic.
-Require Import ExtrOcamlNatInt.
-
-
 Definition t := (Compiler.copt _ _ (Ex2.Code 4)). 
 
-Extract Inductive nat => int [ "0" "Pervasives.succ" ]
- "(fun fO fS n -> if n=0 then fO () else fS (n-1))".
-
-Extraction "test.ml" t.  
-
 Eval vm_compute in
-  (do x <- (Compiler.copt _ _ (Ex2.Code 4));
-   Some (List.length ( bindings _ _ x))). 
+  (do x <- Compiler.copt _ _ (Ex2.Code 4);
+   Some (List.length ( bindings  x))). 
 
 
 (* Definition finish {Phi t} x := List.length (FirstOrder.bindings Phi t(FirstOrder.compile _ _ x)).  *)

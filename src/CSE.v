@@ -401,7 +401,7 @@ Require Import Equality.
 Lemma sval_eqb_correct t (sv sv' : sval t) : sval_eqb  sv sv' = true -> sv = sv'. 
 Proof. 
   revert sv'. 
-  induction sv using sval_ind_alt; Tactics.dep_destruct sv'; simpl;
+  induction sv using sval_ind_alt; dependent destruction sv'; simpl;
   intros;
   repeat 
     match goal with 

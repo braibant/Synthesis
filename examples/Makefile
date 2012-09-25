@@ -1,5 +1,5 @@
 ROOT    := ..
-MODULES := Isa Mult MOD Add
+MODULES := Isa Mult MOD Add Driver Extraction
 
 VS      := $(MODULES:%=%.v)
 
