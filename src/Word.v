@@ -43,14 +43,16 @@ Definition eq {n} : T n -> T n -> bool :=
   fun x y => 
     (match val x ?= val y with Eq => true | _ => false end) .
 
-Lemma eq_correct {n} : forall x y : T n, eq x y = true -> x = y. 
+Lemma eq_correct {n} : forall x y : T n, eq x y = true <-> x = y. 
 Proof. 
+  split. 
   destruct x; destruct y. unfold eq; simpl.  
   case_eq (val0 ?= val1); intros; simpl. 
   apply Zcompare_Eq_eq in H. subst.  
   apply unsigned_inj. simpl; auto. 
   discriminate. 
   discriminate. 
+  intros. subst. unfold eq. rewrite Z.compare_refl. reflexivity. 
 Defined.
 
 

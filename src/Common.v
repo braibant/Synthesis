@@ -74,6 +74,31 @@ Ltac invert_do H :=
         try (invert_do EQ)
   end. 
   
+Ltac simpl_do := 
+    repeat match goal with 
+      | H : Some _ = Some _ |- _ => injection H; clear H; intros; subst 
+      | H : (None = Some _) |- _ => discriminate
+      | H : (Some _ = None) |- _ => discriminate
+      | H : None = None |- _ => clear H
+      | H : (bind ?F ?G = Some ?X) |- _ => 
+        destruct (bind_inversion _ _ F G _ H) as [? [? ?]]; clear H
+      | H : (bind2 ?F ?G = Some ?X) |- _ => 
+        destruct (bind2_inversion F G _ H) as [? [? [? ?]]]; clear H
+      | |- context [(bind (Some _) ?G)] => simpl
+      | H : (bind ?x ?f = None) |- _ => 
+        let EQ := fresh in 
+        destruct (bind_inversion_None x f H) as [EQ | [? [EQ ?]]]; 
+          rewrite EQ in H; simpl in H
+                                                  
+      | H : ?x = Some ?y |- context [?x] => rewrite H
+    end. 
+
+Ltac intro_do n H :=
+  match goal with 
+    | |- context [do _ <- ?x; _] =>
+      destruct x as [n|] eqn:H; simpl 
+  end.
+
 Definition admit {X : Type} : X.  Admitted.
 
 Definition ident := string. 

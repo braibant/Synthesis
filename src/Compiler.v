@@ -39,9 +39,9 @@ Definition Fo_CP_compile Phi t (A : Front.Action Phi t) :=
 
 Definition copt Phi t (A : Front.Action Phi t) (* :  option (FirstOrder.block Phi t) *) :=
   let x := Compile Phi t A in 
-  let x := CP.Compile Phi t x in 
+  (* let x := CP.Compile Phi t x in  *)
     (* Constant propagation may have introduced some extra sharing,
     and we may have to remove some occurences of Evar *)
-  let x := CSE.Compile Phi t x in 
+  (* let x := CSE.Compile Phi t x in  *)
   let x := FirstOrder.compile Phi t (x _ ) in 
     (* DCE.compile Phi   *) Some x.

@@ -416,7 +416,7 @@ Section equiv.
                          Some (effect_regfile_write V n t v2 adr2 we2)
                                   where "x ==e y" := (effect_equiv _ x y). 
  
-  Definition effects_equiv : effects Phi U -> effects Phi V -> Prop := 
+  Definition effects_equiv : effects Phi U -> effects Phi V -> Type := 
     DList.pointwise  effect_equiv Phi. 
     
   End inner_equiv. 
@@ -437,7 +437,7 @@ Section equiv.
   Reserved Notation "G |- x ==b y" (at level 70, no associativity). 
   Notation "G |- x -- y" := (In _ x y G) (at level 70, no associativity). 
 
-  Inductive block_equiv t : forall (G : Gamma), block Phi U t -> block Phi V t -> Prop :=
+  Inductive block_equiv t : forall (G : Gamma), block Phi U t -> block Phi V t -> Type :=
   | Eq_end : forall G (v1 : U t) v2 g1 g2 e1 e2, 
                G |- v1 -- v2 -> G |- g1 -- g2 -> effects_equiv (R G) e1 e2 ->
                G |- telescope_end Phi U _ (v1, g1, e1) ==b telescope_end Phi V _ (v2,g2, e2 ) 

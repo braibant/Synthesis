@@ -1,5 +1,5 @@
 Require Import Common DList. 
-Require Core. 
+Require Core Equality. 
 
 Require Import Eqdep. 
 Ltac tt :=  subst; 
@@ -196,65 +196,64 @@ Section s.
   Notation "[ l @1]" := (! (DList.hd l)). 
   Notation "[ l @2]" := (! (DList.hd (DList.tl l))). 
   Notation "[ l @3]" := (! (DList.hd (DList.tl (DList.tl l)))). 
-  
-  Definition compile_expr Phi t (e: RTL.expr Phi Var t) :
-    expr (List.map compile_sync Phi) (compile_type t). 
-    
-    refine (match e with 
-              | RTL.Evar t v => E_var (compile_type t) (! v) 
-              | RTL.Eread t m =>  E_read _ (var_map compile_sync Phi _ m)
-              | RTL.Eread_rf n t m adr => E_read_rf n _ (var_map compile_sync Phi _ m) (! adr)
-              | RTL.Ebuiltin tys res f args => 
-                match f in Core.builtin tys res return DList.T Var tys -> expr (List.map compile_sync Phi) (compile_type res)  with
-                  | Core.BI_andb => fun l => E_andb [l @1] [l @2]
-                  | Core.BI_orb =>  fun l => E_orb [l @1] [l @2]
-                  | Core.BI_xorb =>  fun l => E_xorb [l @1] [l @2]
-                  | Core.BI_negb =>  fun l => E_negb [l @1] 
-                  | Core.BI_eq t =>  fun l => E_eq _ [l @1] [l @2]
-                  | Core.BI_lt t =>  fun l => E_lt _ [l @1] [l @2]
-                  | Core.BI_mux t => fun l => E_mux _  [l @1] [l @2] [l @3] 
-                  | Core.BI_plus n => fun l => E_plus _ [l @1] [l @2] 
-                  | Core.BI_minus n => fun l => E_minus _ [l @1] [l @2] 
-                  | Core.BI_low n m => fun l => E_low n m [l @1] 
-                  | Core.BI_high n m => fun l => E_high n m [l @1]
-                  | Core.BI_combineLH n m => fun l => E_combineLH n m [l @1] [l @2]
-                  | Core.BI_next n => admit
-                end args              
-              | RTL.Econstant ty c => _
-              | RTL.Emux t cond l r => E_mux _ (!cond) (!l) (!r)
-              | RTL.Efst l t v => E_low _ _ (!v)
-              | RTL.Esnd l t v => E_high _ _ (!v)
-              | RTL.Enth l t m arg =>  
-                E_nth (List.map compile_type l) (compile_type t)
-                      (var_map compile_type l t m) (!arg)
-              | RTL.Etuple l dl => E_concat (List.map compile_type l)
-                                           (DList.dmap Var wire compile_type
-                                                       (fun (x : Core.type) (H : Var x) => !H) l dl)
-            end). 
-    
-    refine (let compile_constant := 
-              fix compile_constant (ty : Core.type) (c : @Core.Generics.constant _ Core.eval_type ty) : Word.T (compile_type ty) := 
-                match ty return Core.Generics.constant ty -> Word.T (compile_type ty) with 
-                  | Core.Tunit => fun _ => Word.repr 0 0
-                  | Core.Tbool => fun (x: bool) => if x then Word.repr 1 1 else Word.repr 1 0
-                  | Core.Tint n => fun x => x
-                  | Core.Tfin n => fun x => admit
-                  | Core.Ttuple l => fun x => 
-                       let fold :=
-                           fix fold l : Core.Generics.constant (Core.Ttuple l) -> 
-                                        Word.T (compile_type (Core.Ttuple l)):= 
-                             match l with 
-                               | nil => fun x => Word.repr 0 0
-                               | cons t q => fun x =>  Word.combineLH _ _ 
-                                                                    (compile_constant t (fst x)) 
-                                                                    (fold q (snd x))
-                             end
-                       in 
-                       fold l x                            
-                end c in E_constant _ (compile_constant _ c)). 
-  Defined. 
+  Definition compile_constant :=
+    fix compile_constant (ty : Core.type) (c : @Core.Generics.constant _ Core.eval_type ty) : Word.T (compile_type ty) := 
+    match ty return Core.Generics.constant ty -> Word.T (compile_type ty) with 
+      | Core.Tunit => fun _ => Word.repr 0 0
+      | Core.Tbool => fun (x: bool) => if x then Word.repr 1 1 else Word.repr 1 0
+      | Core.Tint n => fun x => x
+      | Core.Tfin n => fun x => admit
+      | Core.Ttuple l => fun x => 
+                          let fold :=
+                              fix fold l : Core.Generics.constant (Core.Ttuple l) -> 
+                                           Word.T (compile_type (Core.Ttuple l)):= 
+    match l with 
+      | nil => fun x => Word.repr 0 0
+      | cons t q => fun x =>  Word.combineLH _ _ 
+                                           (compile_constant t (fst x)) 
+                                           (fold q (snd x))
+    end
+                          in 
+                          fold l x                            
+    end c. 
 
+  Definition compile_expr Phi t (e: RTL.expr Phi Var t) :
+    expr (List.map compile_sync Phi) (compile_type t):= 
+    match e with 
+      | RTL.Evar t v => E_var (compile_type t) (! v) 
+      | RTL.Eread t m =>  E_read _ (var_map compile_sync Phi _ m)
+      | RTL.Eread_rf n t m adr => E_read_rf n _ (var_map compile_sync Phi _ m) (! adr)
+      | RTL.Ebuiltin tys res f args => 
+        match f in Core.builtin tys res return DList.T Var tys -> expr (List.map compile_sync Phi) (compile_type res)  with
+          | Core.BI_andb => fun l => E_andb [l @1] [l @2]
+          | Core.BI_orb =>  fun l => E_orb [l @1] [l @2]
+          | Core.BI_xorb =>  fun l => E_xorb [l @1] [l @2]
+          | Core.BI_negb =>  fun l => E_negb [l @1] 
+          | Core.BI_eq t =>  fun l => E_eq _ [l @1] [l @2]
+          | Core.BI_lt t =>  fun l => E_lt _ [l @1] [l @2]
+          | Core.BI_mux t => fun l => E_mux _  [l @1] [l @2] [l @3] 
+          | Core.BI_plus n => fun l => E_plus _ [l @1] [l @2] 
+          | Core.BI_minus n => fun l => E_minus _ [l @1] [l @2] 
+          | Core.BI_low n m => fun l => E_low n m [l @1] 
+          | Core.BI_high n m => fun l => E_high n m [l @1]
+          | Core.BI_combineLH n m => fun l => E_combineLH n m [l @1] [l @2]
+          | Core.BI_next n => admit
+        end args              
+      | RTL.Econstant ty c => E_constant _ (compile_constant _ c)
+      | RTL.Emux t cond l r => E_mux _ (!cond) (!l) (!r)
+      | RTL.Efst l t v => E_low _ _ (!v)
+      | RTL.Esnd l t v => E_high _ _ (!v)
+      | RTL.Enth l t m arg =>  
+        E_nth (List.map compile_type l) (compile_type t)
+              (var_map compile_type l t m) (!arg)
+      | RTL.Etuple l dl => E_concat (List.map compile_type l)
+                                   (DList.dmap Var wire compile_type
+                                               (fun (x : Core.type) (H : Var x) => !H) l dl)
+    end. 
+  
   Inductive value_equiv : forall t,  (Core.eval_type t) -> (Word.T (compile_type t)) -> Prop := 
+  | ve_unit: forall z, z  = Word.repr 0 0 -> 
+               value_equiv (Core.Tunit) tt z 
   | ve_bool: 
       forall (x: Word.T 1) b, Word.of_bool b = x -> 
                          value_equiv Core.Tbool b x
@@ -273,38 +272,74 @@ Section s.
   Proof. 
     inversion 1; tt.  reflexivity. 
   Qed. 
-    
+  
   Lemma value_equiv_int_inversion n a b : value_equiv (Core.Tint n) a b -> 
                                           a = b. 
   Proof. 
     inversion 1; tt. congruence.
   Qed. 
-
+  
+  (** R is the equivalence relation on the closures. *)
   Definition R (E : Env) : forall t, Var t -> Core.eval_type t -> Prop :=
     fun t v1 v2 => 
       exists x, (get E (! v1) = Some x /\ value_equiv t v2 x). 
+  
   
   Inductive value_option_equiv t : 
     option (Core.eval_type t) -> 
     option (Word.T (compile_type t)) -> Prop := 
   | voe_none : value_option_equiv t None None                                
-  | voe_some : forall a b, value_equiv t ( a) ( b) -> 
+  | voe_some : forall a b, value_equiv t a b -> 
                       value_option_equiv t (Some a) (Some b). 
 
   Notation "x == y" := (value_option_equiv _ x y) (at level 60). 
-  
+
+  (** R_sync is the equivalence relation that must hold on the
+  evaluation of the state elements *)
+  Inductive R_sync : forall s, Core.eval_sync s ->  eval_sync (compile_sync s) -> Prop := 
+  | R_sync_reg : forall t v1 v2, value_equiv t v1 v2 -> 
+                            R_sync (Core.Treg t) v1 v2
+  | R_sync_regfile : forall t n rf1 rf2,                          
+                       (forall adr, 
+                            value_equiv t (Regfile.get rf1 adr) (Regfile.get rf2 adr)) -> 
+                         R_sync (Core.Tregfile n t) rf1 rf2. 
+  (** R_state is the extension of R_sync to the full state environments  *)
+  Inductive R_state : forall Phi, 
+                        DList.T Core.eval_sync Phi ->
+                        DList.T eval_sync (List.map compile_sync Phi) -> 
+                        Type :=
+  | R_state_nil : R_state [] ([::])%dlist ([::])%dlist
+  | R_state_cons : forall t q dt1 dt2 dq1 dq2,
+                     R_sync t dt1 dt2 -> 
+                     R_state q dq1 dq2 -> 
+                     R_state (t::q) (dt1 :: dq1)%dlist (dt2 :: dq2)%dlist.   
+  Section protect. 
+    Import Equality. 
   Lemma compile_expr_correct Phi t (e1 : RTL.expr Phi Var t) (e2: RTL.expr Phi Core.eval_type t) 
         st st'
+        (Hst: R_state Phi st st')
         env:
     RTL.expr_equiv _ _ _ (R env) t e1 e2 -> 
     Some (RTL.eval_expr Phi st _ e2) == eval_expr st' _ (compile_expr Phi t e1) env. 
   Proof. 
     induction 1; simpl; try constructor.
-     
-    admit. 
-    admit. 
-    
-    Ltac t :=
+    + revert st st' Hst. 
+      
+      dependent induction v; simpl; intros. 
+      repeat DList.inversion. 
+      dependent destruction Hst. 
+      simpl. 
+      dependent destruction r. auto. 
+      simpl.
+      repeat DList.inversion. simpl. 
+      dependent destruction Hst. 
+      apply IHv. auto. 
+    + revert st st' Hst. 
+      dependent induction v; simpl; intros. 
+      repeat DList.inversion. 
+      dependent destruction Hst. 
+      simpl.  
+      Ltac t :=
       repeat DList.inversion; simpl;
       try constructor;
       repeat match goal with 
@@ -319,103 +354,147 @@ Section s.
         | H : value_equiv Core.Tbool ?a ?b |- _ => apply value_equiv_bool_inversion in H
         | H : value_equiv (Core.Tint ?n) ?a ?b |- _ => apply value_equiv_int_inversion in H
              end; try constructor. 
-      destruct f; 
-      t. 
-      
+    t. subst. 
+    dependent destruction r. 
+    apply H0. 
+    
+    simpl. 
+    repeat DList.inversion. 
+    specialize (IHv adr1 adr2 H). 
+    t. subst. 
+    dependent destruction Hst. 
+    specialize (IHv _ _ Hst).
+    setoid_rewrite H in IHv. 
+    simpl in IHv. 
+    inversion IHv; tt. clear IHv. auto. 
+    + 
       Ltac s := subst; 
                repeat match goal with 
                           |- context [Word.of_bool ?x] => is_var x;  destruct x
                       end; reflexivity.
-      constructor; s. 
-      constructor; s. 
-      constructor; subst.
-      destruct x; destruct x1; try reflexivity. simpl. compute. admit. 
-      constructor; s. 
-      constructor. admit.
-      admit. 
-      admit. 
-      constructor; subst; auto.  
-      constructor; subst; auto.  
-      constructor; subst; auto.  
-      constructor; subst; auto.  
-      constructor; subst; auto.  
-      admit. 
-      admit. 
-      t. subst. 
-      admit. 
-      t. 
-      inversion H0. 
-      Require Import Eqdep. 
-      tt. apply H3. 
-      t. inversion H0. tt. apply H6. 
-      t.
+      
+      destruct f; t; try constructor; try s. 
+      
+      {subst. apply Word.eq_correct. destruct x; destruct x1; try reflexivity. }
+      {f_equal. 
+       case_eq (Core.type_eq t0 x x1); intros Heq.  apply Core.type_eq_correct in Heq. subst. 
+       Lemma value_equiv_inj_right : 
+         forall t x y z,
+           value_equiv t x y -> 
+           value_equiv t x z -> 
+           y = z. 
+       Proof. 
+         intros t. induction t using Core.type_ind; simpl; intros; t.
+         + destruct x. dependent destruction H; dependent destruction H0; tt. reflexivity. 
+         + destruct x; dependent destruction H; dependent destruction H0; tt; reflexivity. 
+         + subst. tauto. 
+         + admit. 
+         + destruct x; dependent destruction H; dependent destruction H0; reflexivity. 
+         + destruct x. dependent destruction H. dependent destruction H1; tt.                      
+           pose proof (IHt _ _ _ H H1_). 
+           pose proof (IHt0 _ _ _ H0 H1_0). clear - H1 H2. 
+           Lemma combine_low_high : forall n m (x : Word.T (n+m)), 
+                                      x = Word.combineLH n m (Word.low n m x)(Word.high n m x).
+           Admitted. 
+           rewrite (combine_low_high _ _ y). 
+           rewrite (combine_low_high _ _ z). 
+           setoid_rewrite H1. setoid_rewrite H2. f_equal. 
+       Qed. 
+       pose proof (value_equiv_inj_right _ _ _ _ H2 H0). 
+       subst. 
+       symmetry. rewrite  Word.eq_correct. reflexivity. 
+       admit.                   (* the type-class eq function must be complete *)
+      }
+      {
+        admit.                  (* we should drop lt as a type_class function *)
+      }
+      {
+        tt. destruct x; simpl. auto.  auto. 
+      }
+      {
+        admit.                  (* We should drop the finite numbres too *)
+      }
+
+    + induction ty using Core.type_ind.
+      destruct c. constructor. reflexivity.
+      destruct c; try constructor; apply Word.eq_correct; reflexivity. 
+      constructor. reflexivity. 
+      admit.                    (* fin *)
+      destruct c. constructor. reflexivity. 
+      destruct c. simpl. constructor. simpl. 
+      Lemma low_combine n m x y : Word.low n m (Word.combineLH n m x y) = x. 
+      Admitted. 
+      Lemma high_combine n m x y : Word.high n m (Word.combineLH n m x y) = y. 
+      Admitted. 
+      rewrite low_combine. auto. 
+      rewrite high_combine. simpl. apply IHty0.   
+    + t; subst. destruct c2; simpl; auto. 
+    + t. inversion H0; tt. apply H3. 
+    + t. inversion H0; tt. apply H6. 
+    + t.
       clear  dl1 H. 
       induction v. 
       simpl.  inversion H0; tt. constructor. apply H2. 
       
       simpl. eapply IHv. inversion H0; tt. eauto.
-      induction l.
+    + induction l.
       repeat DList.inversion. simpl. constructor. constructor. reflexivity. 
       simpl. repeat DList.inversion. simpl. t.  tt. simpl. 
       specialize (IHl _ _ H0). inversion IHl. subst. simpl. constructor. 
       constructor. simpl. 
-      Lemma low_combine n m x y : Word.low n m (Word.combineLH n m x y) = x. 
-      Admitted. 
-      Lemma high_combine n m x y : Word.high n m (Word.combineLH n m x y) = y. 
-      Admitted. 
       rewrite low_combine. auto. simpl. 
       rewrite high_combine. auto. 
   Qed. 
-Definition compile_effect s (e : RTL.effect Var s) : effect (compile_sync s) :=  
-  match
-    e in (RTL.effect _ s)
-    return (effect (compile_sync s))
-  with
-    | RTL.effect_reg_write t data we =>
-      reg_write (compile_type t) (!data) (!we)
-    | RTL.effect_regfile_write n t data adr we =>
-      regfile_write
-        (compile_type (Core.Tint n))
-        (compile_type t) 
-        (!data) (!adr) (!we)
-  end. 
+  Print Assumptions compile_expr_correct. 
+  End protect. 
+  Definition compile_effect s (e : RTL.effect Var s) : effect (compile_sync s) :=  
+    match
+      e in (RTL.effect _ s)
+      return (effect (compile_sync s))
+    with
+      | RTL.effect_reg_write t data we =>
+        reg_write (compile_type t) (!data) (!we)
+      | RTL.effect_regfile_write n t data adr we =>
+        regfile_write
+          (compile_type (Core.Tint n))
+          (compile_type t) 
+          (!data) (!adr) (!we)
+    end. 
+  
+  Definition compile_effects Phi (e : RTL.effects Phi Var) : DList.T (option ∘ effect) (List.map compile_sync Phi) :=
+    DList.dmap _ _ compile_sync (fun s o => 
+                                   match o with 
+                                     | Some ef => Some (compile_effect _ ef)
+                                     | None => None
+                                   end
+                                ) Phi e. 
 
-Definition compile_effects Phi (e : RTL.effects Phi Var) : DList.T (option ∘ effect) (List.map compile_sync Phi) :=
-  DList.dmap _ _ compile_sync (fun s o => 
-                                match o with 
-                                    | Some ef => Some (compile_effect _ ef)
-                                    | None => None
-                                end
-                             ) Phi e. 
-
-Definition compile Phi t (b : RTL.block Phi Var t) : @block (List.map compile_sync Phi) . 
-refine (
-    let Phi' := List.map compile_sync Phi in 
-    let fold := fix fold t (b : RTL.block Phi Var t) (acc : list ({t : type & expr Phi' t})): 
-                  @block Phi' :=
-                  match b with 
-                      RTL.telescope_end x => 
-                      match x with 
-                          (r,g,e) => mk (compile_type t) acc (! r) (! g) (compile_effects Phi e)
-                      end
-                    | RTL.telescope_bind t expr k => 
-                      let n := List.length acc in 
-                      let el :=  existT _ (compile_type t) (compile_expr Phi t expr) in 
-                      let acc := List.app acc [el]
-                      in 
-                      fold _ (k (Box _ n)) acc
-                  end in fold t b nil). 
-Defined. 
+  Definition compile Phi t (b : RTL.block Phi Var t) : @block (List.map compile_sync Phi) . 
+    refine (
+        let Phi' := List.map compile_sync Phi in 
+        let fold := fix fold t (b : RTL.block Phi Var t) (acc : list ({t : type & expr Phi' t})): 
+                      @block Phi' :=
+                      match b with 
+                          RTL.telescope_end x => 
+                          match x with 
+                              (r,g,e) => mk (compile_type t) acc (! r) (! g) (compile_effects Phi e)
+                          end
+                        | RTL.telescope_bind t expr k => 
+                          let n := List.length acc in 
+                          let el :=  existT _ (compile_type t) (compile_expr Phi t expr) in 
+                          let acc := List.app acc [el]
+                          in 
+                          fold _ (k (Box _ n)) acc
+                      end in fold t b nil). 
+  Defined. 
 End s. 
-
-Definition Eval Phi st (b : block Phi) Delta := 
   
 
-Arguments RTL.Eval Phi _ {t} _ _. 
+(* Arguments RTL.Eval Phi _ {t} _ _.  *)
 
-Theorem compile_correct Phi t (b : RTL.block Phi Var t) state :
-  forall Delta,
-    (RTL.Eval Phi state b Delta) == Eval  
+(* Theorem compile_correct Phi t (b : RTL.block Phi Var t) state : *)
+(*   forall Delta, *)
+(*     (RTL.Eval Phi state b Delta) == Eval   *)
 (*
 Definition Env := list {t : type & eval_type t}. 
 Definition eval_binding t (b : expr t) (env : Env) : option Env. Admitted. 

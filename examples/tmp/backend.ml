@@ -154,7 +154,9 @@ let pp_expr fmt (e : expr) =
   | E_plus  (a,b) -> Format.fprintf fmt "%s + %s" a b 
   | E_minus (a,b) -> Format.fprintf fmt "%s - %s" a b 
   | E_constant (pos,size,value) -> Format.fprintf fmt "%s%i\'b%s" (if pos then "" else "-") size value
-  | E_sub (i,j,w) -> Format.fprintf fmt "%s[%i:%i]" w i j
+  | E_sub (i,j,w) -> 
+    assert (i >= j);
+    Format.fprintf fmt "%s[%i:%i]" w i j
   | E_concat l -> Format.fprintf fmt "{%s}" (concat ", " l)
   | E_unit -> Format.fprintf fmt "tt"
 

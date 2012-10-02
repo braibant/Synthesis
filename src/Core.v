@@ -151,8 +151,7 @@ Section type_ops.
   
   Fixpoint type_lt (bt : type) : eval_type bt -> eval_type bt -> bool :=
     match bt with
-      | Tunit => fun _ _  => true
-                              
+      | Tunit => fun _ _  => false                              
       | Tbool => ltb_bool 
       | Tint n => @Word.lt n
       | Tfin n => @Finite.ltb n
