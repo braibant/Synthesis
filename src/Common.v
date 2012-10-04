@@ -461,3 +461,20 @@ Definition union {A} (R S : relation A) := fun x y => R x y \/ S x y.
 
 Delimit Scope dlist_scope with dlist. 
 
+(** The dependent type swiss-knife. *)
+Ltac injectT :=  subst; repeat match goal with 
+                                   H : existT _ _ _ = existT _ _ _ |- _ => 
+                                   apply Eqdep.EqdepTheory.inj_pair2 in H
+                                 |   H : context [eq_rect ?t _ ?x ?t ?eq_refl] |- _ => 
+                                     rewrite <- Eqdep.EqdepTheory.eq_rect_eq in H
+                                 |   H : context [eq_rect ?t _ ?x ?t ?H'] |- _ => 
+                                     rewrite (Eqdep.EqdepTheory.UIP_refl _ _ H') in H;
+                                       rewrite <- Eqdep.EqdepTheory.eq_rect_eq in H
+                                 |   H : existT _ ?t1 ?x1 = existT _ ?t2 ?x2 |- _ => 
+                                     let H' := fresh "H'" in 
+                                     assert (H' := EqdepFacts.eq_sigT_fst H); subst
+                               end; subst.
+
+Ltac inject H :=
+      injection H; clear H; intros; subst. 
+

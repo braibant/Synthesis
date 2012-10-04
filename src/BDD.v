@@ -338,16 +338,18 @@ Section t.
     
     Definition mk_var bdd x :=
       mk_node bdd F x T. 
+    
+    Definition ite bdd n c l r:=
+      do cl, bdd  <- andb bdd n c l;
+      do nc, bdd  <- negb bdd n c;
+      do ncr, bdd <- andb bdd n nc r;
+      orb bdd n cl ncr.
+    
   End operations.
   
   
   (** This is the base inductive that defines the value that is
-  associated to any expression within the [bdd]. 
-
-  With hindsight, we could have defined a predicate of type bdd ->
-  expr -> Prop, that only define the shape of the (possible)
-  recursive calls, and use it as the basis to define all subsequent
-  recursion. *)
+  associated to any expression within the [bdd]. *)
 
   Inductive value bdd : expr -> bool -> Type :=
   | value_F : value bdd F false
@@ -399,12 +401,31 @@ Section t.
   Qed. 
 End t. 
 
+
+Inductive path bdd : expr -> Type :=
+| path_F : path bdd F
+| path_T : path bdd T
+| path_N : forall p l v h, 
+             PMap.find p (tmap bdd) = Some (l,v,h) -> 
+             path bdd l -> 
+             path bdd h -> 
+             path bdd (N p). 
+
+Inductive depth bdd : expr -> nat -> Type  :=
+| depth_F : forall n, depth bdd F n
+| depth_T : forall n, depth bdd T n
+| depth_N : forall n p l v h, 
+              PMap.find p (tmap bdd) = Some (l,v,h) -> 
+              depth bdd l n -> 
+              depth bdd h n -> 
+              depth bdd (N p) (S n).  
+
 (** Our bdds are well-formed, according to the following
 definition. As was hinted at before, we could have used another
 invariant here (making the acyclicity/well-foundedness more
 explicit). *)
 
-Record wf (env : nat -> bool) (b: BDD) : Type :=
+Class wf (b: BDD) : Type :=
   {
     wf_bijection : forall p n, NMap.find n (hmap b) = Some p 
                           <-> PMap.find p (tmap b) = Some n;
@@ -412,15 +433,13 @@ Record wf (env : nat -> bool) (b: BDD) : Type :=
                         (p < next b)%positive;
     wf_lt_next_find : forall p, (p < next b)%positive ->
                         {x : node | PMap.find p (tmap b) = Some x};                         
-    wf_depth : nat;
-    wf_value_interp: forall x vx, value env b x vx -> 
-                             interp env b wf_depth x = Some vx;
-    wf_value_order x vx : value env b x vx -> 
-                          forall y, order b x y ->
-                               {vy : bool & value env b y vy};
-    wf_find_value : forall p x, PMap.find p (tmap b) = Some x -> 
-                           {vp : bool & value env b (N p) vp}
-                             
+    (* wf_depth : nat; *)
+
+    (* path is a correct and complete caracterisation of the elements that are in the BDD *)
+    
+    wf_lt_path: forall p, (p < next b)%positive ->  path b (N p); 
+    wf_path_lt: forall p, path b (N p) -> (p < next b)%positive
+    (* wf_path_depth : forall p (path_p: path b p), depth b p wf_depth *)
   }.
    
 Hint Constructors value. 
@@ -443,22 +462,22 @@ Qed.
 
 Hint Resolve pmap_order_left pmap_order_right. 
 
-Record incr env (b1 b2 : BDD) :=
+Class incr (b1 b2 : BDD) :=
   {
+    incr_map: forall p x, PMap.find p (tmap b1) = Some x -> PMap.find p (tmap b2) = Some x;
     incr_order : forall x y, order b1 x y -> order b2 x y;
-    incr_value : forall x v, value env b1 x v -> 
-                            value env b2 x v;
-    incr_wf : wf env b1 -> wf env b2 
+    incr_path : forall x, path b1 x -> path b2 x;
+    incr_wf : wf b1 -> wf b2 
   }.
 
-Hint Resolve incr_value incr_order incr_wf. 
+Hint Resolve incr_path incr_order incr_wf. 
   
-Lemma incr_refl env bdd : incr env bdd bdd. 
+Lemma incr_refl bdd : incr bdd bdd. 
 Proof. 
   constructor; tauto. 
 Qed. 
 
-Lemma incr_trans env a b c : incr env a b -> incr env b c -> incr env a c. 
+Lemma incr_trans  a b c : incr a b -> incr b c -> incr a c. 
 Proof. 
   intros Hab Hbc. 
   constructor; 
@@ -466,7 +485,6 @@ Proof.
 Qed. 
 
 Hint Resolve incr_trans incr_refl. 
-
 
 Lemma interp_S n: 
   forall {env bdd p x}, 
@@ -501,12 +519,12 @@ Qed.
 
 Hint Resolve interp_S. 
 
-Lemma value_upd  env bdd (Hwf: wf env bdd) l v h:
+Lemma value_upd  env bdd (Hwf: wf bdd) l v h:
   NMap.find (l,v,h) (hmap bdd) = None ->
   forall vl, value env bdd l vl -> 
-        forall vh, value env bdd h vh -> 
-              forall x vx, value env bdd x vx -> 
-                      value env (upd bdd (l,v,h)) x vx. 
+  forall vh, value env bdd h vh -> 
+  forall x vx, value env bdd x vx -> 
+          value env (upd bdd (l,v,h)) x vx. 
 Proof.              
   intros Hbdd vl Hvl vh Hvh x vx H.
   induction H. 
@@ -517,6 +535,23 @@ Proof.
   destruct Hwf as [ _ Hwf]. apply Hwf in e. clear - e. zify; omega. 
 Qed. 
 Hint Resolve value_upd.   
+
+Lemma path_upd  bdd (Hwf: wf bdd) l v h:
+  NMap.find (l,v,h) (hmap bdd) = None ->
+  path bdd l -> 
+  path bdd h -> 
+  forall x, path bdd x  -> 
+  path (upd bdd (l,v,h)) x. 
+Proof.              
+  intros Hbdd Hvl Hvh x H.
+  induction H. 
+  constructor. 
+  constructor. 
+  apply (path_N _ _ l0 v0 h0); auto. 
+  simpl. rewrite PMap.gso. apply e.
+  destruct Hwf as [ _ Hwf]. apply Hwf in e. clear - e. zify; omega. 
+Qed. 
+Hint Resolve path_upd.   
 
 Lemma expr_eq_dec (e1 e2: expr) : ({e1 = e2} + {e1 <> e2})%type.  
 Proof.
@@ -568,31 +603,55 @@ Proof.
   apply expr_compare_eq in H1. apply expr_compare_eq in H3. subst; reflexivity.
 Qed. 
 
-Remark wf_neq env bdd (Hwf : wf env bdd) p x : PMap.find p (tmap bdd) = Some x -> p <> next bdd. 
+Remark wf_neq bdd (Hwf : wf bdd) p x : PMap.find p (tmap bdd) = Some x -> p <> next bdd. 
 Proof. 
-  intros H. apply (wf_lt_next _ _ Hwf) in H; auto.  zify; omega. 
+  intros H. apply (wf_lt_next)  in H; auto.  zify; omega. 
 Qed. 
 Hint Resolve wf_neq. 
-  
 
+
+(* Lemma value_upd_inj x vx vy : value env bdd x vx ->  *)
+(*                               value env (upd bdd (l,v,h)) x vy ->  *)
+(*                               vx = vy.  *)
+(* Proof. *)
+(*   intros.  *)
+(*   eapply value_upd in H; eauto.  *)
+(* Qed.  *)
+      
+Lemma order_path bdd x y : path bdd x -> order bdd x y -> path bdd y. 
+Proof. 
+  intros. 
+  inversion H; subst. 
+  compute in X; intuition; discriminate. 
+  compute in X; intuition; discriminate.
+  unfold order in X. destruct X. simpl in e. rewrite H0 in e. injection e; intros; subst. auto. 
+  simpl in e. rewrite H0 in e. injection e; intros; subst. auto. 
+Qed. 
+  
 Section wf_upd.  
-  Variable env : nat -> bool. 
   Variable bdd : BDD. 
-  Hypothesis Hwf : wf env bdd.
+  Hypothesis Hwf : wf bdd.
   Variable (l:expr) (v:nat) (h:expr). 
-  Variable vl vh : bool. 
-  Hypothesis Hvl : value env bdd l vl. 
-  Hypothesis Hvh : value env bdd h vh. 
+  Hypothesis Hvl : path bdd l. 
+  Hypothesis Hvh : path bdd h. 
   Hypothesis Hnode : NMap.find (elt:=positive) (l, v, h) (hmap bdd) = None.
 
-  Remark value_upd_left : value env (upd bdd (l,v,h)) l vl. 
-  Proof. 
-    eapply value_upd; eauto. 
-  Qed. 
-  Remark value_upd_right : value env (upd bdd (l,v,h)) h vh. 
-  Proof. 
-    eapply value_upd; eauto. 
-  Qed. 
+  (* Remark value_upd_left : value env (upd bdd (l,v,h)) l vl.  *)
+  (* Proof.  *)
+  (*   eapply value_upd; eauto.  *)
+  (* Qed.  *)
+  (* Remark value_upd_right : value env (upd bdd (l,v,h)) h vh.  *)
+  (* Proof.  *)
+  (*   eapply value_upd; eauto.  *)
+  (* Qed.  *)
+  Remark path_upd_left :  path  (upd bdd (l,v,h)) l.
+  Proof.
+    eapply path_upd; eauto.
+  Qed.
+  Remark path_upd_right : path (upd bdd (l,v,h)) h.
+  Proof.
+    eapply path_upd; eauto.
+  Qed.
   
   Lemma order_upd : forall x y : expr, order bdd x y -> order (upd bdd (l, v, h)) x y.
   Proof. 
@@ -609,15 +668,7 @@ Section wf_upd.
        * rewrite H in Hxy. discriminate.
   Qed.  
          
-  Lemma value_upd_inj x vx vy : value env bdd x vx -> 
-                        value env (upd bdd (l,v,h)) x vy -> 
-                        vx = vy. 
-  Proof.
-    intros. 
-    eapply value_upd in H; eauto. 
-  Qed. 
-    
-  Lemma interp_upd : forall (n : var) (x : expr) (y : bool),
+  Lemma interp_upd env : forall (n : var) (x : expr) (y : bool),
                        interp env bdd n x = Some y -> interp env (upd bdd (l, v, h)) n x = Some y.
   Proof.
     induction n; intros. discriminate.
@@ -629,48 +680,72 @@ Section wf_upd.
     destruct (env v2) eqn: Heq;t; intuition.
   Qed.
     
-  Lemma wf_value_lt x vx : value env bdd (N x) vx -> 
+  Lemma wf_value_lt env x vx : value env bdd (N x) vx -> 
                            (x < next bdd)%positive. 
   Proof.
     clear - Hwf. 
     intros H. inversion H.  subst.
-    apply (wf_lt_next _ _ Hwf) in H1. auto. 
+    apply (wf_lt_next) in H1. auto. 
   Qed. 
   
-  Hint Resolve wf_value_lt wf_value_order.
+  Hint Resolve wf_value_lt.
+  Hint Resolve wf_path_lt.
+  (* Lemma value_upd_neq x vx :  value env (upd bdd (l, v, h)) x vx -> *)
+  (*                             N (next bdd) <> x -> *)
+  (*                             value env bdd x vx. *)
+  (* Proof. *)
+  (*   intros.  *)
+  (*   induction H;  auto.  *)
+  (*   simpl in e. rewrite PMap.gso in e by congruence.  *)
+  (*   destruct (wf_find_value _ _ Hwf  _ _ e) as [vp Hvp].  *)
 
-  Lemma value_upd_neq x vx :  value env (upd bdd (l, v, h)) x vx ->
+  (*   refine (let IH1 := IHvalue1 _ in  *)
+  (*           let IH2 := IHvalue2 _ in _).  *)
+  (*   destruct l0 as [ | | X ]; try discriminate;   *)
+  (*   assert (HX : (X < next bdd)%positive) by *)
+  (*       (refine (let H := wf_value_order _ _ Hwf _ _ Hvp  (N X) _ in  *)
+  (*                let (x, Hx) := H in wf_value_lt _ _ Hx  *)
+  (*              ); [eauto ]).  *)
+  (*   clear - HX. intros H; injection H; clear H. zify; omega.  *)
+  (*   destruct h0 as [ | | X ]; try discriminate;   *)
+  (*   assert (HX : (X < next bdd)%positive) by *)
+  (*       (refine (let H := wf_value_order _ _ Hwf _ _ Hvp  (N X) _ in  *)
+  (*                let (x, Hx) := H in wf_value_lt _ _ Hx  *)
+  (*              ); [eauto ]).  *)
+  (*   clear - HX. intros H; injection H; clear H; intros. zify; omega.  *)
+  (*   econstructor; eauto.  *)
+  (* Qed. *)
+  
+  Hint Constructors path. 
+
+  Lemma path_upd_neq x :  path (upd bdd (l, v, h)) x  ->
                               N (next bdd) <> x ->
-                              value env bdd x vx.
-  Proof.
-    intros. 
-    induction H;  auto. 
-    simpl in e. rewrite PMap.gso in e by congruence. 
-    destruct (wf_find_value _ _ Hwf  _ _ e) as [vp Hvp]. 
+                              path bdd x.
+  Proof. 
+    intros. induction H; auto. 
+    simpl in e. rewrite PMap.gso in e by congruence.
+    
+    refine (let IH1 := IHpath1 _ in
+            let IH2 := IHpath2 _ in _); clear IHpath1 IHpath2. 
+    
+    destruct l0 as [ | | X ]; try discriminate. 
+    assert (HX : (X < next bdd)%positive). 
+    eauto 6 using wf_path_lt, wf_lt_path, wf_lt_next, order_path. 
+    intros H'.  injection H'. subst.   zify. omega. 
 
-    refine (let IH1 := IHvalue1 _ in 
-            let IH2 := IHvalue2 _ in _). 
-    destruct l0 as [ | | X ]; try discriminate;  
-    assert (HX : (X < next bdd)%positive) by
-        (refine (let H := wf_value_order _ _ Hwf _ _ Hvp  (N X) _ in 
-                 let (x, Hx) := H in wf_value_lt _ _ Hx 
-               ); [eauto ]). 
-    clear - HX. intros H; injection H; clear H. zify; omega. 
-    destruct h0 as [ | | X ]; try discriminate;  
-    assert (HX : (X < next bdd)%positive) by
-        (refine (let H := wf_value_order _ _ Hwf _ _ Hvp  (N X) _ in 
-                 let (x, Hx) := H in wf_value_lt _ _ Hx 
-               ); [eauto ]). 
-    clear - HX. intros H; injection H; clear H; intros. zify; omega. 
+    destruct h0 as [ | | X ]; try discriminate. 
+    assert (HX : (X < next bdd)%positive). 
+    eauto 6 using wf_path_lt, wf_lt_path, wf_lt_next, order_path. 
+    intros H'.  injection H'. subst.   zify. omega. 
+
     econstructor; eauto. 
   Qed.
-
   
   (* Lemma value_upd_eq x vx : value env (upd bdd (l,v,h)) x vx -> *)
   (*                           x = N (next bdd) ->  *)
   (*                           value env (upd bdd (l,v,h)) x (if env v then vh else vl).  *)
   
-  Lemma order_upd_eq x y : order (upd bdd (l,v,h)) x y -> 
+  Lemma order_upd_eq env x y : order (upd bdd (l,v,h)) x y -> 
                            x = N (next bdd) -> 
                            forall vx, value env (upd bdd (l,v,h)) x vx ->
                                  (y = l) + (y = h). 
@@ -684,7 +759,7 @@ Section wf_upd.
     right; congruence. 
   Qed. 
   
-  Lemma order_upd_neq x y : order (upd bdd (l,v,h)) x y -> 
+  Lemma order_upd_neq env x y : order (upd bdd (l,v,h)) x y -> 
                             x <> N (next bdd) -> 
                             forall vx, value env (upd bdd (l,v,h)) x vx ->
                                   order bdd x y. 
@@ -698,17 +773,9 @@ Section wf_upd.
     right; apply H. 
   Qed. 
   
-  Lemma wf_upd : wf env (upd bdd (l, v, h)).
+  Lemma wf_upd : wf (upd bdd (l, v, h)).
   Proof. 
-    
-    refine ((fun wf_equiv wf_lt_next wf_depth wf_value_interp wf_value_order wf_find_value =>
-              Build_wf env _
-                       wf_equiv wf_lt_next wf_depth 
-                       wf_value_interp 
-                       (wf_value_order (* wf_find_value env wf_value_interp *))
-                       wf_find_value
-            ) _ _ _ (1 + wf_depth env _ Hwf) _ _  _). 
-
+    apply Build_wf. 
     - clear Hvl Hvh. revert Hnode.   generalize (l,v,h) as n1; intros n1 Hn1 p n2. 
       simpl. 
       destruct (node_eq_dec n1 n2) as [Hn | Hn]; [subst|].
@@ -720,25 +787,25 @@ Section wf_upd.
           destruct (Pos.eq_dec (next bdd) p); [trivial|]. 
           exfalso. 
           rewrite PMap.gso in H by congruence. 
-          rewrite <- (wf_bijection _ _ Hwf) in H; congruence. 
+          rewrite <- (wf_bijection) in H; congruence. 
         * apply node_compare_refl. 
-          
       + rewrite NMapFacts.add_neq_o by (rewrite node_compare_eq_iff; tauto).
         split; intros. 
-        rewrite (wf_bijection _ _ Hwf) in H. 
+        rewrite (wf_bijection) in H. 
         rewrite PMap.gso; eauto. 
         rewrite PMap.gso in H. 
-        rewrite (wf_bijection _ _ Hwf ); auto. 
+        rewrite (wf_bijection); auto. 
 
         intros Hp. subst. 
         rewrite PMap.gss in H. congruence. 
+
     - intros. 
       simpl in H. 
       destruct (Pos.eq_dec (next bdd) p). subst. unfold upd. unfold next at 2.  
       zify; omega. 
       unfold upd. unfold next at 1. 
       rewrite PMap.gso in H by eauto. 
-      apply (wf_lt_next _ _ Hwf) in H; zify; omega. 
+      apply (wf_lt_next) in H; zify; omega. 
     - intros. 
       {
         unfold upd in H. unfold next at 1 in H. 
@@ -746,53 +813,28 @@ Section wf_upd.
         exists (l,v,h). rewrite PMap.gss. reflexivity. 
         assert ((p < next bdd)%positive). 
         zify;omega. 
-        destruct (wf_lt_next_find env bdd Hwf _ H0) as [x Hx]. 
+        destruct (wf_lt_next_find _ H0) as [x Hx]. 
         exists x. simpl. rewrite PMap.gso by eauto. auto. 
       }
-    - intros.
-      destruct (expr_eq_dec (N (next bdd)) x). 
-      + subst; simpl. 
-        inversion H. subst. simpl in H1. 
-        pose proof Hvl. clear Hvl. 
-        pose proof Hvh. clear Hvh. 
-        
-        rewrite H1.
-        rewrite PMap.gss in H1.
-        injection H1; intros. destruct H5. destruct H6. destruct H7. simpl. 
-        simpl.                  
-        destruct (env v). 
-        * apply interp_upd. 
-          apply Hwf.
-          assert (vh = vh0). eapply value_upd_inj; eauto.  subst. eauto. 
-        *  apply interp_upd. 
-           apply Hwf.
-           assert (vl = vl0). eapply value_upd_inj; eauto.  subst. eauto. 
-      + apply interp_upd. apply interp_S. apply Hwf.
-        apply value_upd_neq; assumption.  
-    - intros.
-      
-      destruct (expr_eq_dec (N (next bdd)) x).
-      eapply order_upd_eq in X; eauto. destruct X; subst; eauto.
-      eapply order_upd_neq in X; eauto. 
-      eapply value_upd_neq in H; eauto. 
-      pose proof (wf_value_order _ _ Hwf _ _ H _ X). destruct H0 as [vy Hvy]. exists vy. eauto. 
     - intros. 
-      simpl in H. 
-      destruct (Pos.eq_dec p (next bdd)); subst. 
-      pose proof H.
-      rewrite PMap.gss in H. injection H; intros; subst; clear H. 
-      exists (if env v then vh else vl). econstructor; eauto. 
-      
-      rewrite PMap.gso in H by eassumption. apply (wf_find_value env _ Hwf) in H. destruct H.
-      eapply value_upd in v0; eauto. 
+      destruct (Pos.eq_dec (next bdd) (p)). 
+      + subst.
+        apply (path_N _ (next bdd) l v h); auto.  simpl. rewrite PMap.gss; reflexivity.
+      + apply path_upd; auto. apply wf_lt_path. unfold upd in H. unfold next at 1 in H.  zify. omega. 
+    - intros. 
+      destruct (Pos.eq_dec (next bdd) (p)). 
+      + subst. unfold upd.  unfold next at 2. zify; omega. 
+      + subst. unfold upd.  unfold next at 1. 
+        apply path_upd_neq in H.  2: congruence.  
+        apply wf_path_lt in H. zify;omega. 
   Qed. 
 End wf_upd. 
 
-Lemma mk_node_correct {env bdd} (Hwf: wf env bdd) {l v h e bdd'}: 
+Lemma mk_node_correct {env bdd} (Hwf: wf  bdd) {l v h e bdd'}: 
   mk_node bdd l v h = (e,bdd') -> 
   forall vl, value env bdd l vl -> 
   forall vh, value env bdd h vh -> 
-        (value env bdd' e (if env v then vh else vl) * incr env bdd bdd')%type.       
+        (value env bdd' e (if env v then vh else vl) * incr  bdd bdd')%type.       
 Proof. 
   intros.
   unfold mk_node in H. 
@@ -811,21 +853,30 @@ Proof.
     + rewrite Hnode in H.
       injection H; intros; subst; clear H.
       split ; [|auto]. 
-      rewrite (wf_bijection _ _ Hwf) in Hnode. econstructor; eauto. 
+      rewrite (wf_bijection ) in Hnode. econstructor; eauto. 
     + rewrite Hnode in H.
       injection H; intros; subst; clear H.
-      refine ((fun H H' => ((H' H), H)) _ _). 
-      {                       (* proof of incr *)
-        constructor. 
-        - apply (order_upd env); auto.  
-        - eapply value_upd; eauto. 
-        - intros _.
-          {
-            eapply wf_upd; eauto.  
-          }
-          
-      }
-      {
+      assert (incr bdd (upd bdd (l,v,h))). 
+      {constructor.
+       * intros. 
+         simpl. rewrite PMap.gso; auto.  
+         apply wf_lt_next in H. zify;omega.         
+       * apply (order_upd); auto.  
+       * eapply path_upd; eauto. 
+         Lemma path_of_value env bdd x vx : 
+           value env bdd x vx -> 
+           path bdd x. 
+         Proof. 
+           induction 1; try constructor. 
+           econstructor. apply e. auto.  auto. 
+         Qed. 
+         Hint Resolve path_of_value. 
+         eauto. 
+         eauto. 
+       * intros. eapply wf_upd; eauto.  
+      }      
+      
+      { split; auto. 
         intros. econstructor; 
                 [
                 | eapply value_upd; eauto
@@ -847,231 +898,715 @@ Ltac t s ::=
        | H : (bind ?x ?f = None) |- _ => 
          destruct (bind_inversion_None x f H) as [?H | [?x [?I ?I]]]
        | H : ?x = Some ?y |- context [?x] => rewrite H
-       | |- (_ * incr ?env ?x ?x)%type => refine ( _ , incr_refl env x )                              
+       | |- (_ * incr ?x ?x)%type => refine ( _ , incr_refl x )                              
        | H : value ?env ?b T _ |- _ => apply (value_T_inversion env b) in H
        | H : value ?env ?b F _ |- _ => apply (value_F_inversion env b) in H
        | |- value ?env _ T _ => constructor
        | |- value ?env _ F _ => constructor
        | |- _ => subst           
       end) || s); trivial.
+Lemma incr_value env bdd1 bdd2 x vx (Hincr:incr bdd1 bdd2) :
+  value env bdd1 x vx -> 
+  value env bdd2 x vx. 
+Proof.   
+  induction 1; try constructor. 
+  econstructor; eauto using incr_map.  
+Qed. 
 
-Section cases. 
-  Ltac inj :=
-    repeat match goal with 
-             | H : value ?env ?b ?x ?vx , H' : value ?env ?b ?x ?vy |- _ =>  
-               let H'' := fresh in 
-               assert (H'' := value_inj env b x vx H vy H'); 
-                 clear H'; subst
-           end. 
-  
-  Variables
-    (env : var -> bool)
-    (bdd : BDD)
-    (Hwf : wf env bdd)
-    (op : bool -> bool -> bool)
-    (opb: BDD -> nat -> expr -> expr -> option (expr * BDD))
-    (n : nat)
-    (IH:  forall bdd : BDD,
-            wf env bdd ->
-            forall (a b ab : expr) (bdd' : BDD),
-              opb bdd n a b = Some (ab, bdd') ->
+Hint Resolve incr_value.   
+Section value. 
+  Section binop. 
+    Ltac inj :=
+      repeat match goal with 
+               | H : value ?env ?b ?x ?vx , H' : value ?env ?b ?x ?vy |- _ =>  
+                 let H'' := fresh in 
+                 assert (H'' := value_inj env b x vx H vy H'); 
+                   clear H'; subst
+             end. 
+    
+    Variables
+      (env : var -> bool)
+      (bdd : BDD)
+      (Hwf : wf bdd)
+      (op : bool -> bool -> bool)
+      (opb: BDD -> nat -> expr -> expr -> option (expr * BDD))
+      (n : nat)
+      (IH:  forall bdd : BDD,
+              wf  bdd ->
+              forall (a b ab : expr) (bdd' : BDD),
+                opb bdd n a b = Some (ab, bdd') ->
               forall va : bool,
                 value env bdd a va ->
                 forall vb : bool,
                   value env bdd b vb ->
-                  value env bdd' ab (op va vb) * incr env bdd bdd')
-    (a b: positive)
-    (va vb: bool)
-    (Hva : value env bdd (N a) va)
-    (Hvb : value env bdd (N b) vb)
-    (la : expr) (xa: var) (ha: expr) (Ha : PMap.find a (tmap bdd) = Some (la, xa, ha))
-    (lb : expr) (xb: var) (hb: expr) (Hb : PMap.find b (tmap bdd) = Some (lb, xb, hb)).
+                  value env bdd' ab (op va vb) * incr  bdd bdd')
+      (a b: positive)
+      (va vb: bool)
+      (Hva : value env bdd (N a) va)
+      (Hvb : value env bdd (N b) vb)
+      (la : expr) (xa: var) (ha: expr) (Ha : PMap.find a (tmap bdd) = Some (la, xa, ha))
+      (lb : expr) (xb: var) (hb: expr) (Hb : PMap.find b (tmap bdd) = Some (lb, xb, hb)).
   
   
-  Lemma binop_correct_lt : forall
-                             l bdd1 (H1 : opb bdd n la (N b) = Some (l, bdd1))
-                             h bdd2 (H2 : opb bdd1 n ha (N b) = Some (h, bdd2))
-                             ab bdd3 (H3 : mk_node bdd2 l xa h = (ab, bdd3)),
-                             (value env bdd3 ab (op va vb) * incr env bdd bdd3). 
-  Proof. 
-    intros. 
-    destruct (value_N_inversion env bdd a va Hva _ _ _ Ha) as [vla [vha [[Hla Hha] Hwa]]].
-    destruct (value_N_inversion env bdd b vb Hvb _ _ _ Hb) as [vlb [vhb [[Hlb Hhb] Hwb]]].
-    destruct (IH _ Hwf _ _ _ _ H1 _ Hla _ Hwb) as [Hvx Hincr]. 
-    refine (let (Hvx1,Hincr2) := IH bdd1 (_ : wf env bdd1) _ _ _ _ H2 
-                                     _ (_: value env bdd1 ha vha) 
-                                     _ (_: value env bdd1 (N b) _) in _
-           ); eauto. 
-    inj. 
-    refine (let (Hab, Hincr2) := mk_node_correct ( _ : wf env bdd2) H3 _ _ _ _ in _
-           ); eauto. 
-    destruct (env xa); destruct (env xb); split; eauto. 
-  Qed. 
-   
-  Lemma binop_correct_gt : forall
-                             l bdd1 (H1 : opb bdd n (N a) lb  = Some (l, bdd1))
-                             h bdd2 (H2 : opb bdd1 n (N a) hb = Some (h, bdd2))
-                             ab bdd3 (H3 : mk_node bdd2 l xb h = (ab, bdd3)),
-                             (value env bdd3 ab (op va vb) * incr env bdd bdd3). 
-  Proof. 
-    intros. 
-    destruct (value_N_inversion env bdd a va Hva _ _ _ Ha) as [vla [vha [[Hla Hha] Hwa]]].
-    destruct (value_N_inversion env bdd b vb Hvb _ _ _ Hb) as [vlb [vhb [[Hlb Hhb] Hwb]]].
-    destruct (IH _ Hwf _ _ _ _ H1 _ Hwa _ Hlb) as [Hvx Hincr]. 
-    refine (let (Hvx1,Hincr2) := IH bdd1 (_ : wf env bdd1) _ _ _ _ H2 
-                                     _ (_: value env bdd1 (N a) _) 
-                                     _ (_: value env bdd1 hb vhb) in _
-           ); eauto. 
-    inj. 
-    refine (let (Hab, Hincr2) := mk_node_correct _ H3 _ _ _ _ in _
-           ); eauto. 
-    split. destruct (env xa); destruct (env xb); auto.  
-    eauto. 
-  Qed.
+    Lemma binop_correct_lt : forall
+                               l bdd1 (H1 : opb bdd n la (N b) = Some (l, bdd1))
+                               h bdd2 (H2 : opb bdd1 n ha (N b) = Some (h, bdd2))
+                               ab bdd3 (H3 : mk_node bdd2 l xa h = (ab, bdd3)),
+                               (value env bdd3 ab (op va vb) * incr  bdd bdd3). 
+    Proof. 
+      intros. 
+      destruct (value_N_inversion env bdd a va Hva _ _ _ Ha) as [vla [vha [[Hla Hha] Hwa]]].
+      destruct (value_N_inversion env bdd b vb Hvb _ _ _ Hb) as [vlb [vhb [[Hlb Hhb] Hwb]]].
+      destruct (IH _ Hwf _ _ _ _ H1 _ Hla _ Hwb) as [Hvx Hincr]. 
+      refine (let (Hvx1,Hincr2) := IH bdd1 (_ : wf  bdd1) _ _ _ _ H2 
+                                      _ (_: value env bdd1 ha vha) 
+                                      _ (_: value env bdd1 (N b) _) in _
+             ); eauto. 
+      
+      inj. 
+      refine (let (Hab, Hincr2) := mk_node_correct ( _ : wf bdd2) H3 _ _ _ _ in _
+             ); eauto. 
+      destruct (env xa); destruct (env xb); split; eauto. 
+    Qed. 
+    
+    Lemma binop_correct_gt : forall
+                               l bdd1 (H1 : opb bdd n (N a) lb  = Some (l, bdd1))
+                               h bdd2 (H2 : opb bdd1 n (N a) hb = Some (h, bdd2))
+                               ab bdd3 (H3 : mk_node bdd2 l xb h = (ab, bdd3)),
+                               (value env bdd3 ab (op va vb) * incr bdd bdd3). 
+    Proof. 
+      intros. 
+      destruct (value_N_inversion env bdd a va Hva _ _ _ Ha) as [vla [vha [[Hla Hha] Hwa]]].
+      destruct (value_N_inversion env bdd b vb Hvb _ _ _ Hb) as [vlb [vhb [[Hlb Hhb] Hwb]]].
+      destruct (IH _ Hwf _ _ _ _ H1 _ Hwa _ Hlb) as [Hvx Hincr]. 
+      refine (let (Hvx1,Hincr2) := IH bdd1 (_ : wf  bdd1) _ _ _ _ H2 
+                                      _ (_: value env bdd1 (N a) _) 
+                                      _ (_: value env bdd1 hb vhb) in _
+             ); eauto. 
+      inj. 
+      refine (let (Hab, Hincr2) := mk_node_correct _ H3 _ _ _ _ in _
+             ); eauto. 
+      split. destruct (env xa); destruct (env xb); auto.  
+      eauto. 
+    Qed.
   
-  Lemma binop_correct_eq (Heq: xa = xb) : forall
-                             l bdd1 (H1 : opb bdd n la lb  = Some (l, bdd1))
-                             h bdd2 (H2 : opb bdd1 n ha hb = Some (h, bdd2))
-                             ab bdd3 (H3 : mk_node bdd2 l xa h = (ab, bdd3)),
-                             (value env bdd3 ab (op va vb) * incr env bdd bdd3). 
-  Proof. 
-    intros. subst.  
-    destruct (value_N_inversion env bdd a va Hva _ _ _ Ha) as [vla [vha [[Hla Hha] Hwa]]].
-    destruct (value_N_inversion env bdd b vb Hvb _ _ _ Hb) as [vlb [vhb [[Hlb Hhb] Hwb]]].
-    destruct (IH _ Hwf _ _ _ _ H1 _ Hla _ Hlb) as [Hvx Hincr]. 
-    refine (let (Hvx1,Hincr2) := IH bdd1 (_ : wf env bdd1) _ _ _ _ H2 
-                                     _ (_: value env bdd1 ha vha) 
-                                     _ (_: value env bdd1 hb vhb) in _
-           ); eauto. 
-    inj. 
-    refine (let (Hab, Hincr2) := mk_node_correct _ H3 _ _ _ _ in _
-           ); eauto. 
-    split; destruct (env xb); eauto.  
-  Qed. 
-End cases. 
+    Lemma binop_correct_eq (Heq: xa = xb) : forall
+                                              l bdd1 (H1 : opb bdd n la lb  = Some (l, bdd1))
+                                              h bdd2 (H2 : opb bdd1 n ha hb = Some (h, bdd2))
+                                              ab bdd3 (H3 : mk_node bdd2 l xa h = (ab, bdd3)),
+                                              (value env bdd3 ab (op va vb) * incr bdd bdd3). 
+    Proof. 
+      intros. subst.  
+      destruct (value_N_inversion env bdd a va Hva _ _ _ Ha) as [vla [vha [[Hla Hha] Hwa]]].
+      destruct (value_N_inversion env bdd b vb Hvb _ _ _ Hb) as [vlb [vhb [[Hlb Hhb] Hwb]]].
+      destruct (IH _ Hwf _ _ _ _ H1 _ Hla _ Hlb) as [Hvx Hincr]. 
+      refine (let (Hvx1,Hincr2) := IH bdd1 (_ : wf bdd1) _ _ _ _ H2 
+                                      _ (_: value env bdd1 ha vha) 
+                                      _ (_: value env bdd1 hb vhb) in _
+             ); eauto. 
+      inj. 
+      refine (let (Hab, Hincr2) := mk_node_correct _ H3 _ _ _ _ in _
+             ); eauto. 
+      split; destruct (env xb); eauto.  
+    Qed. 
+  End binop.  
 
-Lemma andb_correct env bdd (Hwf: wf env bdd) n a b ab bdd' :
-  andb bdd n a b = Some (ab, bdd') ->
-  forall va, value env bdd a va -> 
-        forall vb, value env bdd b vb -> 
-              (value env bdd' ab (va && vb)%bool * incr env bdd bdd').
-Proof.
-  revert bdd Hwf a b ab bdd'. 
-  induction n; intros bdd Hwf a b ab bdd' Hand va Hva vb Hvb. 
-  - discriminate. 
-  - simpl in Hand. 
+  Lemma andb_correct env bdd (Hwf: wf bdd) n a b ab bdd' :
+    andb bdd n a b = Some (ab, bdd') ->
+    forall va, value env bdd a va -> 
+          forall vb, value env bdd b vb -> 
+                (value env bdd' ab (va && vb)%bool * incr bdd bdd').
+  Proof.
+    revert bdd Hwf a b ab bdd'. 
+    induction n; intros bdd Hwf a b ab bdd' Hand va Hva vb Hvb. 
+    - discriminate. 
+    - simpl in Hand. 
     Ltac s := 
       try match goal with 
-        | |- context [(_ && false)%bool]  => rewrite Bool.andb_comm; simpl Datatypes.andb
-        | |- context [(_ && true)%bool]  => rewrite Bool.andb_comm; simpl  Datatypes.andb
-        | |- context [(false && _ )%bool]  => simpl  Datatypes.andb
-        | |- context [(true  && _ )%bool]  => simpl  Datatypes.andb
-      end.  
+            | |- context [(_ && false)%bool]  => rewrite Bool.andb_comm; simpl Datatypes.andb
+            | |- context [(_ && true)%bool]  => rewrite Bool.andb_comm; simpl  Datatypes.andb
+            | |- context [(false && _ )%bool]  => simpl  Datatypes.andb
+            | |- context [(true  && _ )%bool]  => simpl  Datatypes.andb
+          end.  
     destruct a as [ | | a]; destruct b as [ | | b]; simpl in *; t s.  
+    
     destruct x as [[la xa] ha]. destruct x0 as [[lb xb] hb]. 
     destruct (NPeano.Nat.compare xa xb) eqn: Heq.
-    + apply nat_compare_eq in Heq; subst; t s. 
-      eauto using binop_correct_eq. 
-    + t s; eauto using binop_correct_lt.
-      
-    + t s; eauto using binop_correct_gt. 
-Qed.
-
-
-Lemma orb_correct env bdd (Hwf: wf env bdd) n a b ab bdd' :
-  orb bdd n a b = Some (ab, bdd') ->
-  forall va, value env bdd a va -> 
-  forall vb, value env bdd b vb -> 
-  (value env bdd' ab (va || vb)%bool * incr env bdd bdd').
-Proof.
-  revert bdd Hwf a b ab bdd'. 
-  induction n; intros bdd Hwf a b ab bdd' Hand va Hva vb Hvb. 
-  - discriminate. 
-  - simpl in Hand. 
-  Ltac s ::= 
-       try 
-       match goal with 
-        | |- context [(_ || false)%bool]  => rewrite Bool.orb_comm; simpl Datatypes.orb
-        | |- context [(_ || true)%bool]  => rewrite Bool.orb_comm; simpl  Datatypes.orb
-        | |- context [(false || _ )%bool]  => simpl  Datatypes.orb
-        | |- context [(true  || _ )%bool]  => simpl  Datatypes.orb
-       end.
-  destruct a as [ | | a]; destruct b as [ | | b]; simpl in *; t s.
-  destruct x as [[la xa] ha]. destruct x0 as [[lb xb] hb]. 
-  destruct (NPeano.Nat.compare xa xb) eqn: Heq.
-    + apply nat_compare_eq in Heq; subst; t s. 
-      eauto using binop_correct_eq. 
-    + t s; eauto using binop_correct_lt.        
-    + t s; eauto using binop_correct_gt.
-Qed.  
-
-Lemma negb_correct env bdd (Hwf: wf env bdd) n a a' bdd' :
-  negb bdd n a = Some (a', bdd') ->
-  forall va, value env bdd a va -> 
-  (value env bdd' a' (Datatypes.negb va)%bool * incr env bdd bdd').
-Proof.
-  revert bdd Hwf a a' bdd'. 
-  induction n; intros bdd Hwf a a' bdd' Hnegb va Hva. 
-  - discriminate. 
-  - simpl in Hnegb. 
-  Ltac s ::= 
-       try
-       match goal with 
-        | |- context [(Datatypes.negb false)%bool] =>  simpl Datatypes.negb 
-        | |- context [(Datatypes.negb true)%bool]  =>  simpl Datatypes.negb
-       end. 
-  destruct a as [ | | a]; simpl in *; t s.
-  destruct x as [[la xa] ha]; t s.
-  destruct (value_N_inversion env bdd a va Hva _ _ _ I) as [vla [vha [[Hla Hha] Hwa]]].
-  destruct (IHn _ Hwf _ _ _ I1 _ Hla) as [Hvx Hincr]; clear I1. 
-  refine (let (Hvx1,Hincr2) := IHn x0 (_ : wf env x0) _ _ _ I0 
-                           _ (_: value env _ ha vha) 
-                           in _
-             ); eauto.
-  pose proof (value_inj _ _ _ _ Hva _ Hwa); subst. 
-  refine (let (Hab, Hincr2) := mk_node_correct (_ : wf env x2) H _ _ _ _ in _
-         ); eauto. 
-  split; destruct (env xa); eauto. 
-Qed.
-
-Lemma xorb_correct env bdd (Hwf: wf env bdd) n a b ab bdd' :
-  xorb bdd n a b = Some (ab, bdd') ->
-  forall va, value env bdd a va -> 
-  forall vb, value env bdd b vb -> 
-  (value env bdd' ab (Datatypes.xorb va vb)%bool * incr env bdd bdd').
-Proof.
-  revert bdd Hwf a b ab bdd'. 
-  induction n; intros bdd Hwf a b ab bdd' Hand va Hva vb Hvb. 
-  - discriminate. 
-  - simpl in Hand. 
-    Ltac s ::= 
-    repeat 
-      match goal with 
-        | |- context [(Datatypes.xorb _ false)%bool]  => rewrite Bool.xorb_false_r
-        | |- context [(Datatypes.xorb _ true)%bool]  => rewrite Bool.xorb_true_r
-        | |- context [(Datatypes.xorb false  _ )%bool]  => rewrite Bool.xorb_false_l
-        | |- context [(Datatypes.xorb true _ )%bool]  => rewrite Bool.xorb_true_l                   
-      end.
-  destruct a as [ | | a]; destruct b as [ | | b]; simpl in *; t s; eauto using negb_correct. 
+      + apply nat_compare_eq in Heq; subst; t s. 
+        eauto using binop_correct_eq. 
+      + t s; eauto using binop_correct_lt.
+        
+      + t s; eauto using binop_correct_gt. 
+  Qed.
   
-  destruct x as [[la xa] ha]. destruct x0 as [[lb xb] hb]. 
-  destruct (NPeano.Nat.compare xa xb) eqn: Heq.
-    + apply nat_compare_eq in Heq; subst; t s. 
-      eauto using binop_correct_eq. 
-    + t s; eauto using binop_correct_lt. 
-    + t s; eauto using binop_correct_gt. 
-Qed.
+  
+  Lemma orb_correct env bdd (Hwf: wf bdd) n a b ab bdd' :
+    orb bdd n a b = Some (ab, bdd') ->
+    forall va, value env bdd a va -> 
+          forall vb, value env bdd b vb -> 
+                (value env bdd' ab (va || vb)%bool * incr bdd bdd').
+  Proof.
+    revert bdd Hwf a b ab bdd'. 
+    induction n; intros bdd Hwf a b ab bdd' Hand va Hva vb Hvb. 
+    - discriminate. 
+    - simpl in Hand. 
+      Ltac s ::= 
+           try 
+           match goal with 
+             | |- context [(_ || false)%bool]  => rewrite Bool.orb_comm; simpl Datatypes.orb
+             | |- context [(_ || true)%bool]  => rewrite Bool.orb_comm; simpl  Datatypes.orb
+             | |- context [(false || _ )%bool]  => simpl  Datatypes.orb
+             | |- context [(true  || _ )%bool]  => simpl  Datatypes.orb
+           end.
+      destruct a as [ | | a]; destruct b as [ | | b]; simpl in *; t s.
+      destruct x as [[la xa] ha]. destruct x0 as [[lb xb] hb]. 
+      destruct (NPeano.Nat.compare xa xb) eqn: Heq.
+      + apply nat_compare_eq in Heq; subst; t s. 
+        eauto using binop_correct_eq. 
+      + t s; eauto using binop_correct_lt.        
+      + t s; eauto using binop_correct_gt.
+  Qed.  
+  
+  Lemma negb_correct env bdd (Hwf: wf bdd) n a a' bdd' :
+    negb bdd n a = Some (a', bdd') ->
+    forall va, value env bdd a va -> 
+          (value env bdd' a' (Datatypes.negb va)%bool * incr bdd bdd').
+  Proof.
+    revert bdd Hwf a a' bdd'. 
+    induction n; intros bdd Hwf a a' bdd' Hnegb va Hva. 
+    - discriminate. 
+    - simpl in Hnegb. 
+      Ltac s ::= 
+           try
+           match goal with 
+             | |- context [(Datatypes.negb false)%bool] =>  simpl Datatypes.negb 
+             | |- context [(Datatypes.negb true)%bool]  =>  simpl Datatypes.negb
+           end. 
+      destruct a as [ | | a]; simpl in *; t s.
+      destruct x as [[la xa] ha]; t s.
+      destruct (value_N_inversion env bdd a va Hva _ _ _ I) as [vla [vha [[Hla Hha] Hwa]]].
+      destruct (IHn _ Hwf _ _ _ I1 _ Hla) as [Hvx Hincr]; clear I1. 
+      refine (let (Hvx1,Hincr2) := IHn x0 (_ : wf x0) _ _ _ I0 
+                                       _ (_: value env _ ha vha) 
+              in _
+             ); eauto.
+      pose proof (value_inj _ _ _ _ Hva _ Hwa); subst. 
+      refine (let (Hab, Hincr2) := mk_node_correct (_ : wf x2) H _ _ _ _ in _
+             ); eauto. 
+      split; destruct (env xa); eauto. 
+  Qed.
+  
+  Lemma xorb_correct env bdd (Hwf: wf bdd) n a b ab bdd' :
+    xorb bdd n a b = Some (ab, bdd') ->
+    forall va, value env bdd a va -> 
+          forall vb, value env bdd b vb -> 
+                (value env bdd' ab (Datatypes.xorb va vb)%bool * incr bdd bdd').
+  Proof.
+    revert bdd Hwf a b ab bdd'. 
+    induction n; intros bdd Hwf a b ab bdd' Hand va Hva vb Hvb. 
+    - discriminate. 
+    - simpl in Hand. 
+      Ltac s ::= 
+           repeat 
+           match goal with 
+             | |- context [(Datatypes.xorb _ false)%bool]  => rewrite Bool.xorb_false_r
+             | |- context [(Datatypes.xorb _ true)%bool]  => rewrite Bool.xorb_true_r
+             | |- context [(Datatypes.xorb false  _ )%bool]  => rewrite Bool.xorb_false_l
+             | |- context [(Datatypes.xorb true _ )%bool]  => rewrite Bool.xorb_true_l                   
+           end.
+      destruct a as [ | | a]; destruct b as [ | | b]; simpl in *; t s; eauto using negb_correct. 
+      
+      destruct x as [[la xa] ha]. destruct x0 as [[lb xb] hb]. 
+      destruct (NPeano.Nat.compare xa xb) eqn: Heq.
+      + apply nat_compare_eq in Heq; subst; t s. 
+        eauto using binop_correct_eq. 
+      + t s; eauto using binop_correct_lt. 
+      + t s; eauto using binop_correct_gt. 
+  Qed.
+  
+ 
+  Lemma mk_var_correct env bdd (Hwf: wf bdd) v ptr bdd' :
+    mk_var bdd v = (ptr, bdd') -> 
+    value env bdd' ptr (env v) * incr bdd bdd'. 
+  Proof. 
+    unfold mk_var. intros. 
+    eapply (@mk_node_correct env) in H; eauto.  
+    destruct (env v); apply H. 
+  Qed. 
+  
 
-Lemma wf_expr env bdd (Hwf: wf env bdd) :forall p, (p < next bdd)%positive -> 
-                                              {vp : bool & value env bdd (N p) vp}.
+End value. 
+
+Inductive pvalue env bdd : expr -> bool -> Type :=
+| pvalue_T : pvalue env bdd T true
+| pvalue_F : pvalue env bdd F false
+| pvalue_N : forall (p : positive) (l : expr) (v : var) (h : expr),
+               PMap.find p (tmap bdd) = Some (l, v, h) ->
+               forall vl : bool,
+                 pvalue env bdd l vl ->
+                 forall vh : bool,
+                   pvalue env bdd h vh ->
+                   forall (r: bool), List.nth_error env v = Some r ->  
+                                pvalue env bdd (N p) (if r then vh else vl). 
+
+Hint Constructors pvalue. 
+
+Lemma list_nth_error_length {A} l (x: A):             
+       List.nth_error (l ++ [x]) (List.length l) = Some x. 
 Proof. 
-  intros. 
-  destruct (wf_lt_next_find env bdd Hwf p H) as [x Hx]. 
-  apply (wf_find_value env bdd Hwf p x Hx).
+  induction l. reflexivity. 
+  tauto. 
 Qed. 
 
-Definition ite bdd n c l r:=
-  do cl, bdd  <- andb bdd n c l;
-  do nc, bdd  <- negb bdd n c;
-  do ncr, bdd <- andb bdd n nc r;
-  orb bdd n cl ncr.
+Lemma pvalue_env_snoc bdd env x vx e : 
+  pvalue env bdd x vx -> 
+  pvalue (env ++ [e]) bdd x vx. 
+Proof. 
+  induction 1; auto. 
+  econstructor; eauto.  
+  Lemma list_nth_error_length_2 {A} l (x:A): 
+    forall v r, List.nth_error l v = Some r -> 
+         List.nth_error (l ++ [x]) v = Some r.  
+  Proof. 
+    induction l. 
+    destruct v; try discriminate.  
+    destruct v. simpl. tauto. 
+    intros. simpl. simpl in H. intuition. 
+  Qed. 
+  apply list_nth_error_length_2; auto. 
+Qed. 
+
+Lemma pvalue_incr bdd bdd' (Hincr: incr bdd bdd') env : 
+  forall x vx, 
+  pvalue env bdd x vx -> 
+  pvalue env bdd' x vx. 
+Proof. 
+  induction 1; auto. 
+  econstructor; eauto.  
+  apply Hincr. auto. 
+Qed. 
+
+Hint Resolve pvalue_incr. 
+Lemma pvalue_inj bdd env x vx:  
+  pvalue env bdd x vx -> 
+  forall vx' , pvalue env bdd x vx' -> 
+  vx = vx'. 
+Proof. 
+  induction 1. 
+  inversion 1. reflexivity. 
+  inversion 1; reflexivity. 
+  intros v2 Hv2. 
+  inversion Hv2. 
+  simpl in *. 
+  rewrite e in H2. inject H2. 
+  rewrite H5 in e0. inject e0. 
+  specialize (IHpvalue1 _ H3); clear H0 H3. 
+  specialize (IHpvalue2 _ H4); clear H H4. 
+  subst. reflexivity. 
+Qed. 
+
+Lemma pvalue_N_inversion :
+  forall env (bdd : BDD) (a : positive) (va : bool),
+    pvalue env bdd (N a) va ->
+    forall (l : expr) (x : var) (h : expr),
+      PMap.find a (tmap bdd) = Some (l, x, h) ->
+      forall vx, List.nth_error env x = Some vx -> 
+            {vl : bool &
+                       {vh : bool &
+                                  (pvalue env bdd l vl * pvalue env bdd h vh *
+                                   pvalue env bdd (N a) (if vx then vh else vl))%type}}. 
+Proof.   
+  intros. 
+  inversion H; subst. 
+  rewrite H0 in H3; inject H3. 
+  rewrite H1 in H6; inject H6. 
+  repeat eexists; eauto. 
+Qed. 
+
+Section pvalue. 
+  Lemma pvalue_upd  env bdd (Hwf: wf bdd) l v h:
+    NMap.find (l,v,h) (hmap bdd) = None ->
+    forall vl, pvalue env bdd l vl -> 
+          forall vh, pvalue env bdd h vh -> 
+                forall x vx, pvalue env bdd x vx -> 
+                        pvalue env (upd bdd (l,v,h)) x vx. 
+  Proof.              
+    intros Hbdd vl Hvl vh Hvh x vx H.
+    induction H. 
+    constructor. 
+    constructor. 
+    econstructor; eauto. 
+    simpl. rewrite PMap.gso. auto. 
+    destruct Hwf as [ _ Hwf]. apply Hwf in e. clear - e. zify; omega. 
+  Qed. 
+  Hint Resolve pvalue_upd.   
+
+  Lemma mk_node_pcorrect {env bdd} (Hwf: wf  bdd) {l v h e bdd'}: 
+    mk_node bdd l v h = (e,bdd') -> 
+    forall r, List.nth_error env v = Some r -> 
+    forall vl, pvalue env bdd l vl -> 
+          forall vh, pvalue env bdd h vh -> 
+                (pvalue env bdd' e (if r then vh else vl) * incr  bdd bdd')%type.       
+  Proof. 
+    intros.
+    unfold mk_node in H. 
+    case_eq (expr_eqb l h). 
+    - intros H'; rewrite H' in H. inject H.  
+      apply expr_eqb_correct in H'; subst. 
+      assert (vh = vl) by (eapply pvalue_inj; eauto); subst. 
+      destruct r;  split; eauto. 
+    - intros H'. rewrite H' in H.
+      case_eq (NMap.find (l,v,h) (hmap bdd)); [intros node Hnode | intros Hnode].
+    + rewrite Hnode in H.
+      injection H; intros; subst; clear H.
+      split ; [|auto]. 
+      rewrite (wf_bijection ) in Hnode. econstructor; eauto. 
+    + rewrite Hnode in H.
+      injection H; intros; subst; clear H.
+      assert (incr bdd (upd bdd (l,v,h))). 
+      {constructor.
+       * intros. 
+         simpl. rewrite PMap.gso; auto.  
+         apply wf_lt_next in H. zify;omega.         
+       * apply (order_upd); auto.  
+       * eapply path_upd; eauto.
+         Lemma path_of_pvalue env bdd x vx : 
+           pvalue env bdd x vx -> 
+           path bdd x. 
+         Proof. 
+           induction 1; try constructor. 
+           econstructor. apply e. auto.  auto. 
+         Qed. 
+         Hint Resolve path_of_pvalue. 
+ 
+         eauto. 
+         eauto. 
+       * intros. eapply wf_upd; eauto.  
+      }      
+      
+      { split; auto. 
+        intros.
+        econstructor;
+                [
+                | eapply pvalue_upd; eauto
+                | eapply pvalue_upd; eauto
+                | eauto].  
+        simpl. apply PMap.gss. 
+       }
+Qed.
+  Lemma pvalue_inv_env bdd env a va l x h :
+    PMap.find a (tmap bdd) = Some (l,x,h) -> 
+    pvalue env bdd (N a) va -> 
+    { vx |  List.nth_error env x = Some vx}. 
+  Proof. 
+    intros. 
+    inversion H0; subst. 
+    rewrite H in H2; inject H2. 
+    subst. eexists. apply H5.   
+  Qed. 
+  Hint Resolve pvalue_inv_env.
+  Section binop. 
+    Ltac inj :=
+      repeat match goal with 
+               | H : pvalue ?env ?b ?x ?vx , H' : pvalue ?env ?b  ?x ?vy |- _ =>  
+                 let H'' := fresh in 
+                 assert (H'' := pvalue_inj b env x vx H vy H'); 
+                   clear H'; subst
+             end. 
+    
+    Variables
+      (env : list bool)
+      (bdd : BDD)
+      (Hwf : wf bdd)
+      (op : bool -> bool -> bool)
+      (opb: BDD -> nat -> expr -> expr -> option (expr * BDD))
+      (n : nat)
+      (IH:  forall bdd : BDD,
+              wf  bdd ->
+              forall (a b ab : expr) (bdd' : BDD),
+                opb bdd n a b = Some (ab, bdd') ->
+              forall va : bool,
+                pvalue env bdd a va ->
+                forall vb : bool,
+                  pvalue env bdd b vb ->
+                  pvalue env bdd' ab (op va vb) * incr  bdd bdd')
+      (a b: positive)
+      (va vb: bool)
+      (Hva : pvalue env bdd (N a) va)
+      (Hvb : pvalue env bdd (N b) vb)
+      (la : expr) (xa: var) (ha: expr) (Ha : PMap.find a (tmap bdd) = Some (la, xa, ha)) 
+      (lb : expr) (xb: var) (hb: expr) (Hb : PMap.find b (tmap bdd) = Some (lb, xb, hb)).   
+  
+    Lemma binop_pcorrect_lt : forall
+                               l bdd1 (H1 : opb bdd n la (N b) = Some (l, bdd1))
+                               h bdd2 (H2 : opb bdd1 n ha (N b) = Some (h, bdd2))
+                               ab bdd3 (H3 : mk_node bdd2 l xa h = (ab, bdd3)),
+                               (pvalue env bdd3 ab (op va vb) * incr  bdd bdd3). 
+    Proof. 
+      intros. 
+      destruct (pvalue_inv_env _ _ _ _ _ _ _ Ha Hva) as [vxa Hxa]. 
+      destruct (pvalue_inv_env _ _ _ _ _ _ _ Hb Hvb) as [vxb Hxb]. 
+      destruct (pvalue_N_inversion env bdd a va Hva _ _ _ Ha _ Hxa) as [vla [vha [[Hla Hha] Hwa]]].
+      destruct (pvalue_N_inversion env bdd b vb Hvb _ _ _ Hb _ Hxb) as [vlb [vhb [[Hlb Hhb] Hwb]]].
+      destruct (IH _ Hwf _ _ _ _ H1 _ Hla _ Hwb) as [Hvx Hincr]. 
+      refine (let (Hvx1,Hincr2) := IH bdd1 (_ : wf  bdd1) _ _ _ _ H2 
+                                      _ (_: pvalue env bdd1 ha vha) 
+                                      _ (_: pvalue env bdd1 (N b) _) in _
+             ); eauto. 
+      inj. 
+      refine (let (Hab, Hincr2) := mk_node_pcorrect ( _ : wf bdd2) H3 _ _ _ _ _ _ in _
+             ); eauto. 
+      destruct (vxa); destruct (vxb); split; eauto.   
+    Qed. 
+    
+    Lemma binop_pcorrect_gt : forall
+                               l bdd1 (H1 : opb bdd n (N a) lb  = Some (l, bdd1))
+                               h bdd2 (H2 : opb bdd1 n (N a) hb = Some (h, bdd2))
+                               ab bdd3 (H3 : mk_node bdd2 l xb h = (ab, bdd3)),
+                               (pvalue env bdd3 ab (op va vb) * incr bdd bdd3). 
+    Proof. 
+      intros.  
+      destruct (pvalue_inv_env _ _ _ _ _ _ _ Ha Hva) as [vxa Hxa]. 
+      destruct (pvalue_inv_env _ _ _ _ _ _ _ Hb Hvb) as [vxb Hxb]. 
+      destruct (pvalue_N_inversion env bdd a va Hva _ _ _ Ha _ Hxa) as [vla [vha [[Hla Hha] Hwa]]].
+      destruct (pvalue_N_inversion env bdd b vb Hvb _ _ _ Hb _ Hxb) as [vlb [vhb [[Hlb Hhb] Hwb]]].
+      destruct (IH _ Hwf _ _ _ _ H1 _ Hwa _ Hlb) as [Hvx Hincr]. 
+      refine (let (Hvx1,Hincr2) := IH bdd1 (_ : wf  bdd1) _ _ _ _ H2 
+                                      _ (_: pvalue env bdd1 (N a) _) 
+                                      _ (_: pvalue env bdd1 hb vhb) in _
+             ); eauto. 
+      inj. 
+      refine (let (Hab, Hincr2) := mk_node_pcorrect ( _ : wf bdd2) H3 _ _ _ _ _ _ in _
+             ); eauto. 
+      destruct (vxa); destruct (vxb); split; eauto.  
+    Qed.
+  
+    Lemma binop_pcorrect_eq (Heq: xa = xb) : forall
+                                              l bdd1 (H1 : opb bdd n la lb  = Some (l, bdd1))
+                                              h bdd2 (H2 : opb bdd1 n ha hb = Some (h, bdd2))
+                                              ab bdd3 (H3 : mk_node bdd2 l xa h = (ab, bdd3)),
+                                              (pvalue env bdd3 ab (op va vb) * incr bdd bdd3). 
+    Proof. 
+      intros. 
+      destruct (pvalue_inv_env _ _ _ _ _ _ _ Ha Hva) as [vxa Hxa]. 
+      destruct (pvalue_inv_env _ _ _ _ _ _ _ Hb Hvb) as [vxb Hxb]. 
+      subst.  rewrite Hxb in Hxa; inject Hxa. 
+      destruct (pvalue_N_inversion env bdd a va Hva _ _ _ Ha _ Hxb) as [vla [vha [[Hla Hha] Hwa]]].
+      destruct (pvalue_N_inversion env bdd b vb Hvb _ _ _ Hb _ Hxb) as [vlb [vhb [[Hlb Hhb] Hwb]]].
+      destruct (IH _ Hwf _ _ _ _ H1 _ Hla _ Hlb) as [Hvx Hincr]. 
+      refine (let (Hvx1,Hincr2) := IH bdd1 (_ : wf bdd1) _ _ _ _ H2 
+                                      _ (_: pvalue env bdd1 ha vha) 
+                                      _ (_: pvalue env bdd1 hb vhb) in _
+             ); eauto. 
+      inj. 
+      refine (let (Hab, Hincr2) := mk_node_pcorrect _ H3 _ _ _ _ _ _  in _
+             ); eauto.
+      split; destruct (vxa); eauto.  
+    Qed. 
+  End binop.  
+
+  Ltac t s ::= 
+     repeat 
+     ((match goal with 
+       | H : Some _ = Some _ |- _ => injection H; clear H; intros; subst
+       | H : (None = Some _) |- _ => discriminate
+       | H : (bind ?F ?G = Some ?X) |- _ => 
+         destruct (bind_inversion _ _ F G _ H) as [?x [?I ?I]]; clear H
+       | H : (bind2 ?F ?G = Some ?X) |- _ => 
+         destruct (bind2_inversion F G _ H) as [?x [?x [?I ?I]]]; clear H
+       | |- context [(bind (Some _) ?G)] => simpl
+       | H : (bind ?x ?f = None) |- _ => 
+         destruct (bind_inversion_None x f H) as [?H | [?x [?I ?I]]]
+       | H : ?x = Some ?y |- context [?x] => rewrite H
+       | |- (_ * incr ?x ?x)%type => refine ( _ , incr_refl x )                              
+       | H : pvalue ?env ?b T _ |- _ => inversion_clear H
+       | H : pvalue ?env ?b F _ |- _ => inversion_clear H
+       | |- pvalue ?env _ T _ => constructor
+       | |- pvalue ?env _ F _ => constructor
+       | |- _ => subst           
+      end) || s); trivial.
+
+  Lemma andb_pcorrect env bdd (Hwf: wf bdd) n a b ab bdd' :
+    andb bdd n a b = Some (ab, bdd') ->
+    forall va, pvalue env bdd a va -> 
+          forall vb, pvalue env bdd b vb -> 
+                pvalue env bdd' ab (va && vb)%bool * incr bdd bdd'.
+  Proof.
+    revert bdd Hwf a b ab bdd'. 
+    induction n; intros bdd Hwf a b ab bdd' Hand va Hva vb Hvb. 
+    - discriminate. 
+    - simpl in Hand. 
+    Ltac s := 
+      try match goal with 
+            | |- context [(_ && false)%bool]  => rewrite Bool.andb_comm; simpl Datatypes.andb
+            | |- context [(_ && true)%bool]  => rewrite Bool.andb_comm; simpl  Datatypes.andb
+            | |- context [(false && _ )%bool]  => simpl  Datatypes.andb
+            | |- context [(true  && _ )%bool]  => simpl  Datatypes.andb
+          end.  
+    destruct a as [ | | a]; destruct b as [ | | b]; simpl in *; t s.   
+   
+    destruct x as [[la xa] ha]. destruct x0 as [[lb xb] hb]. 
+    destruct (NPeano.Nat.compare xa xb) eqn: Heq.
+      + apply nat_compare_eq in Heq; subst; t s.
+        eapply binop_pcorrect_eq; eauto.  
+      + t s; eauto using binop_pcorrect_lt.        
+      + t s; eauto using binop_pcorrect_gt. 
+  Qed.
+  
+  
+  Lemma orb_pcorrect env bdd (Hwf: wf bdd) n a b ab bdd' :
+    orb bdd n a b = Some (ab, bdd') ->
+    forall va, pvalue env bdd a va -> 
+          forall vb, pvalue env bdd b vb -> 
+                (pvalue env bdd' ab (va || vb)%bool * incr bdd bdd').
+  Proof.
+    revert bdd Hwf a b ab bdd'. 
+    induction n; intros bdd Hwf a b ab bdd' Hand va Hva vb Hvb. 
+    - discriminate. 
+    - simpl in Hand. 
+      Ltac s ::= 
+           try 
+           match goal with 
+             | |- context [(_ || false)%bool]  => rewrite Bool.orb_comm; simpl Datatypes.orb
+             | |- context [(_ || true)%bool]  => rewrite Bool.orb_comm; simpl  Datatypes.orb
+             | |- context [(false || _ )%bool]  => simpl  Datatypes.orb
+             | |- context [(true  || _ )%bool]  => simpl  Datatypes.orb
+           end.
+      destruct a as [ | | a]; destruct b as [ | | b]; simpl in *; t s.
+      destruct x as [[la xa] ha]. destruct x0 as [[lb xb] hb]. 
+      destruct (NPeano.Nat.compare xa xb) eqn: Heq.
+      + apply nat_compare_eq in Heq; subst; t s. 
+        eauto using binop_pcorrect_eq. 
+      + t s; eauto using binop_pcorrect_lt.        
+      + t s; eauto using binop_pcorrect_gt.
+  Qed.  
+  
+  Lemma negb_pcorrect env bdd (Hwf: wf bdd) n a a' bdd' :
+    negb bdd n a = Some (a', bdd') ->
+    forall va, pvalue env bdd a va -> 
+          (pvalue env bdd' a' (Datatypes.negb va)%bool * incr bdd bdd').
+  Proof.
+    revert bdd Hwf a a' bdd'. 
+    induction n; intros bdd Hwf a a' bdd' Hnegb va Hva. 
+    - discriminate. 
+    - simpl in Hnegb. 
+      Ltac s ::= 
+           try
+           match goal with 
+             | |- context [(Datatypes.negb false)%bool] =>  simpl Datatypes.negb 
+             | |- context [(Datatypes.negb true)%bool]  =>  simpl Datatypes.negb
+           end. 
+      destruct a as [ | | a]; simpl in *; t s.
+      destruct x as [[la xa] ha]; t s.
+      destruct (pvalue_inv_env _ _ _ _ _ _ _ I Hva) as [vxa Hxa]. 
+
+      destruct (pvalue_N_inversion env bdd a va Hva _ _ _ I _ Hxa) as [vla [vha [[Hla Hha] Hwa]]].
+      destruct (IHn _ Hwf _ _ _ I1 _ Hla) as [Hvx Hincr]; clear I1. 
+      refine (let (Hvx1,Hincr2) := IHn x0 (_ : wf x0) _ _ _ I0 
+                                       _ (_: pvalue env _ ha vha) 
+              in _
+             ); eauto.
+      pose proof (pvalue_inj _ _ _ _ Hva _ Hwa); subst. 
+      refine (let (Hab, Hincr2) := mk_node_pcorrect (_ : wf x2) H _ _ _ _ _ _ in _
+             ); eauto. 
+      split; destruct (vxa); eauto. 
+  Qed.
+  
+  Lemma xorb_pcorrect env bdd (Hwf: wf bdd) n a b ab bdd' :
+    xorb bdd n a b = Some (ab, bdd') ->
+    forall va, pvalue env bdd a va -> 
+          forall vb, pvalue env bdd b vb -> 
+                (pvalue env bdd' ab (Datatypes.xorb va vb)%bool * incr bdd bdd').
+  Proof.
+    revert bdd Hwf a b ab bdd'. 
+    induction n; intros bdd Hwf a b ab bdd' Hand va Hva vb Hvb. 
+    - discriminate. 
+    - simpl in Hand. 
+      Ltac s ::= 
+           repeat 
+           match goal with 
+             | |- context [(Datatypes.xorb _ false)%bool]  => rewrite Bool.xorb_false_r
+             | |- context [(Datatypes.xorb _ true)%bool]  => rewrite Bool.xorb_true_r
+             | |- context [(Datatypes.xorb false  _ )%bool]  => rewrite Bool.xorb_false_l
+             | |- context [(Datatypes.xorb true _ )%bool]  => rewrite Bool.xorb_true_l                   
+           end.
+      destruct a as [ | | a]; destruct b as [ | | b]; simpl in *; t s; eauto using negb_pcorrect. 
+      
+      destruct x as [[la xa] ha]. destruct x0 as [[lb xb] hb]. 
+      destruct (NPeano.Nat.compare xa xb) eqn: Heq.
+      + apply nat_compare_eq in Heq; subst; t s. 
+        eauto using binop_pcorrect_eq. 
+      + t s; eauto using binop_pcorrect_lt. 
+      + t s; eauto using binop_pcorrect_gt. 
+  Qed.
+   
+  Lemma mk_var_pcorrect' env bdd (Hwf: wf bdd) v ptr bdd' :
+    mk_var bdd v = (ptr, bdd') -> 
+    forall r, List.nth_error env v = Some r -> 
+    pvalue env bdd' ptr r * incr bdd bdd'. 
+  Proof. 
+    unfold mk_var. intros. 
+    eapply (@mk_node_pcorrect env) in H; eauto.  
+    destruct (r); apply H. 
+  Qed. 
+
+
+  Lemma mk_var_pcorrect bdd (Hwf: wf bdd) bdd' env ptr e: 
+    mk_var bdd (Datatypes.length env) = (ptr, bdd') -> 
+    pvalue (List.app env [e]) bdd' ptr e. 
+  Proof.   
+    intros. 
+    pose proof (mk_var_pcorrect' (List.app env [e]) _ _ _ _ _ H e).  
+    rewrite list_nth_error_length in X. specialize (X refl_equal). intuition.  
+  Qed. 
+
+  Lemma ite_pcorrect bdd (Hwf: wf bdd) bdd' n env c l r ptr: 
+    ite bdd n c l r = Some (ptr, bdd') -> 
+    forall vc, pvalue env bdd c vc -> 
+          forall vl, pvalue env bdd l vl -> 
+                forall vr, pvalue env bdd r vr -> 
+                      (pvalue env bdd' ptr  (if vc then vl else vr) * incr bdd bdd'). 
+  Proof. 
+    unfold ite.
+    intros H. simpl_do. intros. 
+    eapply andb_pcorrect in H0; eauto. destruct H0.      
+    eapply negb_pcorrect in H; eauto. destruct H.   
+    eapply andb_pcorrect in H1; eauto. destruct H1. 
+    eapply orb_pcorrect in H3; eauto. destruct H3. 
+    simpl in *. 
+    destruct vc; simpl in p2; split; eauto.   
+    rewrite Bool.orb_comm in p2. apply p2. 
+  Qed. 
+End pvalue. 
+
+Lemma mk_var_incr bdd (Hwf: wf bdd) bdd' n ptr: 
+  mk_var bdd n = (ptr, bdd') -> 
+  incr bdd bdd'. 
+Proof. 
+  intros. 
+  eapply (mk_var_correct (fun _ => false)) in H. 
+  destruct H. auto. 
+  auto. 
+Qed.   
+
+Lemma mk_var_path bdd bdd' (Hwf: wf bdd) n ptr: mk_var bdd n = (ptr, bdd') -> 
+                                  path bdd' ptr. 
+Proof. 
+  intros H. eapply (mk_var_correct (fun _ => false)) in H; auto.
+  destruct H as [Hv Hincr]. 
+  apply path_of_value in Hv. auto. 
+Qed. 
+
+
+
+Lemma wf_empty : wf empty. 
+Proof. 
+  constructor; simpl; intros.
+  - split; intro H. 
+    rewrite NMapFacts.empty_o in H. discriminate. 
+    rewrite PMap.gempty in H. discriminate. 
+  - rewrite PMap.gempty in H. discriminate.  
+  - exfalso. zify; omega. 
+  - exfalso. zify; omega. 
+  - inversion H. simpl in H1. rewrite PMap.gempty in H1. clear - H1; discriminate. 
+Qed. 

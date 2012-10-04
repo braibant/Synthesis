@@ -133,7 +133,7 @@ End t.
 
 Require Compiler. 
 Require Import FirstOrder Core.
-Eval vm_compute in Compiler.copt (Phi 5) _ (mult 5). 
-Eval vm_compute in Compiler.Fo_CP_compile (Phi 5) _ (mult 5). 
+Eval vm_compute in Compiler.fesiopt (Phi 5) _ (mult 5). 
+Eval vm_compute in Compiler.fesic (Phi 5) _ (mult 5). 
     
     

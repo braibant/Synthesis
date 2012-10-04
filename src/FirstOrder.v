@@ -355,96 +355,98 @@ Section s.
         | H : value_equiv (Core.Tint ?n) ?a ?b |- _ => apply value_equiv_int_inversion in H
              end; try constructor. 
     t. subst. 
-    dependent destruction r. 
-    apply H0. 
+(*     constructor.  *)
+(* dependent destruction r.  *)
+(*     apply H0.  *)
     
-    simpl. 
-    repeat DList.inversion. 
-    specialize (IHv adr1 adr2 H). 
-    t. subst. 
-    dependent destruction Hst. 
-    specialize (IHv _ _ Hst).
-    setoid_rewrite H in IHv. 
-    simpl in IHv. 
-    inversion IHv; tt. clear IHv. auto. 
-    + 
-      Ltac s := subst; 
-               repeat match goal with 
-                          |- context [Word.of_bool ?x] => is_var x;  destruct x
-                      end; reflexivity.
+(*     simpl.  *)
+(*     repeat DList.inversion.  *)
+(*     specialize (IHv adr1 adr2 H).  *)
+(*     t. subst.  *)
+(*     dependent destruction Hst.  *)
+(*     specialize (IHv _ _ Hst). *)
+(*     setoid_rewrite H in IHv.  *)
+(*     simpl in IHv.  *)
+(*     inversion IHv; tt. clear IHv. auto.  *)
+(*     +  *)
+(*       Ltac s := subst;  *)
+(*                repeat match goal with  *)
+(*                           |- context [Word.of_bool ?x] => is_var x;  destruct x *)
+(*                       end; reflexivity. *)
       
-      destruct f; t; try constructor; try s. 
+(*       destruct f; t; try constructor; try s.  *)
       
-      {subst. apply Word.eq_correct. destruct x; destruct x1; try reflexivity. }
-      {f_equal. 
-       case_eq (Core.type_eq t0 x x1); intros Heq.  apply Core.type_eq_correct in Heq. subst. 
-       Lemma value_equiv_inj_right : 
-         forall t x y z,
-           value_equiv t x y -> 
-           value_equiv t x z -> 
-           y = z. 
-       Proof. 
-         intros t. induction t using Core.type_ind; simpl; intros; t.
-         + destruct x. dependent destruction H; dependent destruction H0; tt. reflexivity. 
-         + destruct x; dependent destruction H; dependent destruction H0; tt; reflexivity. 
-         + subst. tauto. 
-         + admit. 
-         + destruct x; dependent destruction H; dependent destruction H0; reflexivity. 
-         + destruct x. dependent destruction H. dependent destruction H1; tt.                      
-           pose proof (IHt _ _ _ H H1_). 
-           pose proof (IHt0 _ _ _ H0 H1_0). clear - H1 H2. 
-           Lemma combine_low_high : forall n m (x : Word.T (n+m)), 
-                                      x = Word.combineLH n m (Word.low n m x)(Word.high n m x).
-           Admitted. 
-           rewrite (combine_low_high _ _ y). 
-           rewrite (combine_low_high _ _ z). 
-           setoid_rewrite H1. setoid_rewrite H2. f_equal. 
-       Qed. 
-       pose proof (value_equiv_inj_right _ _ _ _ H2 H0). 
-       subst. 
-       symmetry. rewrite  Word.eq_correct. reflexivity. 
-       admit.                   (* the type-class eq function must be complete *)
-      }
-      {
-        admit.                  (* we should drop lt as a type_class function *)
-      }
-      {
-        tt. destruct x; simpl. auto.  auto. 
-      }
-      {
-        admit.                  (* We should drop the finite numbres too *)
-      }
+(*       {subst. apply Word.eq_correct. destruct x; destruct x1; try reflexivity. } *)
+(*       {f_equal.  *)
+(*        case_eq (Core.type_eq t0 x x1); intros Heq.  apply Core.type_eq_correct in Heq. subst.  *)
+(*        Lemma value_equiv_inj_right :  *)
+(*          forall t x y z, *)
+(*            value_equiv t x y ->  *)
+(*            value_equiv t x z ->  *)
+(*            y = z.  *)
+(*        Proof.  *)
+(*          intros t. induction t using Core.type_ind; simpl; intros; t. *)
+(*          + destruct x. dependent destruction H; dependent destruction H0; tt. reflexivity.  *)
+(*          + destruct x; dependent destruction H; dependent destruction H0; tt; reflexivity.  *)
+(*          + subst. tauto.  *)
+(*          + admit.  *)
+(*          + destruct x; dependent destruction H; dependent destruction H0; reflexivity.  *)
+(*          + destruct x. dependent destruction H. dependent destruction H1; tt.                       *)
+(*            pose proof (IHt _ _ _ H H1_).  *)
+(*            pose proof (IHt0 _ _ _ H0 H1_0). clear - H1 H2.  *)
+(*            Lemma combine_low_high : forall n m (x : Word.T (n+m)),  *)
+(*                                       x = Word.combineLH n m (Word.low n m x)(Word.high n m x). *)
+(*            Admitted.  *)
+(*            rewrite (combine_low_high _ _ y).  *)
+(*            rewrite (combine_low_high _ _ z).  *)
+(*            setoid_rewrite H1. setoid_rewrite H2. f_equal.  *)
+(*        Qed.  *)
+(*        pose proof (value_equiv_inj_right _ _ _ _ H2 H0).  *)
+(*        subst.  *)
+(*        symmetry. rewrite  Word.eq_correct. reflexivity.  *)
+(*        admit.                   (* the type-class eq function must be complete *) *)
+(*       } *)
+(*       { *)
+(*         admit.                  (* we should drop lt as a type_class function *) *)
+(*       } *)
+(*       { *)
+(*         tt. destruct x; simpl. auto.  auto.  *)
+(*       } *)
+(*       { *)
+(*         admit.                  (* We should drop the finite numbres too *) *)
+(*       } *)
 
-    + induction ty using Core.type_ind.
-      destruct c. constructor. reflexivity.
-      destruct c; try constructor; apply Word.eq_correct; reflexivity. 
-      constructor. reflexivity. 
-      admit.                    (* fin *)
-      destruct c. constructor. reflexivity. 
-      destruct c. simpl. constructor. simpl. 
-      Lemma low_combine n m x y : Word.low n m (Word.combineLH n m x y) = x. 
-      Admitted. 
-      Lemma high_combine n m x y : Word.high n m (Word.combineLH n m x y) = y. 
-      Admitted. 
-      rewrite low_combine. auto. 
-      rewrite high_combine. simpl. apply IHty0.   
-    + t; subst. destruct c2; simpl; auto. 
-    + t. inversion H0; tt. apply H3. 
-    + t. inversion H0; tt. apply H6. 
-    + t.
-      clear  dl1 H. 
-      induction v. 
-      simpl.  inversion H0; tt. constructor. apply H2. 
+(*     + induction ty using Core.type_ind. *)
+(*       destruct c. constructor. reflexivity. *)
+(*       destruct c; try constructor; apply Word.eq_correct; reflexivity.  *)
+(*       constructor. reflexivity.  *)
+(*       admit.                    (* fin *) *)
+(*       destruct c. constructor. reflexivity.  *)
+(*       destruct c. simpl. constructor. simpl.  *)
+(*       Lemma low_combine n m x y : Word.low n m (Word.combineLH n m x y) = x.  *)
+(*       Admitted.  *)
+(*       Lemma high_combine n m x y : Word.high n m (Word.combineLH n m x y) = y.  *)
+(*       Admitted.  *)
+(*       rewrite low_combine. auto.  *)
+(*       rewrite high_combine. simpl. apply IHty0.    *)
+(*     + t; subst. destruct c2; simpl; auto.  *)
+(*     + t. inversion H0; tt. apply H3.  *)
+(*     + t. inversion H0; tt. apply H6.  *)
+(*     + t. *)
+(*       clear  dl1 H.  *)
+(*       induction v.  *)
+(*       simpl.  inversion H0; tt. constructor. apply H2.  *)
       
-      simpl. eapply IHv. inversion H0; tt. eauto.
-    + induction l.
-      repeat DList.inversion. simpl. constructor. constructor. reflexivity. 
-      simpl. repeat DList.inversion. simpl. t.  tt. simpl. 
-      specialize (IHl _ _ H0). inversion IHl. subst. simpl. constructor. 
-      constructor. simpl. 
-      rewrite low_combine. auto. simpl. 
-      rewrite high_combine. auto. 
-  Qed. 
+(*       simpl. eapply IHv. inversion H0; tt. eauto. *)
+(*     + induction l. *)
+(*       repeat DList.inversion. simpl. constructor. constructor. reflexivity.  *)
+(*       simpl. repeat DList.inversion. simpl. t.  tt. simpl.  *)
+(*       specialize (IHl _ _ H0). inversion IHl. subst. simpl. constructor.  *)
+(*       constructor. simpl.  *)
+(*       rewrite low_combine. auto. simpl.  *)
+(*       rewrite high_combine. auto.  *)
+(*   Qed.  *)
+  Admitted. 
   Print Assumptions compile_expr_correct. 
   End protect. 
   Definition compile_effect s (e : RTL.effect Var s) : effect (compile_sync s) :=  

@@ -292,24 +292,8 @@ End Ex2.
 Require Compiler. 
 Require Import FirstOrder RTL Core. 
 
-Eval vm_compute in
-     let x := Compiler.Fo_compile _ _ (Ex2.Code 4) in 
-       List.length (FirstOrder.bindings  x). 
+Definition t := (Compiler.fesiopt _ _ (Ex2.Code 4)). 
 
-Eval vm_compute in 
-     let x := Compiler.Fo_CP_compile _ _ (Ex2.Code 4) in 
-       List.length (FirstOrder.bindings x).
-
-Import  Common DList. 
-
-Eval vm_compute in
-      Compiler.Fo_compile _ _ (Ex2.Code 4).
-
-Definition t := (Compiler.copt _ _ (Ex2.Code 4)). 
-
-Eval vm_compute in
-  (do x <- Compiler.copt _ _ (Ex2.Code 4);
-   Some (List.length ( bindings  x))). 
 
 
 (* Definition finish {Phi t} x := List.length (FirstOrder.bindings Phi t(FirstOrder.compile _ _ x)).  *)

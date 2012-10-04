@@ -241,8 +241,8 @@ Proof.
 Qed.
 
 Lemma pointwise_map : forall (A : Type) (F G G' : A -> Type)
-  (P : forall a : A, F a -> G a -> Prop)
-  (Q : forall a : A, F a -> G' a -> Prop)
+  (P : forall a : A, F a -> G a -> Type)
+  (Q : forall a : A, F a -> G' a -> Type)
   (f : forall a : A, G a -> G' a)
   (_ : forall t dt1 dt2, P t dt1 dt2 -> Q t dt1 (f t dt2))
   l (dl1 : T F l) (dl2 : T G l),
@@ -255,7 +255,7 @@ Qed.
 Require Import Equality.
 
 Lemma inversion_dlist_cons {A F} : forall (t : A) q (dl : T F (t :: q)), 
-                              exists hd tl, dl = (cons hd tl)%dlist. 
+                              {hd : F t & {tl : T F q | dl = (cons hd tl)%dlist}}. 
 Proof. 
   intros.  dependent destruction dl. eauto. 
 Qed. 
