@@ -1,8 +1,9 @@
 Require Driver. 
 
-Set Extraction AccessOpaque.
 
 Cd "tmp".
+
+Set Extraction AccessOpaque.
 
 Extraction Blacklist String List.
 
@@ -58,5 +59,5 @@ Extract Constant Compare_dec.lt_eq_lt_dec =>
 Extract Constant Even.even_odd_dec => "fun n -> n mod 2 = 0".
 Extract Constant Div2.div2 => "fun n -> n/2".
 
-Recursive Extraction Library Driver. 
+Separate Extraction Driver. 
 
