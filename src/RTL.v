@@ -372,10 +372,10 @@ Section equiv.
   Reserved Notation "x ==e y" (at level 70, no associativity). 
   
   Section inner_equiv. 
-  Variable R : forall t, U t -> V t -> Prop. 
+  Variable R : forall t, U t -> V t -> Type. 
   Notation "x -- y" := (R _ x y) (at level 70, no associativity). 
     
-  Inductive expr_equiv : forall t,  expr Phi U t -> expr Phi V t -> Prop :=
+  Inductive expr_equiv : forall t,  expr Phi U t -> expr Phi V t -> Type :=
   | Eq_read : forall t v, Eread Phi U t v == Eread Phi V t v
   | Eq_read_rf : forall n t v adr1 adr2, 
                    adr1 -- adr2 -> 
@@ -405,7 +405,7 @@ Section equiv.
                Etuple Phi U l dl1 == Etuple Phi V l dl2
                             where "x == y" := (expr_equiv _ x y). 
   
-  Inductive effect_equiv : forall t,  option (effect U t) -> option (effect V t) -> Prop :=
+  Inductive effect_equiv : forall t,  option (effect U t) -> option (effect V t) -> Type :=
   | Eq_none : forall t, effect_equiv t None None
   | Eq_write : forall t v1 v2 we1 we2, 
                  v1 -- v2 -> we1 -- we2 -> 
@@ -416,7 +416,7 @@ Section equiv.
                          Some (effect_regfile_write V n t v2 adr2 we2)
                                   where "x ==e y" := (effect_equiv _ x y). 
  
-  Definition effects_equiv : effects Phi U -> effects Phi V -> Prop := 
+  Definition effects_equiv : effects Phi U -> effects Phi V -> Type := 
     DList.pointwise  effect_equiv Phi. 
     
   End inner_equiv. 
@@ -425,7 +425,7 @@ Section equiv.
   | nil : Gamma
   | cons : forall t, U t -> V t -> Gamma -> Gamma. 
   
-  Inductive In t (x : U t) (y : V t) : Gamma -> Prop :=
+  Inductive In t (x : U t) (y : V t) : Gamma -> Type :=
   | In_ok : forall Gamma x' y', x' = x -> y' = y ->
               In t x y (cons t x' y' Gamma )
   | In_skip : forall Gamma t' x' y', 
@@ -437,7 +437,7 @@ Section equiv.
   Reserved Notation "G |- x ==b y" (at level 70, no associativity). 
   Notation "G |- x -- y" := (In _ x y G) (at level 70, no associativity). 
 
-  Inductive block_equiv t : forall (G : Gamma), block Phi U t -> block Phi V t -> Prop :=
+  Inductive block_equiv t : forall (G : Gamma), block Phi U t -> block Phi V t -> Type :=
   | Eq_end : forall G (v1 : U t) v2 g1 g2 e1 e2, 
                G |- v1 -- v2 -> G |- g1 -- g2 -> effects_equiv (R G) e1 e2 ->
                G |- telescope_end Phi U _ (v1, g1, e1) ==b telescope_end Phi V _ (v2,g2, e2 ) 

@@ -16,9 +16,37 @@ Section attic.
       | t :: q => if mem t j then union q j else union q (t :: j)
     end%list. 
 End attic. 
-Require  MSets. Require Orders.
-Print Orders.OrderedType. 
-Module N := OrdersEx.Nat_as_OT. 
+Require MSets Orders. 
+Module N <: Orders.OrderedType.
+  Definition t := nat. 
+  Definition eq := @eq nat. 
+  Lemma eq_equiv: RelationClasses.Equivalence eq. 
+  Proof. auto. Qed. 
+  Definition lt := lt. 
+  Lemma lt_strorder : RelationClasses.StrictOrder lt.
+  Proof. constructor; compute. 
+         apply Le.le_Sn_n. 
+         intros. omega. 
+  Qed. 
+  
+  Lemma lt_compat :
+     Morphisms.Proper (Morphisms.respectful eq (Morphisms.respectful eq iff))
+       lt.
+  Proof. 
+    compute. intuition omega. 
+  Qed. 
+  Definition compare : t -> t -> comparison := NPeano.Nat.compare. 
+  Lemma compare_spec :
+     forall x y : t, CompareSpec (eq x y) (lt x y) (lt y x) (compare x y).
+  Proof. 
+    intros. 
+    apply NPeano.Nat.compare_spec. 
+  Qed. 
+  Lemma eq_dec : forall x y : t, {eq x y} + {~ eq x y}.
+  Proof. 
+    apply NPeano.Nat.eq_dec. 
+  Qed. 
+End N. 
 Module NS := MSetAVL.Make(N).
 
 Section t. 

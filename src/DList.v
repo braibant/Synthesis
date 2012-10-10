@@ -191,7 +191,7 @@ Definition dmap {A B} (F : A -> Type) (G: B -> Type) (C : A -> B) (D : forall x,
   apply IHdl. 
 Defined. 
 
-Inductive pointwise {A} F G (R : forall a, F a -> G a -> Prop): forall (l : list A), T F l -> T G l -> Prop :=
+Inductive pointwise {A} F G (R : forall a, F a -> G a -> Type): forall (l : list A), T F l -> T G l -> Type :=
 | pointwise_nil : pointwise F G R List.nil nil nil
 | pointwise_cons : forall t q dt1 dt2 dq1 dq2,
                      R t dt1 dt2 -> 
@@ -229,10 +229,33 @@ Section map3o.
     end. 
 End map3o. 
 
+Theorem map3_map : forall (X : Type) (F F' F'' : X -> Type)
+  (f : forall a : X, F a -> F' a -> F'' a -> F'' a)
+  l (dl1 dl1' : T F l),
+  pointwise _ _ (fun a (x1 x1' : F a) => forall x2 x3, f a x1 x2 x3 = f a x1' x2 x3) _ dl1 dl1'
+  -> forall (dl2 : T F' l) (dl3 : T F'' l),
+    map3 f l dl1 dl2 dl3 = map3 f l dl1' dl2 dl3.
+Proof. 
+  induction 1; simpl; intuition.
+  f_equal; auto.
+Qed.
+
+Lemma pointwise_map : forall (A : Type) (F G G' : A -> Type)
+  (P : forall a : A, F a -> G a -> Type)
+  (Q : forall a : A, F a -> G' a -> Type)
+  (f : forall a : A, G a -> G' a)
+  (_ : forall t dt1 dt2, P t dt1 dt2 -> Q t dt1 (f t dt2))
+  l (dl1 : T F l) (dl2 : T G l),
+  pointwise _ _ P _ dl1 dl2
+  -> pointwise _ _ Q _ dl1 (map f dl2).
+Proof. 
+  induction 2; simpl; intuition; constructor; intuition. 
+Qed.
+
 Require Import Equality.
 
 Lemma inversion_dlist_cons {A F} : forall (t : A) q (dl : T F (t :: q)), 
-                              exists hd tl, dl = (cons hd tl)%dlist. 
+                              {hd : F t & {tl : T F q | dl = (cons hd tl)%dlist}}. 
 Proof. 
   intros.  dependent destruction dl. eauto. 
 Qed. 
@@ -246,7 +269,7 @@ Qed.
 Require Import Equality.
 Lemma inversion_pointwise {A F G} P (t : A) q dt dq dt' dq':
   pointwise F G P (t :: q)%list (cons dt dq) (cons dt'  dq') ->
-  pointwise F G P q dq dq' /\ P t dt dt'. 
+  pointwise F G P q dq dq' * P t dt dt'. 
 Proof. 
   intros H.  
   inversion H;
@@ -263,7 +286,20 @@ Ltac inversion :=
         pose proof (inversion_dlist_nil H)
   end; subst. 
 
+
 Arguments DList.pointwise {A F G} _ l%list _%dlist _%dlist. 
+
+Ltac inv :=
+  repeat 
+    match goal with 
+      | H : DList.T _ (_ :: _) |- _ => 
+        destruct (inversion_dlist_cons _ _ H) as [? [? ?]]; subst        
+      | H : DList.T _ ([]) |- _ => 
+        pose proof (inversion_dlist_nil H); subst
+      | H : pointwise _ ( _ :: _ ) (cons _ _) (cons _ _) |- _ => 
+        apply inversion_pointwise in H; 
+        destruct H as [? ?]                                                              
+    end. 
 
 (** * [existb f dl] tests whether an element of [dl] satisfies the predicate [f] *)
 Section existb. 
@@ -313,8 +349,10 @@ End fold.
 
 Arguments fold {X A F} f {l} dl%dlist acc. 
 
+    
 End DList. 
 
 Notation "[ :: ]" := DList.nil : dlist_scope.
 Notation "t :: q" := (DList.cons t q) : dlist_scope.
 Notation "[ :: a ; .. ; b ]" := (a :: .. (b :: [ :: ]) ..)%dlist : dlist_scope.
+

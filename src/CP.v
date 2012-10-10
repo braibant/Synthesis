@@ -1,5 +1,5 @@
 Require Import Common DList Core ZArith. 
-Require BDD.
+Require BDD Seq.
 
 (* In this compilation pass, we implement boolean simplification using BDDs. *)
 
@@ -7,28 +7,13 @@ Section t.
 
   Variable Phi : state.   
   Variable Var : type -> Type.
-
-  Inductive toption A : type -> Type :=
-  | SNone : forall t, toption A t
-  | SSome : forall (b: A), toption A Core.Tbool. 
-
-  Arguments SNone {A} t. 
-  Arguments SSome {A} b. 
-
-  Definition bind {A B t} (F: A -> toption B Tbool) (o: toption A t) : toption B t :=
-    match o with
-        | SNone t => SNone t
-        | SSome x => (F x) end. 
-
-  Notation "'do' X <- A ; B" := 
-  (bind (fun X => B) A)
-    (at level 200, X ident, A at level 100, B at level 200). 
-
-  (* Maybe we have a pointer *)
-  Definition sval := toption BDD.expr. 
-
-  Notation V := (fun t => Var t * sval t)%type.   
   
+  (* Maybe we have a pointer *)
+  Definition sval := option BDD.expr. 
+
+  Notation V := (fun t => Var t * sval)%type.   
+  
+  (* The symbolic values *)
   Inductive bexpr :=
   | Lift : BDD.expr  -> bexpr
   | Ite : forall (c l r : BDD.expr), bexpr
@@ -36,26 +21,23 @@ Section t.
   | Or : forall (a b : BDD.expr), bexpr
   | Xor : forall (a b : BDD.expr), bexpr
   | Not : forall (a : BDD.expr), bexpr.
-  
-  (* Maybe we have a boolean expression *)
-  Definition bexpro := toption bexpr.   
-  
+    
   (* bang := lift Lift *)
-  Notation bang := (bind (fun x => SSome (Lift x))). 
-  Notation "!!" := (SNone _). 
+  Notation bang x := (do e <- x; (Some (Lift e))). 
+  Notation "!!" := (None). 
 
   Notation bop op dl:= 
   (let a := DList.hd dl in 
    let b := DList.hd (DList.tl dl) in 
-     do a <- (snd a);
-     do b <- (snd b);
-     SSome (op a b)). 
+     do a <- (snd a);            (* take the symbolic value of a *)
+     do b <- (snd b);            (* take the symbolic value of b *)
+     Some (op a b)).            (* apply the operation on the symbolic values *)
 
   Require Import RTL. 
-  Definition cp_expr t (e : expr Phi V t) : (expr Phi Var t) * (toption bexpr t). 
+  Definition cp_expr t (e : expr Phi V t) : (expr Phi Var t) * (option bexpr). 
   refine (match e with
             | Evar t x => 
-                match t as ty return V ty -> (expr Phi Var ty) * (toption bexpr ty) with 
+                match t as ty return V ty -> (expr Phi Var ty) * (option bexpr) with 
                   | Tbool => fun y => (Evar (fst y), bang (snd y)) 
                   | t => fun y  => (Evar (fst y), !!) end x
             | Eread t v => (Eread v, !!)
@@ -63,131 +45,128 @@ Section t.
             | Ebuiltin tys res f args  => 
                 (Ebuiltin f (DList.map (fun _ x => fst x) args), _)           
             | Econstant t x => 
-                match t as ty return constant ty -> (expr Phi Var ty * toption bexpr ty) with
+                match t as ty return constant ty -> (expr Phi Var ty * option bexpr) with
                   | Tbool => fun c => if ( c : bool)
-                                    then (Econstant c, SSome (Lift BDD.T))
-                                    else (Econstant c, SSome (Lift BDD.F))
+                                    then (Econstant c, Some (Lift BDD.T))
+                                    else (Econstant c, Some (Lift BDD.F))
                   | t => fun c => (Econstant c, !!) end x
             | Emux ty c l r => 
                 (_ ,
-                 match ty as t return V t -> V t  -> toption bexpr t with 
+                 match ty as t return V t -> V t  -> option bexpr with 
                    | Tbool => fun l r =>  
                                (do c <- (snd c);
                                 do l <- (snd l);
                                 do r <- (snd r);
-                                SSome (Ite c l r))
+                                Some (Ite c l r))
                    | _ => fun _ _ => !! end l r)
             | Efst l t v => (Efst (fst v) , !!)
             | Esnd l t v => (Esnd (fst v) , !!)
             | Enth l t m v => (Enth m (fst v), !!)
             | Etuple l dl => (Etuple (DList.map (fun _ x => fst x) dl), !!)
           end). 
-  refine (match f in builtin tys res return DList.T V tys -> toption bexpr res with
+  refine (match f in builtin tys res return DList.T V tys -> option bexpr with
             | BI_andb => fun dl =>  bop And dl
             | BI_orb  => fun dl =>  bop Or  dl
             | BI_xorb => fun dl =>  bop Xor dl
-            | BI_negb => fun dl =>  do e <- (snd (DList.hd dl)); SSome (Not e)
+            | BI_negb => fun dl =>  do e <- (snd (DList.hd dl)); Some (Not e)
             | _ => fun _ => !!
           end args); simpl.
   refine (match snd c with 
-                   | SSome BDD.T => (Evar (fst l))
-                   | SSome BDD.F => (Evar (fst r))
+                   | Some BDD.T => (Evar (fst l))
+                   | Some BDD.F => (Evar (fst r))
                    |  _ => Emux (fst c) (fst l) (fst r) end).  
   Defined. 
 
   Record Env := mk
     {
       Ebdd : BDD.BDD;
-      Eknown: list (BDD.expr * Var Tbool);
+      
+      (* An association list that maps pointers in the BDD to variables *)
+      Eassoc: list (BDD.expr * Var Tbool);
+      
+      (* The denotation of the variables of the bdd (i.e, the uninterpreted booleans) *)
+      Evalues: list (Var Tbool); 
+      
       Enext: nat
     }. 
 
-  Definition empty : Env := mk BDD.empty [] 100. 
+  Definition empty : Env := mk BDD.empty [] [] 0. 
   
   Definition add_bdd (Gamma: Env) (b:bexpr ): option (BDD.expr * Env) :=  
     match b with
       | Lift x => Some (x, Gamma)
       | Ite c l r => 
-          do r, bdd <- BDD.ite (Ebdd Gamma) c l r;
-          Some (r, mk bdd (Eknown Gamma) (Enext Gamma))
+          do v, bdd <- BDD.ite (Ebdd Gamma) (Enext Gamma) c l r;
+          Some (v, mk bdd (Eassoc Gamma) (Evalues Gamma) (Enext Gamma))
       | And a b => 
-          do  r,bdd <- BDD.andb (Ebdd Gamma) a b;
-          Some (r, mk bdd (Eknown Gamma) (Enext Gamma))
+          do  r,bdd <- BDD.andb (Ebdd Gamma) (Enext Gamma) a b;
+          Some (r, mk bdd (Eassoc Gamma) (Evalues Gamma) (Enext Gamma))
       | Or a b => 
-          do  r,bdd <- BDD.orb (Ebdd Gamma) a b;
-          Some (r, mk bdd (Eknown Gamma) (Enext Gamma))
+          do  r,bdd <- BDD.orb (Ebdd Gamma) (Enext Gamma) a b;
+          Some (r, mk bdd (Eassoc Gamma) (Evalues Gamma) (Enext Gamma))
       | Xor a b => 
-          do r,bdd  <- BDD.xorb (Ebdd Gamma) a b;
-          Some (r, mk bdd (Eknown Gamma) (Enext Gamma))
+          do r,bdd  <- BDD.xorb (Ebdd Gamma) (Enext Gamma) a b;
+          Some (r, mk bdd (Eassoc Gamma) (Evalues Gamma) (Enext Gamma))
       | Not a => 
-          do r,bdd <- BDD.negb (Ebdd Gamma) a;
-          Some (r, mk bdd (Eknown Gamma) (Enext Gamma))
+          do r,bdd <- BDD.negb (Ebdd Gamma) (Enext Gamma) a;
+          Some (r, mk bdd (Eassoc Gamma) (Evalues Gamma) (Enext Gamma))
     end. 
 
   Definition lookup (Gamma: Env) (b: BDD.expr) : option (Var Tbool) :=
-    BDD.assoc BDD.expr_eqb b (Eknown Gamma). 
+    BDD.assoc BDD.expr_eqb b (Eassoc Gamma). 
 
-  Definition add_env (Gamma: Env) (v:Var Tbool) (b:BDD.expr): Env :=
-    mk (Ebdd Gamma) ((b,v) :: Eknown Gamma) (Enext Gamma). 
-  
-  Definition incr Gamma :=
+  Definition incr Gamma v :=
     let n := (Enext Gamma) in 
     let (r, bdd) := BDD.mk_var (Ebdd Gamma) n in
-      (r, mk bdd (Eknown Gamma) (S n)). 
+      (r, mk bdd (Eassoc Gamma) (Evalues Gamma ++ [v]) (S n)). 
 
+  Definition add_env (Gamma: Env) (v:Var Tbool) (b:BDD.expr): Env :=
+    mk (Ebdd Gamma) (List.app (Eassoc Gamma) [(b,v)]) (Evalues Gamma) (Enext Gamma). 
+  
   (* Unfortunately, multiple reads from the same state elements cannot be shared *)
   Fixpoint cp_telescope {A} (Gamma: Env) (T : telescope Phi V A) : telescope Phi Var A :=
     match T with
       | & x => & x
       | telescope_bind arg b cont => 
-          let (e,svo) := cp_expr arg b in 
-            match svo in toption _ arg return 
-               (Var arg * sval arg -> telescope Phi V A) -> 
-               expr Phi Var arg -> telescope Phi Var A 
-            with 
-              | @SNone  arg => 
-                  match arg as ty return 
-                     (Var ty * sval ty -> telescope Phi V A) -> 
-                     expr Phi Var ty -> telescope Phi Var A 
-                  with 
-                    | Tbool => fun cont e => 
-                                (
-                                  k :- e; 
-                                  let (ptr, Gamma) := incr Gamma in 
-                                    let Gamma := add_env Gamma k ptr in
-                                      cp_telescope Gamma (cont (k, SSome ptr)))
-                    | _ => fun cont e => 
-                            k :- e; cp_telescope Gamma (cont (k, SNone _))
+        let (e,sv) := cp_expr arg b in 
+        match arg return 
+              (Var arg * sval -> telescope Phi V A) -> 
+              expr Phi Var arg -> telescope Phi Var A 
+        with 
+          | Tbool => 
+            match sv with 
+              | None => 
+                fun cont e => 
+                  (
+                    k :- e; 
+                    let (ptr, Gamma) := incr Gamma k in 
+                    cp_telescope Gamma (cont (k, Some ptr))
+                  )
+              | Some v => 
+                fun cont e =>  
+                  match add_bdd Gamma v with 
+                    | Some (ptr, Gamma) =>
+                      (* the symbolic value correspond to a pointer in the bdd *)
+                      match lookup Gamma ptr with
+                        | None => (* this pointer does not correspond to a
+                                 value. We bind this value, and add it
+                                 to the environment*)                          
+                          (k :- e;
+                           let Gamma := add_env Gamma k ptr in 
+                           cp_telescope  Gamma (cont (k, Some ptr)))
+                        | Some old => 
+                          (* This pointer was already mapped to a value. No need to bind a new value *)
+                          cp_telescope Gamma (cont (old, (Some ptr))) 
+                      end
+                    | None => 
+                      (* adding to the bdd failed. This should not happen, but is safe *)
+                      k :- e; cp_telescope Gamma (cont (k,None))
                   end
-              | SSome sv => 
-                  (* We have a symbolic value *)
-                  fun cont e =>  
-                    match add_bdd Gamma sv with 
-                      | Some (ptr, Gamma) =>
-                          (* the symbolic value correspond to a pointer in the bdd *)
-                          match lookup Gamma ptr with
-                            | None =>
-                                (* this pointer does not
-                                          correspond to a value. We
-                                          bind this value, and add it
-                                          to the environment*)
-                                k :- e;
-                                let Gamma := add_env Gamma k ptr in 
-                                  cp_telescope Gamma (cont (k, SSome ptr))
-                            | Some old => 
-                                (* the pointer was already
-                                          associated. No need to bind
-                                          a new value *)
-                                cp_telescope Gamma (cont (old, (SSome ptr))) 
-                          end
-                      | None => 
-                          (* adding to the bdd failed. This
-                                    should not happen, but is safe *)
-                          k :- e; cp_telescope Gamma (cont (k,SNone _))
-                    end
-            end cont e
-    end. 
-
+            end
+          | _ => fun cont e => 
+                  k :- e; cp_telescope Gamma (cont (k, None))
+        end cont e
+    end.  
 
   Definition cp_effects (eff: effects Phi V) : effects Phi Var :=
     DList.map
@@ -205,14 +184,685 @@ Section t.
   
   
   Definition cp_block  t (b : block Phi V t) : block Phi Var t :=    
-    let b := ( _ :- @Econstant  _ _ Tbool true ;
-               _ :- @Econstant  _ _ Tbool false ;
-               b) in 
+    (* let b := ( _ :- @Econstant  _ _ Tbool true ; *)
+    (*            _ :- @Econstant  _ _ Tbool false ; *)
+    (*            b) in  *)
     k :-- cp_telescope empty b;
-    match k with (v,g,e) =>
+   match k with (v,g,e) =>
                    & (fst v, fst g, cp_effects  e)
     end. 
-End t. 
+End t.   
+Arguments Ebdd {Var} e. 
+Arguments Evalues {Var} e. 
+Arguments Eassoc {Var} e. 
+Arguments Enext {Var} e. 
+
+Notation V := (fun t => eval_type t * sval)%type.   
+
+  
+Definition value (E: Env eval_type) (e : BDD.expr) v :=
+  BDD.pvalue  (Evalues E) (Ebdd E) e v. 
+
+Inductive bvalue (E: Env eval_type) : bexpr -> bool -> Type :=
+|bvalue_Lift: forall x vx, value E x vx -> 
+                     bvalue E (Lift x) vx 
+|bvalue_Ite: forall c vc, value E c vc -> 
+              forall l vl, value E l vl -> 
+              forall r vr, value E r vr -> 
+                     bvalue E (Ite c l r) (if vc then vl else vr)
+|bvalue_And: forall a va, value E a va -> 
+            forall b vb, value E b vb -> 
+                   bvalue E (And a b) (va && vb)
+|bvalue_Or: forall a va, value E a va -> 
+           forall b vb, value E b vb -> 
+                   bvalue E (Or a b) (va || vb)
+|bvalue_XOr: forall a va, value E a va -> 
+                     forall b vb, value E b vb -> 
+                  bvalue E (Xor a b) (xorb va vb)                         
+|bvalue_Not: forall a va, value E a va -> 
+                      bvalue E (Not a) (negb va). 
+    
+Notation "G |= x -- y" := (In _ _ _ x y G) (no associativity, at level 71). 
+
+(* Recall that V t is defined as  eval_type t * sval, and sval = option BDD.expr. 
+   We have G |= x -- (v, Some e) when x = v and BDD.value e v 
+ *)
+
+Record inv (G: Gamma eval_type V) (E: Env eval_type) :=
+  {
+    inv_1 : forall t (x : eval_type t) y, G |= x -- y -> x = fst y;
+    inv_2 : forall (x: eval_type Tbool) x' e , G |= x -- (x', Some e) -> 
+                                      value E e x; 
+    inv_path : forall  (x: eval_type B) x' e, G |= x -- (x',Some e) -> 
+                        BDD.path (Ebdd E) e;
+    inv_bdd_wf : BDD.wf  (Ebdd E); 
+    inv_next_2 : (Enext E) = List.length (Evalues E) ;
+    inv_assoc : forall x (y: BDD.expr), Seq.In (y,x) (Eassoc E) -> G |= x -- (x,Some y)            
+  }. 
+
+Arguments inv_1 {G E} _ t x y _.
+Arguments inv_2 {G E} _ x x' e _.
+Arguments inv_path {G E} _ x x' e _.
+Arguments inv_bdd_wf {G E} _.
+Arguments inv_next_2 {G E} _.
+Arguments inv_assoc {G E} _ x y _.
+
+Notation R := (fun G t x y => In _ _ t x y G).  
+
+Ltac d := 
+  repeat 
+    match goal with 
+          | x: (eval_type _ * sval)%type, 
+               H: _ |= _ -- ?x' |- _ => constr_eq x x'; destruct x
+          | H: context [snd ?x] |- _ => simpl in H
+          | H: ?x = Some _ |- _ => subst
+        end. 
+
+Hint Unfold value.
+
+Lemma cp_expr_correct Phi st : 
+  forall e1 r1, 
+    eval_expr Phi st B e1 = r1 ->
+    forall G (env : Env eval_type) e2,
+      expr_equiv _ _ Phi (R G) B e1 e2 ->     
+      inv G env -> 
+      forall sv, snd (cp_expr Phi _ B  e2) = Some sv -> 
+            bvalue env sv r1. 
+Proof. 
+  destruct 1; inversion 1; injectT;  try solve [destruct t; simpl; auto]; intros INV sv; simpl; try discriminate.  
+  - Require Import Equality. 
+    dependent destruction f; simpl; DList.inv; simpl;
+    intros; simpl_do; d; constructor; eapply inv_2; eassumption. 
+    Hint Constructors BDD.pvalue. 
+    Hint Constructors bvalue. 
+  - destruct c; simpl; intros H; inject H; eauto. 
+  - intros; simpl_do; d; constructor; eapply inv_2; eassumption. 
+Qed. 
+
+Lemma cp_effects_correct (Phi : state) st Delta G e  (Hg : inv G e):
+  forall e1 e2 
+  (H : effects_equiv eval_type V Phi (RTL.R eval_type V G) e1 e2), 
+   eval_effects Phi st e1 Delta =
+   eval_effects Phi st (cp_effects Phi eval_type e2) Delta. 
+Proof. 
+  intros e1 e2 H.
+  apply DList.map3_map.   
+  eapply DList.pointwise_map; [| apply H];
+  clear H; simpl in *; intros. 
+  inversion X; injectT; unfold RTL.R in *; 
+  repeat (match goal with 
+            | |- ?x = ?x  => reflexivity
+            | |- context [match ?x with _=> _ end] => 
+              case_eq x; intros
+            | H' : In _ _ _ ?x ?y _ |- _ => 
+              rewrite (inv_1 Hg _ _ _ H')
+            | H : context [fst ?x] |- _ => progress (simpl in H)
+            | H : ?x = ?x |- _ => clear H
+            | H : ?y = ?x, H' : ?x = ?y |- _ => clear H'
+            | x : (_ * _)%type |- _ =>  destruct x; simpl; subst
+          end); simpl. 
+Qed.
+ 
+Lemma inv_cons_None G E t e f: 
+  inv G E -> 
+  e = f -> 
+  inv (cons eval_type V t e (f, None) G) E. 
+Proof. 
+  intros Hinv Heq; subst. 
+  econstructor. 
+  + intros ty x y.  inversion 1; injectT.  reflexivity. 
+    apply Hinv; auto. 
+    
+  + intros x x' e H. inversion H; injectT. discriminate. eapply inv_2; eassumption.  
+  + intros x x' e H. inversion H; injectT. congruence.  eapply inv_path; eauto.  
+  + apply Hinv. 
+  + intros. apply Hinv.
+  + intros. apply In_skip. eapply inv_assoc; eauto.  
+Qed. 
+
+Lemma cp_expr_correct_2 Phi st G env (Hg : inv G env) t:
+  forall e1 e2, expr_equiv eval_type V Phi (RTL.R eval_type V G) t e1 e2 ->
+           forall svo e, cp_expr Phi eval_type t e2 = (e,svo) ->
+                           eval_expr Phi st t e1 = eval_expr Phi st t e. 
+Proof.
+  Ltac crush :=
+    repeat (match goal with 
+      | H: (_,_) = (_,_) |- _ => inject H
+      | Hg : inv _ _ ,  H : In _ _ _ ?x ?y _ |- context [?x] =>
+        rewrite (inv_1 Hg _ _ _ H)
+      | H : DList.T [] |- _ => DList.inversion 
+      | H : DList.T (_ :: _) |- _  => DList.inversion 
+      | H : DList.pointwise _ ( _ :: _) _ _ |- _ => apply DList.inversion_pointwise in H; destruct H
+    end); try reflexivity; try f_equal. 
+  intros e1. destruct e1; intros e2 H; inversion H; injectT; simpl; intros; unfold RTL.R in *; crush.
+  
+  - simpl. f_equal. 
+    clear H b. 
+    induction args; DList.inv;simpl; intuition. 
+    + crush;  eauto. 
+  -  destruct ty; crush. destruct c; crush. 
+  - clear H.  
+    destruct c2. simpl.  destruct s; simpl. destruct e3; simpl.
+    
+    Ltac save Hg :=
+      repeat match goal with 
+        |  H : _ |= _ -- _ |- _ =>
+           pose proof (inv_1 Hg _ _ _ H);
+           pose proof (inv_2 Hg _ _ _ H);
+                    clear H
+      end. 
+    save Hg. simpl in *; subst. inversion H0; reflexivity. 
+    save Hg. simpl in *; subst. inversion H0. reflexivity.    
+    reflexivity. 
+    reflexivity. 
+  - simpl. clear H. 
+    induction l; repeat DList.inversion;simpl; intuition. 
+    + crush; eauto. 
+
+Qed. 
+
+
+
+(* Lemma bdd_value_path bdd l e v:  *)
+(*   BDD.value (lift l) bdd e v ->  *)
+(*   BDD.path bdd (List.length l) e -> *)
+(*   (forall l' v', BDD.value (lift (l ++ l')) bdd e v' -> v' = v).  *)
+(* Proof.  *)
+(*   induction 1; intros. *)
+
+(*   inversion H0; t. tauto.   *)
+(*   inversion H0; t. tauto.   *)
+  
+(*   inversion H1; subst.  *)
+(*   assert ((l1,v0,h0) = (l0,v,h)) by congruence. *)
+(*   inject H3. clear H4.  *)
+(*   assert (IH1 := IHvalue1 H5).  *)
+(*   assert (IH2 := IHvalue2 H6). clear IHvalue1 IHvalue2 H5 H6.  *)
+(*   assert (H' := BDD.value_N_inversion _ _ _ _ H2 _ _ _ e).  *)
+(*   destruct H' as [vl2 [vh2 [[Hl'  Hv'  ] Hp' ]]].  *)
+(*   pose proof (BDD.value_inj _ _ _ _ H2 _ Hp' ).  *)
+(*   specialize (IH1 _ _ Hl'). specialize (IH2 _ _ Hv'). subst. *)
+(*   assert (lift (l++l') v = lift l v).  *)
+(*   clear - H7.  *)
+(*   apply lift_lt_length; auto.   *)
+(*   rewrite H3; congruence.  *)
+(* Qed.  *)
+
+(* Lemma bdd_value_lift_snoc bdd l ptr e x vx :  *)
+(*   BDD.value (lift l) bdd x vx ->  *)
+(*   BDD.path bdd (List.length l) x ->  *)
+(*   BDD.value (lift (l ++ [(ptr,e)])) bdd x vx.  *)
+(* Proof.  *)
+(*   intros.   *)
+(*   destruct (BDD.value_change_env _ (lift (l++ [(ptr,e)])) bdd _ _ H) as [vx' H'].  *)
+(*   assert (vx' = vx) by apply (bdd_value_path _ _ _ _ H H0 _ _ H').  *)
+(*   subst; auto.  *)
+(* Qed.  *)
+
+(* Arguments Eknown {Var} e.   *)
+(* Arguments Ebdd {Var} e.   *)
+(* Arguments Enext {Var} e.   *)
+Hint Resolve inv_bdd_wf.
+
+(* Lemma bdd_incr_path env bdd1 bdd2 n e (Hincr : BDD.incr env bdd1 bdd2):  *)
+(*   BDD.path bdd1 n e ->  *)
+(*   BDD.path bdd2 n e. *)
+(* Proof.  *)
+(* Admitted.  *)
+
+(* Lemma bdd_path_lt bdd n m e: n <= m ->  BDD.path bdd n e -> BDD.path bdd m e.  *)
+(* Proof.                *)
+(*   induction 2; try constructor.  *)
+(*   econstructor. eapply e. eauto. eauto.  *)
+(*   omega.  *)
+(* Qed.  *)
+   (* 
+Lemma inv_cons_incr G E (INV : inv G E) e ptr E2: 
+  incr eval_type E = (ptr, E2) -> 
+  inv (cons eval_type V B e (e, Some ptr) G) (add_env eval_type E2 e ptr).
+Proof. 
+  intros H. 
+  unfold incr in H. 
+  destruct (BDD.mk_var (Ebdd E) (Enext E)) as [r bdd] eqn:Heq. 
+  inject H. unfold add_env.  simpl. 
+  refine((fun Hwf => Build_inv _ _ _ _ _ Hwf (_) _ ) _). 
+  - intros ty x y; inversion 1; t.  reflexivity. 
+    apply INV; auto. 
+  - intros x y; inversion 1; t; simpl. 
+    {clear X. 
+     refine (let H := BDD.mk_var_correct (lift (Eknown E ++ [(ptr,e)])) _ _ _ _ _ Heq in _). 
+     eauto using BDD.wf_change_env.   
+     destruct H as [Hv Hincr]. 
+     assert (e = lift (Eknown E ++ [(ptr,e)]) (Enext E)) by 
+         (unfold lift; rewrite inv_next_2; rewrite list_nth_error_length; reflexivity). 
+     rewrite <- H in Hv. auto. }
+    {
+      destruct y as [y [?|]]. 
+      + pose proof (inv_2 _ _ X0). 
+        eapply BDD.mk_var_correct in Heq.
+        simpl in *. apply bdd_value_lift_snoc. 
+        eapply BDD.incr_value; [| apply H]. intuition eauto. 
+        eapply bdd_incr_path. 2: eapply inv_path. 2: eauto.  intuition eauto. 
+        eauto.      
+      + simpl. trivial. 
+    }
+  - intros x y z; inversion 1; t; simpl. 
+    inject H0. 
+    clear X. 
+    {    
+      unfold BDD.mk_var in Heq. unfold BDD.mk_node in Heq. simpl in Heq. 
+      destruct ( BDD.NMap.find (elt:=positive) (BDD.F, Enext E, BDD.T)
+                               (BDD.hmap (Ebdd E))) eqn:Heq'. 
+      
+      inject Heq.
+      econstructor. 
+      rewrite BDD.wf_bijection in Heq'. 
+      apply Heq'.
+      2: constructor. 
+      2: constructor. 
+      apply INV. 
+      rewrite inv_next_2.  rewrite List.app_length. simpl. omega. 
+      inject Heq.
+      econstructor. simpl. rewrite BDD.PMap.gss. reflexivity. 
+      constructor. 
+      constructor. 
+      rewrite inv_next_2.  rewrite List.app_length. simpl. omega. 
+      
+    }
+    {
+      
+    eapply bdd_path_lt. 
+    2: eapply bdd_incr_path. 3: eapply inv_path; eauto.  
+    rewrite List.app_length. simpl. omega. 
+    eapply BDD.mk_var_correct in Heq. 
+    destruct Heq; eauto. eauto. 
+    }
+  - simpl. simpl in *. 
+    unfold BDD.mk_var in Heq. unfold BDD.mk_node in Heq. 
+    simpl in Heq. 
+    destruct ( BDD.NMap.find (elt:=positive) (BDD.F, Enext E, BDD.T)
+            (BDD.hmap (Ebdd E))); inject Heq.  simpl. 
+    eapply BDD.mk_var_correct in Heq; eauto.  
+    destruct Heq as [Hv Hincr]. 
+    simpl in *. 
+  assert (BDD.wf (lift (Eknown eval_type E)) (Ebdd eval_type E))
+  econstructor. 
+  + intros ty x y; inversion 1; t.  reflexivity. 
+    apply INV; auto. 
+  + intros x y; inversion 1; t. 
+    {simpl. unfold incr in H. 
+     clear X. 
+     destruct (BDD.mk_var (Ebdd _ E) (Enext _ E)) as [r bdd] eqn:Heq. 
+     inject H. simpl. 
+     refine (let H :=
+                 BDD.mk_var_correct (lift (Eknown eval_type E ++ [(ptr,e)])) _ _ _ _ _ Heq
+             in _ ).   
+     eapply BDD.wf_change_env; apply INV.  
+     destruct H as [Hv Hi]. 
+     assert (e = lift (Eknown eval_type E ++ [(ptr,e)]) (Enext eval_type E)).
+     unfold lift. 
+     rewrite inv_next_2.
+     rewrite list_nth_error_length. reflexivity. 
+     rewrite <- H in Hv. auto. 
+    }
+    
+    {
+      destruct y as [y [?|]];
+      pose proof  (inv_2 _ _ X0);
+      trivial. 
+      pose proof (inv_path _ _ _ X0).             
+      unfold value in *; simpl in *.     
+      unfold incr in H. destruct (BDD.mk_var (Ebdd eval_type E) (Enext eval_type E)) eqn: Heq. 
+      inject H. simpl.
+      eapply BDD.mk_var_correct in Heq. 2: apply INV. 
+      
+      destruct Heq. 
+
+      apply bdd_value_lift_snoc; auto. 
+      apply i. auto. 
+      eapply bdd_incr_path. eauto. eauto. 
+    }
+  + intros x y z. inversion 1; t. inject H1. 
+    
+    {  
+      simpl. unfold incr in H. 
+      unfold incr in H. destruct (BDD.mk_var (Ebdd eval_type E) (Enext eval_type E)) eqn: Heq. 
+      inject H. simpl.
+      
+      
+      unfold BDD.mk_var in Heq. unfold BDD.mk_node in Heq. simpl in Heq. 
+      destruct ( BDD.NMap.find (elt:=positive) (BDD.F, Enext eval_type E, BDD.T)
+                               (BDD.hmap (Ebdd eval_type E))) eqn:Heq'. 
+      
+      inject Heq.  
+      econstructor. 
+      rewrite BDD.wf_bijection in Heq'. 
+      apply Heq'.
+      2: constructor. 
+      2: constructor. 
+      apply INV. 
+      rewrite inv_next_2.  rewrite List.app_length. simpl. omega. 
+      injection Heq. intros; subst. clear Heq.
+      econstructor. simpl. rewrite BDD.PMap.gss. reflexivity. 
+      constructor. 
+      constructor. 
+      rewrite inv_next_2.  rewrite List.app_length. simpl. omega. 
+    }
+    {
+      simpl. apply  inv_path in X0. 
+      Lemma incr_bdd_incr G E (INV : inv G E) ptr E2: 
+        incr eval_type E = (ptr, E2) -> 
+        BDD.incr (lift (Eknown _ E)) (Ebdd _ E) (Ebdd _ E2).   
+      Proof. 
+      Admitted. 
+      Hint Resolve incr_bdd_incr. 
+      Lemma incr_bdd_length_env G E (INV : inv G E) ptr E2: 
+        incr eval_type E = (ptr, E2) -> 
+        Datatypes.length (Eknown eval_type E) = Datatypes.length (Eknown  eval_type E2). 
+      Proof. 
+        unfold incr. destruct  (BDD.mk_var (Ebdd eval_type E) (Enext eval_type E)) eqn: Heq.
+        intros. injection H; clear H; intros; subst. simpl.  reflexivity. 
+      Qed. 
+      
+     
+      Hint Resolve bdd_path_lt.  Hint Resolve bdd_incr_path.
+      eauto. 
+      rewrite List.app_length. simpl. 
+      pose proof  (incr_bdd_length_env _ _ INV _ _ H). rewrite H0 in X0.  clear H0.
+      eapply bdd_path_lt.  
+      2: 
+        eapply bdd_incr_path. 3: apply X0. 2: eauto. simpl. 
+      generalize (Eknown eval_type E2). clear; intros; omega. 
+    }
+  + simpl.           
+    
+unfold incr in H. 
+          destruct  (BDD.mk_var (Ebdd eval_type E) (Enext eval_type E)) eqn: Heq.
+          injection H. intros; subst. clear H. simpl. 
+          simpl. 
+            2: eauto. 
+            econstructor. destruct INV.  
+            eapply BDD.mk_var_correct in Heq. 2: apply INV. 
+            
+          }
+          
+          {
+          }
+          }           simpl. 
+
+*)
+
+Lemma  incr_inv G E (INV : inv G E) ptr E' e : 
+  forall (H : incr eval_type E e = (ptr, E')), 
+    inv (cons eval_type V B e (e, Some ptr) G) E'. 
+Proof. 
+  intros H; unfold incr in H. 
+  destruct (BDD.mk_var (Ebdd E) (Enext E)) as [r bdd] eqn: Heq. 
+  inject H.
+  constructor. 
+  intros. 
+  - d. inversion X; injectT. inject H2. reflexivity. 
+    apply INV. auto. 
+  - intros x x' e'. inversion 1; injectT. clear X.
+    unfold value. inject H0. simpl.
+    eapply BDD.mk_var_pcorrect; eauto.  
+    erewrite <- inv_next_2; eauto. 
+    unfold value. simpl. 
+    eapply BDD.pvalue_env_snoc. eapply inv_2 in X0; eauto. eapply BDD.mk_var_incr in Heq; eauto.
+
+  - intros x x' e'. inversion 1; injectT. clear X. 
+    inject H0. simpl. 
+    eapply BDD.mk_var_path; eauto. 
+    simpl. 
+    eapply inv_path in X0;eauto. eapply BDD.mk_var_incr in Heq; eauto. 
+  - simpl. eapply BDD.mk_var_incr in Heq; eauto. 
+  - simpl. rewrite List.app_length. simpl. erewrite inv_next_2;eauto. rewrite plus_comm. reflexivity.
+  - simpl. intros x y H. apply In_skip. apply INV. auto.  
+Qed. 
+
+Lemma lookup_in E ptr x: 
+  lookup eval_type E ptr = Some x -> 
+  Seq.In (ptr,x) (Eassoc E). 
+Proof. 
+  unfold lookup. induction (Eassoc E). simpl. discriminate. 
+  simpl. destruct a.
+  destruct (BDD.expr_eqb ptr e) eqn: Heq. 
+  intros H; inject H.  
+  apply BDD.expr_eqb_correct in Heq; subst.
+  apply Seq.In_cons. 
+
+  intros H. right. auto. 
+Qed. 
+
+Lemma add_bdd_correct G E E' (INV: inv G E) sv v ptr: 
+  bvalue E sv v -> 
+  add_bdd eval_type E sv = Some (ptr, E') -> 
+  (value E' ptr v * inv G E' )%type. 
+Proof. 
+  destruct sv; simpl; intros H H'; simpl_do; inversion H; injectT.
+   
+  - split; eauto.  
+  - refine (let (Hv, Hi) := BDD.ite_pcorrect (Ebdd E) (inv_bdd_wf INV  : BDD.wf (Ebdd E))
+                                      _ _ _ c l r _ H0 _ H4 _ H6 _ H7 in _ ). 
+    split; eauto. 
+    Lemma inv_update_bdd G E bdd' (Hincr: BDD.incr (Ebdd E) bdd')
+    : inv G E -> 
+      inv G 
+          {| Ebdd := bdd'; 
+             Eassoc := Eassoc E; 
+             Evalues := Evalues E; 
+             Enext := Enext E|}. 
+      Proof. 
+        intros INV. constructor; try apply INV. 
+        simpl. intros. unfold value. simpl. eapply BDD.pvalue_incr; eauto. apply (inv_2 INV) in X; apply X.  
+        intros. simpl. eapply BDD.incr_path. eapply (inv_path INV) in X; apply X. 
+        simpl. apply Hincr. apply INV. 
+      Qed.         
+      apply inv_update_bdd; auto.  
+      
+  - refine (let (Hv,Hi) := BDD.andb_pcorrect (Evalues E) (Ebdd E) (inv_bdd_wf INV) _ _ _ _ x0 H0 va H3 vb H5 in _).
+    split; eauto using inv_update_bdd. 
+  - refine (let (Hv,Hi) := BDD.orb_pcorrect (Evalues E) (Ebdd E) (inv_bdd_wf INV) _ _ _ _ x0 H0 va H3 vb H5 in _).
+    split; auto using inv_update_bdd. 
+  - refine (let (Hv,Hi) := BDD.xorb_pcorrect (Evalues E) (Ebdd E)  (inv_bdd_wf INV) _ _ _ _ x0 H0 va H3 vb H5 in _).
+    split; auto using inv_update_bdd.     
+  - refine (let (Hv,Hi) := BDD.negb_pcorrect (Evalues E) (Ebdd E) (inv_bdd_wf INV) _ _ _  x0 H0 va H2 in _).
+    split; auto using inv_update_bdd. 
+Qed. 
+
+Lemma add_bdd_correct_2 G E E' (INV: inv G E) sv v ptr: 
+  bvalue E sv v -> 
+  add_bdd eval_type E sv = Some (ptr, E') -> 
+  forall x vx, 
+    value E x vx -> value E' x vx. 
+Proof. 
+  destruct sv; simpl; intros H H'; simpl_do; inversion H; injectT; clear H; auto. 
+  - refine (let (Hv, Hi) := BDD.ite_pcorrect (Ebdd E) (inv_bdd_wf INV : BDD.wf (Ebdd E))
+                                      _ _ _ c l r _ H0 _ H5 _ H7 _ H8 in _ ). 
+    eapply BDD.pvalue_incr. eauto.  simpl. eauto. 
+      
+  - refine (let (Hv,Hi) := BDD.andb_pcorrect (Evalues E) (Ebdd E) (inv_bdd_wf INV) _ _ _ _ x0 H0 va H4 vb H6 in _).
+    eauto using BDD.pvalue_incr. 
+  - refine (let (Hv,Hi) := BDD.orb_pcorrect (Evalues E) (Ebdd E) (inv_bdd_wf INV) _ _ _ _ x0 H0 va H4 vb H6 in _).
+    eauto using BDD.pvalue_incr. 
+  - refine (let (Hv,Hi) := BDD.xorb_pcorrect (Evalues E) (Ebdd E) (inv_bdd_wf INV) _ _ _ _ x0 H0 va H4 vb H6 in _).
+    eauto using BDD.pvalue_incr. 
+  - refine (let (Hv,Hi) := BDD.negb_pcorrect (Evalues E) (Ebdd E) (inv_bdd_wf INV) _ _ _  x0 H0 va H2 in _).
+    eauto using BDD.pvalue_incr. 
+Qed. 
+
+       
+Lemma inv_cons_lookup_Some G E (INV : inv G E) E2 sv ptr old v:
+  add_bdd eval_type E sv = Some (ptr, E2) -> 
+  lookup eval_type E2 ptr = Some old -> 
+  bvalue E sv v -> 
+  inv (cons eval_type V B v (old, Some ptr) G) E2. 
+Proof. 
+  intros. 
+  constructor. 
+  -intros.  d. inversion X; injectT. inject H5. clear X. 
+   simpl. 
+   
+   
+   apply lookup_in in H0. 
+   
+   destruct (add_bdd_correct _ _ _ INV _ _ _ H1 H) as [Hv INV2].  
+   apply (inv_assoc INV2) in H0. 
+   apply (inv_2 INV2) in H0. 
+   unfold value in *.           
+   eapply BDD.pvalue_inj; eauto. 
+   apply INV; auto. 
+  - intros x x' e. 
+    
+    inversion 1; injectT.
+    + clear X. inject H3. eapply add_bdd_correct in H; eauto.  intuition. 
+    + eapply add_bdd_correct_2; eauto.  
+      eapply inv_2 in X0; eauto. 
+  - intros x x' e. inversion 1; injectT.  inject H3. 
+    eapply add_bdd_correct in H; eauto.  destruct H as [Hv H'].
+    eapply BDD.path_of_pvalue; eauto.
+    
+    eapply (inv_path).  2: eapply X0.
+    eapply add_bdd_correct in H; eauto.  destruct H as [Hv H']. auto. 
+  - exact (let (_,H) := @add_bdd_correct _ _ _ INV _ _ _ H1 H in 
+           @inv_bdd_wf _ _ H). 
+  -  eapply add_bdd_correct in H; eauto.  destruct H as [Hv H']. apply H'.  
+  - intros.  eapply add_bdd_correct in H; eauto.  destruct H as [Hv H']. 
+    apply In_skip. apply H'. eauto.  
+Qed.
+
+Lemma inv_cons_lookup_None G E (INV : inv G E) E2 sv ptr X:
+  add_bdd eval_type E sv = Some (ptr, E2) -> 
+  lookup eval_type E2 ptr = None -> 
+  bvalue E sv X -> 
+  inv (cons eval_type V B X (X, Some ptr) G) (add_env eval_type E2 X ptr). 
+Proof. 
+  intros. 
+  constructor. 
+  -intros.  d. inversion X0; injectT. inject H5. reflexivity. 
+   eapply inv_1; eauto.     
+  - intros x x' e. inversion 1; injectT. inject H3.  
+    destruct (add_bdd_correct _ _ _ INV _ _ _ H1 H) as [Hv INV2].  
+    unfold add_env. 
+    unfold value. simpl. unfold value in Hv. apply Hv.
+    unfold value. simpl. 
+    eapply inv_2 in X1.
+    apply X1.     destruct (add_bdd_correct _ _ _ INV _ _ _ H1 H) as [Hv INV2].  eauto. 
+  - intros x x' e. inversion 1; injectT.  inject H3. 
+    eapply add_bdd_correct in H; eauto.  destruct H as [Hv H'].
+    eapply BDD.path_of_pvalue; eauto.
+
+    simpl. 
+    eapply (inv_path). 2: eapply X1.
+    eapply add_bdd_correct in H; eauto.  simpl. destruct H as [Hv H']. auto. 
+  - exact (let (_,H) := @add_bdd_correct _ _ _ INV _ _ _ H1 H in 
+           @inv_bdd_wf _ _ H). 
+  -  eapply add_bdd_correct in H; eauto.  destruct H as [Hv H']. apply H'.  
+  - intros. 
+    simpl in X0.
+    apply Seq.In_app in X0. 
+    eapply add_bdd_correct in H; eauto.  destruct H as [Hv H']. 
+    destruct X0. 
+    apply In_skip.    
+    apply H'.  auto. 
+    inversion i; subst. 
+    apply In_ok. reflexivity. reflexivity. 
+    inversion H2. 
+Qed. 
+
+Lemma cp_telescope_correct (Phi: state) st t  Delta: 
+       forall (b : RTL.block Phi eval_type t)
+         (b': RTL.block Phi V t)
+         (G : Gamma eval_type V),
+         block_equiv eval_type V Phi t G b b' ->
+       forall e,
+       inv  G e
+     ->
+   eval_telescope Phi st
+     (fun x : eval_type t * bool * effects Phi eval_type =>
+      let (y, e0) := x in
+      let (p, g) := y in check g; Some (p, eval_effects Phi st e0 Delta)) b =
+   eval_telescope Phi st
+     (fun x : eval_type t * bool * effects Phi eval_type =>
+      let (y, e0) := x in
+      let (p, g) := y in check g; Some (p, eval_effects Phi st e0 Delta))
+     (k :-- cp_telescope Phi eval_type e b';
+      (let (p, e0) := k in
+       let (v, g) := p in & (fst v, fst g, cp_effects Phi eval_type e0))). 
+Proof. 
+  Ltac crush ::=
+    repeat match goal with 
+             | H: (_,_) = (_,_) |- _ => injection H; clear H; intros; subst
+             | HG : inv ?G ?e , H : In _ _ _ ?x ?y _ |- context [?x] =>
+               rewrite (inv_1 HG _ _ _ H)
+             | H : DList.T [] |- _ => DList.inversion 
+             | H : DList.T (_ :: _) |- _  => DList.inversion 
+             | H : DList.pointwise _ ( _ :: _) _ _ |- _ => apply DList.inversion_pointwise in H; destruct H
+             | |- Some _ = Some _ => f_equal
+             | |- (_,_) = (_,_) => f_equal
+             | |- context [eval_type _] => simpl eval_type
+           end; try reflexivity. 
+  
+  induction 1 as [G v1 v2 g1 g2 e1 e2 Hv Hg He| G a e1 e2 k1 k2 He Hk IH]; simpl; intros E INV. 
+  - crush.
+    match goal with 
+      |- context [(if ?x then _ else _) = (if ?y then _ else _)] => 
+      let H := fresh in 
+      assert (H : x = y)  by reflexivity; 
+      subst; clear H; destruct x
+    end; f_equal; f_equal. eapply cp_effects_correct; eauto.   
+  - destruct (cp_expr Phi eval_type a e2) as [binding [sv | ]]eqn: Heq; destruct a; 
+    try (apply IH; apply inv_cons_None; eauto using cp_expr_correct_2 ).
+    
+    {
+       destruct (add_bdd eval_type E sv) as [[ptr E2] | ]eqn:Heq2; [|apply IH]. 
+       destruct (lookup eval_type E2 ptr) as [old | ] eqn:Heq3; apply IH.
+       clear IH. 
+       pose proof (cp_expr_correct_2 _ st _ _ INV _ _ _ He _ _ Heq). 
+       rewrite H.
+       pose proof (cp_expr_correct _ _ _ _ H _ _ _ He INV sv). rewrite Heq in H0. simpl in H0. 
+       specialize (H0 eq_refl). 
+       eapply inv_cons_lookup_Some; eauto.  
+       pose proof (cp_expr_correct_2 _ st _ _ INV _ _ _ He _ _ Heq). 
+       rewrite H. 
+       pose proof (cp_expr_correct _ _ _ _ H _ _ _ He INV sv). simpl in H0.
+       rewrite Heq in H0. simpl in H0. specialize (H0 eq_refl). 
+
+       eapply inv_cons_lookup_None; eauto. 
+       apply inv_cons_None; eauto using cp_expr_correct_2. 
+    }
+    {
+      simpl. 
+      destruct (incr eval_type E (eval_expr Phi st B binding)) as [ptr E'] eqn: Hincr.
+      apply IH; clear IH. 
+      eapply cp_expr_correct_2 in Heq; eauto.  
+      rewrite Heq; clear Heq.  
+      revert Hincr. 
+      generalize (eval_expr Phi st B binding). 
+      intros e H.
+      eapply incr_inv; eauto. 
+    }
+
+Qed.   
+
+Lemma Gamma_inv_empty : inv  (nil _ _ ) (empty eval_type). 
+Proof. 
+  econstructor. 
+  - intros. inversion X. 
+  - intros. inversion X. 
+  - intros. inversion X. 
+  - intros. apply BDD.wf_empty.  
+  - simpl. reflexivity. 
+  - simpl. intros.  inversion H. 
+Qed. 
+
+Theorem cp_correct Phi st t (b : Block Phi t) Delta : WF Phi t b -> 
+  eval_block Phi st t (b _) Delta = eval_block Phi st t (cp_block Phi eval_type t (b _)) Delta. 
+Proof. 
+  intros.
+  eapply cp_telescope_correct; eauto using Gamma_inv_empty.
+Qed. 
+  
 
 Definition Compile Phi t (b : Block Phi t) : Block Phi t :=  
   fun V => cp_block Phi V t (b _). 
@@ -220,4 +870,7 @@ Definition Compile Phi t (b : Block Phi t) : Block Phi t :=
 Theorem Compile_correct Phi t b (Hwf : WF Phi t b): forall st Delta,
   Eval Phi st t (Compile Phi t b) Delta =  Eval Phi st t b Delta. 
 Proof. 
-Admitted. 
+  unfold Eval. intros. unfold Compile. symmetry. apply cp_correct. auto. 
+Qed. 
+
+Print Assumptions Compile_correct. 

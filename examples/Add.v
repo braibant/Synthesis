@@ -17,10 +17,10 @@ Section s.
        action Phi V (Ttuple [Tbool; Tbool; Tint [2^ n]; Tint [2^ n]])
     with 
       | 0%nat => fun x y => 
-                ret [tuple ((x = #i 1) || (y = #i 1)), 
-                     ((x = #i 1) && (y = #i 1)), 
-                     x + y, 
-                     x + y + #i 1 ]%expr
+                ret [tuple ((x = #i 1) || (y = #i 1)), (* propagate *)
+                     ((x = #i 1) && (y = #i 1)),       (* generate *)
+                     x + y,                            (* s *)
+                     x + y + #i 1 ]%expr               (* t *)
       | S n => fun x y => 
                 (
                   do xL <~ low  x;
@@ -33,7 +33,7 @@ Section s.
                   do (pH, gH, sH, tH) <- rH;
                   do sH' <~ (Emux (gL) (tH) (sH))%expr;
                   do tH' <~ (Emux (pL) (tH) (sH))%expr;
-                  do pH' <~ (gH || (pH && gH))%expr;
+                  do pH' <~ (gH || (pH && pL))%expr;
                   do gH' <~ (gH || (pH && gL))%expr;
                   ret [tuple pH', 
                        gH', 
@@ -53,9 +53,20 @@ refine
      add V n x y 
     )%action. 
 Defined. 
-Require Compiler. 
-Require Import FirstOrder. 
-Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 5)); Some (List.length (bindings _ _ r)). 
-Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 6)); Some (List.length (bindings _ _ r)). 
-Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 7)); Some (List.length (bindings _ _ r)). 
-Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 8)); Some (List.length (bindings _ _ r)). 
+Require Import DList. 
+
+Definition t l := Front.Eval ([Treg (W [2^4]); Treg (W [2^ 4])]) l  _ (test 4) (Diff.init _).
+Definition l : eval_state ([Treg (W [2^4]); Treg (W [2^ 4])]).
+  simpl.
+  constructor. simpl. exact (Word.repr 16 1).
+  constructor. simpl. exact (Word.repr 16 1).
+  constructor.
+Defined.
+
+Eval compute in t l .
+(* Require Compiler.  *)
+(* Require Import FirstOrder.  *)
+(* Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 5)); Some (List.length (bindings  _ r)).  *)
+(* Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 6)); Some (List.length (bindings  _ r)).  *)
+(* Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 7)); Some (List.length (bindings  _ r)).  *)
+(* Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 8)); Some (List.length (bindings  _ r)).  *)

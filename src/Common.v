@@ -30,6 +30,14 @@ Proof.
   right. exists a; intuition.  
 Qed. 
 
+Remark bind2_inversion:
+  forall {A B C: Type} (f: option (A*B)) (g: A -> B -> option C) (y: C),
+    bind2 f g = Some y ->
+      {x1 : A & {x2 : B | f = Some (x1,x2) /\ g x1 x2 = Some y}}.
+Proof. 
+  intros ? ? ? [ [x y] | ] ? ? H; simpl in H; eauto.
+  discriminate. 
+Qed.
 
 Notation "'do' X <- A ; B" := (bind A (fun X => B) )
   (at level 200, X ident, A at level 100, B at level 200). 
@@ -66,7 +74,32 @@ Ltac invert_do H :=
         try (invert_do EQ)
   end. 
   
-Axiom admit : forall {X} , X. 
+Ltac simpl_do := 
+    repeat match goal with 
+      | H : Some _ = Some _ |- _ => injection H; clear H; intros; subst 
+      | H : (None = Some _) |- _ => discriminate
+      | H : (Some _ = None) |- _ => discriminate
+      | H : None = None |- _ => clear H
+      | H : (bind ?F ?G = Some ?X) |- _ => 
+        destruct (bind_inversion _ _ F G _ H) as [? [? ?]]; clear H
+      | H : (bind2 ?F ?G = Some ?X) |- _ => 
+        destruct (bind2_inversion F G _ H) as [? [? [? ?]]]; clear H
+      | |- context [(bind (Some _) ?G)] => simpl
+      | H : (bind ?x ?f = None) |- _ => 
+        let EQ := fresh in 
+        destruct (bind_inversion_None x f H) as [EQ | [? [EQ ?]]]; 
+          rewrite EQ in H; simpl in H
+                                                  
+      | H : ?x = Some ?y |- context [?x] => rewrite H
+    end. 
+
+Ltac intro_do n H :=
+  match goal with 
+    | |- context [do _ <- ?x; _] =>
+      destruct x as [n|] eqn:H; simpl 
+  end.
+
+Definition admit {X : Type} : X.  Admitted.
 
 Definition ident := string. 
 
@@ -246,16 +279,6 @@ Module Tuple.
         end.  
       Definition fold   : of_list T F l -> B -> B := (prefold  l (fun x v => v)). 
 
-    (*
-    refine (let fold :=
-                fix fold l  : ( forall a, F a -> var l a -> B -> B) -> of_list T F l -> B -> B :=
-                match l as l' return  ( forall a, F a -> var l' a -> B -> B) -> of_list T F l' -> B -> B with
-                    | nil => fun f _ acc => acc
-                    | cons t q => fun f  (X : F t * of_list T F q) acc => 
-                                   let (x,xs) := X in 
-                                   let f' := (fun b (fb : F b) (v : var q b) => f b fb (var_S v)) in
-                                     fold q f' xs (f t x var_0 acc)
-                end in fold l up).  *)
     End inner. 
     Notation lift f := (fun x v => f x (var_S v)). 
   End fold. 
@@ -438,8 +461,20 @@ Definition union {A} (R S : relation A) := fun x y => R x y \/ S x y.
 
 Delimit Scope dlist_scope with dlist. 
 
+(** The dependent type swiss-knife. *)
+Ltac injectT :=  subst; repeat match goal with 
+                                   H : existT _ _ _ = existT _ _ _ |- _ => 
+                                   apply Eqdep.EqdepTheory.inj_pair2 in H
+                                 |   H : context [eq_rect ?t _ ?x ?t ?eq_refl] |- _ => 
+                                     rewrite <- Eqdep.EqdepTheory.eq_rect_eq in H
+                                 |   H : context [eq_rect ?t _ ?x ?t ?H'] |- _ => 
+                                     rewrite (Eqdep.EqdepTheory.UIP_refl _ _ H') in H;
+                                       rewrite <- Eqdep.EqdepTheory.eq_rect_eq in H
+                                 |   H : existT _ ?t1 ?x1 = existT _ ?t2 ?x2 |- _ => 
+                                     let H' := fresh "H'" in 
+                                     assert (H' := EqdepFacts.eq_sigT_fst H); subst
+                               end; subst.
 
-Module Tactics. 
-  Require Import Equality. 
-  Ltac dep_destruct x := dependent destruction x. 
-End Tactics. 
+Ltac inject H :=
+      injection H; clear H; intros; subst. 
+

@@ -13,19 +13,30 @@ Definition type_cast {P : type -> Type} {t} t' (x : P t) : option (P t') :=
           end) (type_eqb_correct t t' H)
    else fun _ => None) eq_refl. 
 
-(** The dependent type swiss-knife. *)
-Ltac t :=  subst; repeat match goal with 
-                       H : existT _ _ _ = existT _ _ _ |- _ => 
-                         apply Eqdep.EqdepTheory.inj_pair2 in H
-                   |   H : context [eq_rect ?t _ ?x ?t ?eq_refl] |- _ => 
-                         rewrite <- eq_rect_eq in H
-                   |   H : context [eq_rect ?t _ ?x ?t ?H'] |- _ => 
-                         rewrite (UIP_refl _ _ H') in H;
-                         rewrite <- eq_rect_eq in H
-                   |   H : existT _ ?t1 ?x1 = existT _ ?t2 ?x2 |- _ => 
-                         let H' := fresh "H'" in 
-                           apply eq_sigT_sig_eq in H; destruct H as [H H']; subst
-                         end; subst.
+Lemma type_cast_inversion t t' (x:eval_type t') (y: eval_type t) : type_cast t x = Some y -> 
+                                                                   t = t'. 
+Proof. 
+  unfold type_cast.
+  
+  generalize (type_eqb_correct t' t). simpl. pattern (type_eqb t' t). 
+  destruct (type_eqb t' t); try discriminate. 
+  intros e.
+  pose proof (e eq_refl). subst. reflexivity. 
+Qed. 
+
+(* (** The dependent type swiss-knife. *) *)
+(* Ltac t :=  subst; repeat match goal with  *)
+(*                        H : existT _ _ _ = existT _ _ _ |- _ =>  *)
+(*                          apply Eqdep.EqdepTheory.inj_pair2 in H *)
+(*                    |   H : context [eq_rect ?t _ ?x ?t ?eq_refl] |- _ =>  *)
+(*                          rewrite <- eq_rect_eq in H *)
+(*                    |   H : context [eq_rect ?t _ ?x ?t ?H'] |- _ =>  *)
+(*                          rewrite (UIP_refl _ _ H') in H; *)
+(*                          rewrite <- eq_rect_eq in H *)
+(*                    |   H : existT _ ?t1 ?x1 = existT _ ?t2 ?x2 |- _ => *)
+(*                        let H' := fresh "H'" in *)
+(*                          rewrite eq_sigT_iff_eq_dep in H; subst *)
+(*                          end; subst. *)
 
 Section s. 
   Variable Phi : state. 
@@ -221,7 +232,7 @@ Section s.
     
     
   
-  Definition Env := list ({t : type & (sval t * Var t)%type}). 
+  Definition Env : Type := list ({t : type & ((sval t * Var t) : Type )%type}). 
 
   Definition empty : Env := ([])%list. 
 
@@ -296,14 +307,14 @@ Notation V := (fun t => (eval_type t * sval  t))%type.
 
 
 
-Ltac d :=
-  match goal with
-   H : context [do _ <- ?x; _] |- _ =>
-     let A := fresh in
-     case_eq x; [intros ?X A | intros A]; rewrite A in H; simpl in H
-  | |- context [do _ <- ?x; _] =>
-     case_eq x; intros; simpl
-  end.
+(* Ltac d := *)
+(*   match goal with *)
+(*    H : context [do _ <- ?x; _] |- _ => *)
+(*      let A := fresh in *)
+(*      case_eq x; [intros ?X A | intros A]; rewrite A in H; simpl in H *)
+(*   | |- context [do _ <- ?x; _] => *)
+(*      case_eq x; intros; simpl *)
+(*   end. *)
 
 Ltac f := 
   match goal with 
@@ -324,11 +335,12 @@ Notation R := (fun G t x y => In _ _ t x y G).
 Definition lift (env : Env eval_type) : list ({t : type & eval_type t}) :=
   List.map (fun x => match x with  existT t (sv,v) => existT _ t v end) env. 
 
-Record Gamma_inv (G : Gamma eval_type V) (E : Env eval_type) :=
+Require Seq. 
+Class Gamma_inv (G : Gamma eval_type V) (E : Env eval_type) :=
   {
     Gamma_inv_1 : forall t (x : eval_type t) y, G |= x -- y -> x = fst y;
     Gamma_inv_2 : forall t (x: eval_type t) y, G |= x -- y -> eval_sval (lift E) (snd y)  = Some x;
-    Gamma_inv_3 : forall t x sv, List.In (existT _ t (sv , x))  E -> G |= x -- (x,sv)
+    Gamma_inv_3 : forall t x sv, Seq.In (existT _ t (sv , x))  E -> G |= x -- (x,sv)
   }. 
  
 Hint Resolve Gamma_inv_1 Gamma_inv_2 Gamma_inv_3. 
@@ -345,19 +357,19 @@ Ltac use :=
   match goal with 
     | H : Some _ = None |- _ => discriminate
     | H : None = Some _ |- _ => discriminate
-    | Hgamma : Gamma_inv ?G _,  H : ?G |= ?x -- ?y |- context [?x] =>
-        rewrite (Gamma_inv_1 _ _  Hgamma _ _ _ H) 
-    | Hgamma : Gamma_inv ?G _,  H : ?G |= ?x -- ?y, 
+    | H : ?G |= ?x -- ?y |- context [?x] =>
+        rewrite (Gamma_inv_1 _ _ _ H) 
+    | H : ?G |= ?x -- ?y, 
       H' : eval_sval _ (snd ?y) = Some ?z |- context [?z] =>
         progress 
-          (assert (x = z) by (pose proof (Gamma_inv_2 _ _ Hgamma _ _ _ H); congruence);
+          (assert (x = z) by (pose proof (Gamma_inv_2 _ _ _ H); congruence);
            subst)          
-    | Hgamma : Gamma_inv ?G _,  H : ?G |= ?x -- ?y, 
+    | H : ?G |= ?x -- ?y, 
       H' : eval_sval _ (snd ?y) = None |- context [?z] =>
-        pose proof (Gamma_inv_2 _ _ Hgamma _ _ _ H); congruence
-    | Hgamma : Gamma_inv ?G _,  H : ?G |= ?x -- ?y |- context [eval_sval _ (snd ?y)] =>
+        pose proof (Gamma_inv_2 _ _ _ H); congruence
+    | H : ?G |= ?x -- ?y |- context [eval_sval _ (snd ?y)] =>
         let p := fresh in 
-          assert ( p := Gamma_inv_2 _ _ Hgamma _ _ _ H);
+          assert ( p := Gamma_inv_2 _ _ _ H);
         simpl in p;
         rewrite p;
         clear p
@@ -365,16 +377,19 @@ Ltac use :=
     | H : ?x = ?x |- _ => clear H
   end. 
 
+Ltac save :=
+  repeat match goal with 
+           | H : _ |= _ -- _ |- _ => 
+             pose proof (Gamma_inv_1 _ _ _ H);
+             pose proof (Gamma_inv_2 _ _ _ H);
+               clear H
+         end. 
+
+
 Arguments Gamma_inv_1  {G E} _ {t x y} _.
 Arguments Gamma_inv_2  {G E} _ {t x y} _.
 Arguments Gamma_inv_3  {G E} _ {t x sv} _.
 
-Ltac save H :=
-      match goal with 
-          | Hg : Gamma_inv _ _ |- _ =>
-              pose proof (Gamma_inv_1 Hg H);
-              pose proof (Gamma_inv_2 Hg H)
-      end. 
    
 
 Lemma type_cast_eq t (e : eval_type t) : type_cast t e = Some e. 
@@ -389,19 +404,12 @@ Proof.
   discriminate. 
 Qed. 
 
-Ltac crush :=
-  repeat 
-    match goal with 
-        H : context [(do _ <- _ ; _) = _] |- _  => invert_do H
-      | H : DList.T _ ( _ :: _) |- _ => DList.inversion
-    end; eauto. 
-
 Require Import Equality. 
 
 Lemma sval_eqb_correct t (sv sv' : sval t) : sval_eqb  sv sv' = true -> sv = sv'. 
 Proof. 
   revert sv'. 
-  induction sv using sval_ind_alt; Tactics.dep_destruct sv'; simpl;
+  induction sv using sval_ind_alt; dependent destruction sv'; simpl;
   intros;
   repeat 
     match goal with 
@@ -416,17 +424,17 @@ Proof.
   - repeat match goal with 
       | H : forall t, _ -> _ , H' : _ |- _ => apply H in H'; clear H; rewrite H'
   end. reflexivity.
-  - induction l; repeat DList.inversion. reflexivity.   
+  - induction l; DList.inv. reflexivity.   
     simpl in *. rewrite Bool.andb_true_iff in H0. destruct H0.
     repeat f_equal. 
     destruct H. auto. 
-    destruct H. specialize (IHl _ H2 _ H1). clear - IHl. injection IHl; intros; t; auto. 
+    destruct H. specialize (IHl _ H2 _ H1). clear - IHl. injection IHl; intros; injectT; auto. 
   - pose proof (type_list_eqb_correct  _ _ H0); subst. 
     clear H0. 
     apply builtin_eqb_correct in H2; subst. 
     f_equal. 
-    clear f. induction t. repeat DList.inversion. reflexivity. 
-    repeat DList.inversion. rewrite Bool.andb_true_iff in H1. destruct H1. f_equal. 
+    clear f. induction t. DList.inv. reflexivity. 
+    DList.inv. rewrite Bool.andb_true_iff in H1. destruct H1.  f_equal.   
     simpl in H. intuition.  apply IHt. simpl in H; intuition. auto. 
 Qed. 
 
@@ -440,56 +448,52 @@ Lemma cse_expr_correct : forall t e1 r1,
         | None => True
       end.
 Proof. 
-  destruct 1; inversion 1; t;  try solve [simpl; auto]; intros. 
-  - simpl. clear H. d; repeat f_equal.  
-    
+  destruct 1; inversion 1; injectT;  try solve [simpl; auto]; intros. 
+  - simpl. clear X. intro_do x Hx.  repeat f_equal.      
     {
-      revert H. clear f. 
-      induction args; simpl; repeat DList.inversion.
+      revert Hx. clear f. 
+      induction args; simpl; DList.inv. 
       + simpl;   congruence. 
-      + simpl in *; repeat d; repeat f_equal; repeat use. 
-        * apply DList.inversion_pointwise in H3; destruct H3.
-          repeat use; f_equal; eauto. 
+      + simpl in *. intro_do hd Hhd; try discriminate; intro_do tl Htl; try discriminate.   
+        intros H; injection H; intros; subst; clear H. 
+        specialize (IHargs _ _ p _ Htl). clear Htl. rewrite IHargs; clear IHargs. 
+        f_equal. eapply Gamma_inv_2 in i; eauto. congruence. 
     }
     
-    { apply False_rect. 
+    { exfalso. 
       clear f. 
-      induction args; repeat DList.inversion; simpl in *.
+      induction args; DList.inv; simpl in *.
       +  discriminate. 
-      + apply DList.inversion_pointwise in H3. destruct H3. 
-        repeat d; repeat use. eauto.
+      + simpl_do. 
+        eapply Gamma_inv_2 in i; eauto. congruence.  
+        eauto. 
     }
   - intros. simpl.
     case_eq (sval_eqb (snd l2) (snd r2)). 
     * intros H'. simpl. 
-      assert (r1 = l1). repeat use. apply sval_eqb_correct in H'. 
-      clear H2. save H4. save H5. congruence.
-      subst. destruct c1; crush.  
-    * subst. intros; simpl; repeat use; simpl; reflexivity.
-    
+      assert (r1 = l1). apply sval_eqb_correct in H'. 
+      save. congruence.  
+      subst; destruct c1; save; congruence. 
+    * intros. simpl. repeat use; simpl. reflexivity. 
+      
   - intros.  simpl. 
     destruct dl2 as [hd tl].  simpl.
     dependent destruction tl ; try tauto.
-    save H3; subst; clear H; simpl in *; crush. 
+    save. subst. simpl in *. DList.inv. simpl_do. auto. 
   - intros. repeat use. simpl.  
     destruct dl2 as [hd tl].  simpl. dependent destruction tl; try tauto.
-    save H2; clear H; subst; simpl in *; crush. 
+    save. subst. simpl in *. DList.inv. simpl_do. auto. 
   - intros. simpl.  
     destruct dl2 as [hd tl]. simpl.  dependent destruction tl; try tauto.
-    clear H.
-    save H3; subst; simpl in *. 
-    clear H3. 
-    induction v. 
-    + crush.   
-    + simpl in *. erewrite IHv; crush.  
-      
-  - simpl. repeat  use.  clear H.  
-    induction l; repeat DList.inversion. 
+    clear X.
+    save; simpl in *; simpl_do; subst. 
 
+    induction v; DList.inv; simpl in *; simpl_do; eauto.          
+  - simpl. repeat  use.  clear X.  
+    induction l; DList.inv. 
     + reflexivity.
     + simpl in *.      
-      destruct (DList.inversion_pointwise _ _ _ _ _ _ _ H2). clear H2. 
-      eapply IHl in H. clear IHl.  repeat use. simpl. rewrite H.  reflexivity. 
+      eapply IHl in p. clear IHl.  repeat use. simpl. rewrite p.  reflexivity. 
 Qed. 
 
 
@@ -511,7 +515,7 @@ Qed.
 
 Lemma lookup_1 env t (sv : sval t) e :
   lookup eval_type t sv (env) = Some e ->
-  List.In (existT _ t (sv,e)) (env). 
+  Seq.In (existT _ t (sv,e)) (env). 
 Proof.
   intros. 
   induction env. discriminate.
@@ -520,23 +524,22 @@ Proof.
   pose proof (e0 eq_refl). subst. 
 
   case_eq (sval_eqb sv sv'); intros.    
-  left. t. rewrite H0 in H. 
-  repeat f_equal; try congruence || symmetry; auto using sval_eqb_correct. 
-  right.  apply IHenv. rewrite H0 in H.  auto. 
-  intros. 
-  simpl. right. auto. 
+  injectT. rewrite H0 in H.  apply sval_eqb_correct in H0. subst. inject H. apply Seq.In_cons. 
+  rewrite H0 in H. apply Seq.In_skip. auto. 
+  intros. apply Seq.In_skip.  auto. 
 Qed. 
 
 Lemma lem2  G env t e1 e2 sv : 
-  List.In (existT _ t (sv,e2)) (env) ->
+  Seq.In (existT _ t (sv,e2)) (env) ->
   Gamma_inv G env ->
   eval_sval  (lift env) sv = Some e1 ->
   G |= e1 -- (e2, sv). 
 Proof. 
   intros. 
-  apply (Gamma_inv_3 H0) in H. 
-  pose proof (Gamma_inv_2 H0 H). 
-  simpl in H2. 
+  
+  apply (Gamma_inv_3 X0) in X. 
+  pose proof (Gamma_inv_2 X0 X). 
+  simpl in H0. 
   
   assert ( e1 = e2). congruence.
   subst; auto. 
@@ -552,10 +555,10 @@ Proof.
   intros. 
   assert (eval_sval (lift env) sv = Some (eval_expr Phi st t e1)). eauto using lem1.
   
-  apply lookup_1 in H2.   
-  apply (Gamma_inv_3  H0) in H2. 
-  apply (Gamma_inv_2  H0) in H2. 
-  simpl in H2. congruence. 
+  apply lookup_1 in H0.   
+  apply (Gamma_inv_3  X0) in H0. 
+  apply (Gamma_inv_2  X0) in H0. 
+  simpl in *. congruence. 
 Qed. 
 
 Lemma Gamma_inv_cons G env t e sv : 
@@ -564,8 +567,8 @@ Lemma Gamma_inv_cons G env t e sv :
   Gamma_inv (cons eval_type V t e (e,sv) G) env. 
 Proof. 
   intros. constructor. 
-  - intros. inversion H1; t. reflexivity. eauto. 
-  - intros. inversion H1; t. simpl. eauto.  eauto. 
+  - intros ty x y. inversion 1;injectT. reflexivity. eauto. 
+  - intros ty x y. inversion 1;injectT. simpl. eauto.  eauto. 
   - intros. apply In_skip. eauto. 
 Qed. 
 
@@ -583,7 +586,7 @@ Lemma eval_sval_monotone  l l' t (x: eval_type t) :
     eval_sval l sv  = Some x  ->
     eval_sval (l ++ l')  sv = Some x. 
 Proof. 
-  Ltac crush ::= repeat match goal with 
+  Ltac crush := repeat match goal with 
     | H : context [(do _ <- _; _) = _] |- _ => invert_do H
     | |- context [do _ <- ?x ; _ ]  => case_eq x; intros; simpl
     | H : { _ : _ & _} |- _ => destruct H                                                      
@@ -591,7 +594,7 @@ Proof.
       H': List.nth_error (?l ++ ?l') ?n = Some ?y |- _ =>
         pose proof (nth_error_app l l' n x H);
         assert (x = y) by congruence;
-        clear H H'; t; subst
+        clear H H'; subst
     | H : List.nth_error ?l ?n = Some ?x, 
       H': List.nth_error (?l ++ ?l') ?n = None |- _ =>
         pose proof (nth_error_app l l' n x H);
@@ -604,6 +607,9 @@ Proof.
   end;  auto || (try congruence) .
   induction sv using sval_ind_alt; simpl; intuition; crush.
 
+  injectT. 
+  simpl. 
+  auto. 
   - induction exprs; [intuition|inversion H; clear H];   intuition; crush. 
 
   - f_equal. clear f0. 
@@ -613,7 +619,7 @@ Proof.
     destruct H as [_ H]. apply (IHargs _ H _ EQ _ EQ2). 
 
   - exfalso. clear f0. 
-    induction args; repeat DList.inversion.
+    induction args; DList.inv.
     discriminate.
     destruct H as [H H']. specialize (IHargs _  H'). clear H'.  
     invert_do EQ. rewrite (H _ EQ0 )  in H0. simpl in *. specialize (IHargs _ EQ). clear EQ. 
@@ -622,21 +628,17 @@ Proof.
 Qed. 
 
 
-Lemma list_in_snoc {A} l (x y : A) : List.In x (l++[y]) -> List.In x l \/  x = y. 
-Proof. 
-  revert x y. induction l. simpl; intuition.
-  simpl. intros x y [H | H]; auto. 
-  apply IHl in H. intuition.
-Qed. 
-  
-
 Lemma nth_error_map {A B} {f : A -> B} l t  :
   List.nth_error (List.map f (l ++ [t])) (List.length l) = Some (f t). 
 Proof. 
   induction l. reflexivity. 
   simpl. auto. 
-Qed. 
+Qed.
 
+(* Lemma list_in_snoc {} l (x y : A) : List.In x (l++[y]) -> ((List.In x l) + (x = y))%type.  *)
+(* Proof. *)
+(*   induction l. simpl; intuition. *)
+(* Admitted.    *)
 
 
 Lemma Gamma_inv_cons_var G env (Hg : Gamma_inv  G env) t (e : eval_type t): 
@@ -644,29 +646,28 @@ Lemma Gamma_inv_cons_var G env (Hg : Gamma_inv  G env) t (e : eval_type t):
                 (add eval_type t (SVar t (Datatypes.length env)) e env). 
 Proof.
   intros. 
-  constructor; intros. 
-  - inversion H; t. reflexivity.  use; reflexivity.  
-  - inversion H; t. simpl. unfold lift. unfold add. simpl. 
+  constructor.
+  - intros ty x y. inversion 1;injectT. reflexivity.  use; reflexivity.  
+  - intros ty x y. inversion 1;injectT. simpl. unfold lift. unfold add. simpl. 
     rewrite nth_error_map. simpl.
     
     apply type_cast_eq.
-    apply (Gamma_inv_2 Hg) in H1.
-    clear - H1. 
+    apply (Gamma_inv_2 Hg) in X0.
     unfold lift, add in *. 
 
     destruct y as [ y sv]. 
     rewrite List.map_app. 
-    revert H1. 
+    revert X0. clear X. 
     match goal with |- context [List.map ?f _] => set (F := f) end. 
     replace (List.length env) with (List.length (List.map F env)) by apply List.map_length.
     generalize (List.map F env).  intros. simpl. 
-    clear F. simpl in H1.  
+    clear F. simpl in X0.  
     apply eval_sval_monotone ; auto.    
     
     
-  - unfold add in H.  apply list_in_snoc in H. 
+  - intros ty x y H. unfold add in H.  apply Seq.In_app in H.  
     destruct H. apply In_skip. eauto. 
-    t. apply In_ok. congruence. congruence. 
+    inversion i. injectT. apply In_ok. congruence. congruence. inversion X. 
 Qed.         
       
 Lemma Gamma_inv_cons_other G env (Hg : Gamma_inv G env) t (e : eval_type t) sv: 
@@ -675,23 +676,23 @@ Lemma Gamma_inv_cons_other G env (Hg : Gamma_inv G env) t (e : eval_type t) sv:
             (add eval_type t sv e env). 
 Proof. 
   constructor. 
-  - intros. inversion H0; subst; t; subst. reflexivity.   eauto. 
-  - intros. inversion H0; subst; t; subst. 
+  - intros ty x y. inversion 1; subst; injectT; subst. reflexivity.   eauto. 
+  - intros ty x y. inversion 1; subst; injectT; subst. 
     simpl. unfold lift, add. rewrite List.map_app. apply eval_sval_monotone. apply H.
     simpl. unfold lift, add. rewrite List.map_app. apply eval_sval_monotone. eapply Gamma_inv_2; eauto. 
-  - intros.
-  unfold add in H0; apply list_in_snoc in H0. 
-  destruct H0. apply In_skip. eauto. 
-  t. apply In_ok. congruence. 
-  congruence. 
+  - intros ty x sv' H0.
+    unfold add in H0; apply Seq.In_app in H0. 
+    destruct H0. apply In_skip. eauto.
+    apply Seq.In_cons_inversion in i. destruct i. injectT. inject e0. apply In_ok; auto. 
+    apply Seq.In_nil in i; tauto. 
 Qed. 
 
 Lemma Gamma_inv_empty : Gamma_inv  (nil _ _ ) (empty eval_type). 
 Proof. 
-  constructor; intros. 
-  + inversion H. 
-  + inversion H. 
-  + simpl in H. tauto.  
+  constructor. 
+  + intros ty x y H; inversion H. 
+  + intros ty x y H; inversion H. 
+  + intros. simpl in X. apply Seq.In_nil in X. tauto. 
 Qed. 
 
 
@@ -700,32 +701,6 @@ End s.
 Notation V := (fun t => (eval_type t * sval _  t))%type.  
 
 
-
-Theorem map3_map : forall (X : Type) (F F' F'' : X -> Type)
-  (f : forall a : X, F a -> F' a -> F'' a -> F'' a)
-  l (dl1 dl1' : DList.T F l),
-  DList.pointwise (fun a (x1 x1' : F a) => forall x2 x3, f a x1 x2 x3 = f a x1' x2 x3) _ dl1 dl1'
-  -> forall (dl2 : DList.T F' l) (dl3 : DList.T F'' l),
-    DList.map3 f l dl1 dl2 dl3 = DList.map3 f l dl1' dl2 dl3.
-Proof. 
-  induction 1; simpl; intuition.
-  f_equal; auto.
-Qed.
-
-Hint Constructors DList.pointwise.
-
-Lemma pointwise_map : forall (A : Type) (F G G' : A -> Type)
-  (P : forall a : A, F a -> G a -> Prop)
-  (Q : forall a : A, F a -> G' a -> Prop)
-  (f : forall a : A, G a -> G' a)
-  (_ : forall t dt1 dt2, P t dt1 dt2 -> Q t dt1 (f t dt2))
-  l (dl1 : DList.T F l) (dl2 : DList.T G l),
-  DList.pointwise P _ dl1 dl2
-  -> DList.pointwise Q _ dl1 (DList.map f dl2).
-Proof. 
-  induction 2; simpl; intuition.
-Qed.
-
 Lemma cse_effects_correct (Phi : state) st Delta G e  (Hg : Gamma_inv Phi st G e):
   forall e1 e2 
   (H : effects_equiv eval_type V Phi (RTL.R eval_type V G) e1 e2), 
@@ -733,38 +708,17 @@ Lemma cse_effects_correct (Phi : state) st Delta G e  (Hg : Gamma_inv Phi st G e
    eval_effects Phi st (cse_effects Phi eval_type e2) Delta. 
 Proof. 
   intros e1 e2 H.
-  apply map3_map. 
-  eapply pointwise_map; [| apply H]. 
-  clear H;simpl; intuition. 
-  unfold R in *; inversion H; repeat t; simpl; clear H;
-  repeat (match goal with 
-           | |- ?x = ?x  => reflexivity
-           | |- context [match ?x with _=> _ end] => case_eq x; intros
-           | H : Gamma_inv _ _ _ _, 
-             H' : In _ _ _ ?x ?y _ |- _ => 
-               rewrite (Gamma_inv_1 _ _ _ _ H _ _ _ H')
-           | H : Gamma_inv _ _ _ _, 
-             H' : In _ _ _ ?x ?y _ |- _ => 
-              pose proof (Gamma_inv_1 _ _ _ _ H _ _ _  H');
-              pose proof (Gamma_inv_2 _ _ _ _ H _ _ _ H');
-              subst;
-              clear H'
-           | H : context [fst ?x] |- _ => progress (simpl in H)
-           | H : ?x = ?x |- _ => clear H
-           | H : ?x = true, H' : ?x = false |- _ => rewrite H in H'; clear - H'; discriminate
-           | H : ?x = true, H' : false = ?x |- _ => rewrite H in H'; clear - H'; discriminate
-           | H : true = ?x, H' : ?x = false |- _ => rewrite <- H in H'; clear - H'; discriminate
-           | H : true = ?x, H' : false = ?x |- _ => rewrite <- H in H'; clear - H'; discriminate
-           | H : ?y = ?x, H' : ?x = ?y |- _ => clear H'
-         end).
-  reflexivity. 
-Qed. 
-
-
-
-
-
-Section cse_expr_correct_2. 
+  apply DList.map3_map. 
+  unfold effects_equiv in H. eapply DList.pointwise_map; [| apply H]. 
+  
+  clear H;simpl. intros t dt1 dt2 H v1 v2.  
+  unfold R in *; inversion H; injectT; simpl; clear H; trivial; destruct v2; try reflexivity.
+  rewrite (@Gamma_inv_1 _ _ _ _ Hg _ _ _ X);
+  rewrite (@Gamma_inv_1 _ _ _ _ Hg _ _ _ X0); trivial. 
+  rewrite (@Gamma_inv_1 _ _ _ _ Hg _ _ _ X);
+  rewrite (@Gamma_inv_1 _ _ _ _ Hg _ _ _ X0);
+  rewrite (@Gamma_inv_1 _ _ _ _ Hg _ _ _ X1); trivial. 
+Qed.  
 
 Lemma cse_expr_correct_2 Phi st G env (Hg : Gamma_inv Phi st G env) t:
   forall e1 e2, expr_equiv eval_type V Phi (RTL.R eval_type V G) t e1 e2 ->
@@ -775,34 +729,35 @@ Proof.
     repeat (match goal with 
       | H: (_,_) = (_,_) |- _ => injection H; clear H; intros; subst
       | Hg : Gamma_inv _ _ _ _ ,  H : In _ _ _ ?x ?y _ |- context [?x] =>
-        rewrite (Gamma_inv_1  _ _  _ _  Hg _ _ _ H)
+        rewrite (Gamma_inv_1  _ _   _ _ _ H)
       | H : DList.T [] |- _ => DList.inversion 
       | H : DList.T (_ :: _) |- _  => DList.inversion 
       | H : DList.pointwise _ ( _ :: _) _ _ |- _ => apply DList.inversion_pointwise in H; destruct H
     end); try reflexivity; try f_equal. 
-  intros e1. destruct e1; intros e2 H; inversion H; t; simpl; intros; unfold RTL.R in *; crush.
+  intros e1. destruct e1; intros e2 H; inversion H; injectT; simpl; intros; unfold RTL.R in *; crush.
+  
   - simpl. f_equal. 
-    clear H b. 
-    induction args; repeat DList.inversion;simpl; intuition. 
-    + crush.  eauto. 
+    clear dependent b. 
+    induction args; DList.inv;simpl; intuition. 
+    crush.  eauto. 
   - case_eq (sval_eqb _  (snd l2) (snd r2)); intros H'; rewrite H' in H0.    
     + apply sval_eqb_correct in H'. crush. simpl.
-      
+            
       Ltac save :=
         repeat match goal with 
-          | Hg : Gamma_inv _ _ _ _, H : In _ _ _ _ _ _ |- _ =>
-              pose proof (Gamma_inv_1 _ _ _ _ Hg _ _ _ H);
-              pose proof (Gamma_inv_2 _ _ _ _ Hg _ _ _ H);
+          | H : In _ _ _ _ _ _ |- _ =>
+              pose proof (Gamma_inv_1 _ _ _ _ _ H);
+              pose proof (Gamma_inv_2 _ _  _ _ _ H);
               clear H
       end. 
+
       save. destruct H'.  subst. assert (fst l2 = fst r2) by congruence. rewrite H0.  
       clear. match goal with |- context [ if ?x then _ else _] => destruct x; reflexivity end. 
     + crush. 
   - simpl. clear H. 
-    induction l; repeat DList.inversion;simpl; intuition. 
+    induction l; DList.inv;simpl; intuition. 
     + crush. eauto. 
 Qed. 
-End cse_expr_correct_2. 
 
 Lemma cse_telescope_correct (Phi: state) st t  Delta: 
      forall (b : RTL.block Phi eval_type t)
@@ -824,12 +779,12 @@ Lemma cse_telescope_correct (Phi: state) st t  Delta:
       (let (p, e0) := k in
        let (v, g) := p in & (fst v, fst g, cse_effects Phi eval_type e0))). 
 Proof. 
-  induction 1; simpl; intros. 
-  Ltac crush :=
+  induction 1; simpl; intros E INV. 
+  Ltac crush ::=
     repeat (match goal with 
       | H: (_,_) = (_,_) |- _ => injection H; clear H; intros; subst
       | Hg : Gamma_inv _ _ _ _ ,  H : In _ _ _ ?x ?y _ |- context [?x] =>
-        rewrite (Gamma_inv_1  _ _  _ _  Hg _ _ _ H)
+        rewrite (Gamma_inv_1  _ _  _ _ _ H)
       | H : DList.T [] |- _ => DList.inversion 
       | H : DList.T (_ :: _) |- _  => DList.inversion 
       | H : DList.pointwise _ ( _ :: _) _ _ |- _ => apply DList.inversion_pointwise in H; destruct H
@@ -841,21 +796,20 @@ Proof.
   - crush. 
     match goal with |- context [check ?x; _] => destruct x; [|reflexivity]  end. 
     crush. eauto using cse_effects_correct.  
-  - clear H0. 
-    case_eq (cse_expr Phi eval_type a e2); intros; simpl.  
+  -  case_eq (cse_expr Phi eval_type a e2); intros; simpl.  
     + destruct o. 
-      case_eq (lookup Phi eval_type a s e); intros; simpl; apply H1; clear H1.  
-      * assert (H' : eval_expr Phi st a e1 = e3) by (eauto using lem1, lemma_2). 
+      case_eq (lookup Phi eval_type a s E); intros; simpl; apply H; clear H.  
+      * assert (H' : eval_expr Phi st a e1 = e3) by eauto using lem1, lemma_2. 
         rewrite H'. apply Gamma_inv_cons; auto. subst. eauto using lem1. 
-      * assert (H' : eval_expr Phi st a e0 = eval_expr Phi st a e1). 
+      * assert (H' : eval_expr Phi st a e1 = eval_expr Phi st a e0). 
         {
-          pose proof H0; eapply lem1 in H1; eauto. 
-          symmetry. eauto using cse_expr_correct_2. }
-        rewrite H'. clear H'. 
-        assert (eval_sval Phi st (lift _ e) s  = Some (eval_expr Phi st a e1)) by eauto using lem1. 
+          pose proof H0; eapply lem1 in H0; eauto. 
+          eapply cse_expr_correct_2; eauto. }
+        rewrite H'. 
+        assert (eval_sval Phi st (lift _ E) s  = Some (eval_expr Phi st a e1)) by eauto using lem1. 
         apply Gamma_inv_cons_other; eauto.        
-        
-      * apply H1. clear H1.  
+        congruence. 
+      * apply H. clear H.   
         assert (H' : eval_expr Phi st a e1 = eval_expr Phi st a e0) by 
                 (eauto using cse_expr_correct_2). 
          rewrite H' in *. 
@@ -880,3 +834,4 @@ Theorem Compile_correct Phi t b (Hwf : WF Phi t b): forall st Delta,
 Proof. 
   unfold Eval. intros. unfold Compile. symmetry. apply cse_correct. auto. 
 Qed. 
+

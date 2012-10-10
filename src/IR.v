@@ -878,7 +878,7 @@ Section equiv.
   Reserved Notation "x ==e y" (at level 70, no associativity). 
   
   Section inner_equiv. 
-  Variable R : forall t, U t -> V t -> Prop. 
+  Variable R : forall t, U t -> V t -> Type. 
   Notation "x -- y" := (R _ x y) (at level 70, no associativity). 
     
   Inductive expr_equiv : forall t,  expr U t -> expr  V t -> Prop :=
@@ -919,8 +919,8 @@ Section equiv.
                          Some (effect_regfile_write V n t v2 adr2 we2)
                                   where "x ==e y" := (effect_equiv _ x y). 
  
-  Definition effects_equiv : effects Phi U -> effects Phi V -> Prop := 
-    DList.pointwise  effect_equiv Phi. 
+  Definition effects_equiv : effects Phi U -> effects Phi V -> Type := 
+    DList.pointwise effect_equiv Phi. 
   
   End inner_equiv. 
  
