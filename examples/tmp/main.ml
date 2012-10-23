@@ -5,3 +5,4 @@ let compile name x =
 
 let _ = compile "Cpu" Driver.example1
 let _ = compile "Adder" Driver.example2 
+let _ = compile "Stack" Driver.example3

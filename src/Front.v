@@ -144,7 +144,7 @@ Notation "'do' x <- a ; b" := (Bind' a (fun x =>  b))
                           : action_scope. 
 
 Notation "a ;; b" := (Bind a (fun _ => b)) 
-                            (at level 200,  b at level 200) 
+                            (at level 200,  b at level 200, right associativity) 
                           : action_scope. 
 
 Notation "'do' x <~ a ; b " := (Bind' (Return a) (fun x =>  b)) 

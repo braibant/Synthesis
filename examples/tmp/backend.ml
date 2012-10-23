@@ -15,14 +15,13 @@ let rec int_of_nat : int -> int = fun x -> x
 
 let mk_bus_size : int -> bus_size = int_of_nat
 
-
 type sync =
 | Treg of bus_size
 | Tregfile of bus_size * int
     
 let mk_sync : Src.sync -> sync = function 
   | Src.Treg bus -> Treg (mk_bus_size bus)
-  | Src.Tregfile (bus, size) -> Tregfile (mk_bus_size bus, int_of_nat size)
+  | Src.Tregfile (size, bus) -> Tregfile (mk_bus_size bus, int_of_nat size)
 
 (* using private types to ensure that the traduction is correct *)
 
@@ -37,12 +36,15 @@ type wire = Wire.t
 module Memory = 
 struct 
   type t = string 
-  let mk (s: Src.sync Common.var) : t = 
+  let mk_read (s: Src.sync Common.var) : t = 
     let rec aux = function 
       | Common.Coq_var_0 (_,_) -> 0
       | Common.Coq_var_S (_,_,_,q) -> 1 + aux q
     in
-    "reg" ^ (string_of_int (aux s))
+    "reg_" ^ (string_of_int (aux s))
+
+  let mk_write i : t = 
+    "reg_" ^ (string_of_int i)
 end
 type memory = Memory.t 
 
@@ -84,8 +86,8 @@ let mk_expr (e: Src.expr) : bus_size * expr =
   let (!) x = int_of_nat x in 
   match e with 
   | Src.E_var (n,w) -> !n,  E_var (Wire.mk w)
-  | Src.E_read (n,s) -> !n, E_read (Memory.mk s)
-  | Src.E_read_rf (n,_,s,adr) -> !n, E_read_rf (Memory.mk s, Wire.mk adr) (* check *)
+  | Src.E_read (n,s) -> !n, E_read (Memory.mk_read s)
+  | Src.E_read_rf (_,n,s,adr) -> !n, E_read_rf (Memory.mk_read s, Wire.mk adr) (* check *)
   | Src.E_andb (a,b) -> 1, E_andb (Wire.mk a, Wire.mk b)
   | Src.E_orb (a,b) -> 1, E_orb (Wire.mk a, Wire.mk b) 
   | Src.E_xorb (a,b) -> 1, E_xorb (Wire.mk a, Wire.mk b)
@@ -158,7 +160,7 @@ let pp_expr fmt (e : expr) =
     assert (i >= j);
     Format.fprintf fmt "%s[%i:%i]" w i j
   | E_concat l -> Format.fprintf fmt "{%s}" (concat ", " l)
-  | E_unit -> Format.fprintf fmt "tt"
+  | E_unit -> Format.fprintf fmt "0" 	(* according to Murali, this is the way people do it *)
 
 
 let pp_bindings fmt (l: (bus_size * expr) list) =
@@ -170,22 +172,22 @@ let pp_bindings fmt (l: (bus_size * expr) list) =
     ) l
 
 type effect = 
-| RegisterWrite of (wire * wire) (* (value, guard)  *)
-| RegisterFileWrite of (wire * wire * wire ) (* (value,adr,guard) *)
+| RegisterWrite of (memory * wire * wire) (* (value, guard)  *)
+| RegisterFileWrite of (memory * wire * wire * wire ) (* (value,adr,guard) *)
 
-let mk_effect (e : Src.effect option ) : effect option =
+let mk_effect n (e : Src.effect option ) : effect option =
   match e with 
   | Some Src.Coq_reg_write (_, value, guard) -> 
-    Some (RegisterWrite (Wire.mk value, Wire.mk guard)) 
+    Some (RegisterWrite (Memory.mk_write n, Wire.mk value, Wire.mk guard)) 
   | Some Src.Coq_regfile_write (_,_,value, adr, guard) ->
-    Some (RegisterFileWrite (Wire.mk value, Wire.mk adr, Wire.mk guard))
+    Some (RegisterFileWrite (Memory.mk_write n, Wire.mk value, Wire.mk adr, Wire.mk guard))
   | None -> None
 
 
-let pp_effect fmt (name, effect)= match effect with 
-  | Some (RegisterWrite (value, guard)) ->
+let pp_effect fmt effect= match effect with 
+  | Some (RegisterWrite (name, value, guard)) ->
     Format.fprintf fmt "if(%s) %s <= %s;\n" guard name value
-  | Some (RegisterFileWrite (value, address, guard)) -> 
+  | Some (RegisterFileWrite (name, value, address, guard)) -> 
     Format.fprintf fmt "if(%s) %s[%s] <= %s;\n" guard name address value
   | None -> ()
 
@@ -198,24 +200,28 @@ let pp_effects fmt initials effects =
     Format.fprintf fmt "\tif(rst_n)\n";
     Format.fprintf fmt "\t\tbegin\n";
     begin 
-      Format.fprintf fmt "//INIT \n";
+      Format.fprintf fmt "// reset \n";
       List.iter (pp_init fmt) initials
     end;
     Format.fprintf fmt "\t\tend\n";
     Format.fprintf fmt "\telse\n";
     Format.fprintf fmt "\t\tbegin\n";
-    begin 
-      let i = ref 0 in 
-      List.iter (fun e -> pp_effect fmt ("reg" ^ string_of_int !i, e); incr i) effects
-    end;
+    Format.fprintf fmt "// put  debug code here (display, stop, ...)\n";
+    List.iter (fun e -> pp_effect fmt e) effects;    
     Format.fprintf fmt "\t\tend\n";
   end;
   Format.fprintf fmt "end\n"
 
-let pp_sync fmt (name, ty) = 
+
+
+let pp_sync fmt (name, ty) =
   match ty with 
-  | Treg bus -> Format.fprintf fmt "input %a reg%i;\n" pp_bus_size bus name
-  | Tregfile (bus,length) -> Format.fprintf fmt "input %a reg%i [%i:0];\n" pp_bus_size bus name length
+  | Treg bus -> 
+    Format.fprintf fmt "reg %a reg_%i;\n" pp_bus_size bus name;
+  | Tregfile (bus,length) -> 
+    assert (length < 32);
+    Format.fprintf fmt "reg %a reg_%i [%i:0];\n" pp_bus_size bus name ((1 lsl length) - 1)
+
 
 type block =
   {
@@ -240,7 +246,7 @@ let mk_block name (b : Src.block) : block =
       (b.Src.bindings) in 
   let l = convert b.Src.effects in 
   let (sync, effects) = List.split l in 
-  let effects = List.map mk_effect effects in 
+  let (effects,_) = List.fold_left (fun (acc,i) e -> (mk_effect i e :: acc, i+1)) ([],0) effects  in 
   {
     name = name;
     output_size = b.Src.t;
@@ -254,10 +260,11 @@ let mk_block name (b : Src.block) : block =
   
 let pp_params fmt l =
   let i = ref 0 in 
-  List.iter (fun _ -> Format.fprintf fmt "reg%i," !i; incr i) l
+  List.iter (fun _ -> Format.fprintf fmt ", reg_%i" !i ;incr i) l
 
 let pp fmt c =
-  Format.fprintf fmt "module %s (clk, rst_n, %a guard, value);\n" c.name pp_params c.state;
+  Format.fprintf fmt "module %s (clk, rst_n, guard, value);\n" c.name;
+  Format.fprintf fmt "integer index; // Used for initialisations\n";
   Format.fprintf fmt "input clk;\ninput rst_n;\n";
   Format.fprintf fmt "output guard;\noutput [%i:0] value;\n" (c.output_size - 1);
   Format.fprintf fmt "// state declarations\n";
