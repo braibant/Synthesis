@@ -279,7 +279,7 @@ let pp fmt c =
   Format.fprintf fmt "endmodule\n"
     
 let dump c = 
-  let o = open_out (c.name ^ ".v") in 
+  let o = open_out ("verilog/" ^ c.name ^ ".v") in 
   let fmt = Format.formatter_of_out_channel o in 
   let _ = Format.fprintf fmt "%a" pp c in 
   close_out o

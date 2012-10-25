@@ -5,6 +5,9 @@ VS      := $(MODULES:%=%.v)
 
 .PHONY: coq clean
 
+all: coq
+	ocamlbuild -Is extracted,backend main.byte
+
 coq: Makefile.coq
 	$(MAKE) -f Makefile.coq
 
@@ -15,3 +18,5 @@ Makefile.coq: Makefile $(VS)
 clean:: Makefile.coq
 	$(MAKE) -f Makefile.coq clean
 	rm -f Makefile.coq .depend
+	ocamlbuild -clean
+	rm -f extracted/*

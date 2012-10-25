@@ -1,7 +1,6 @@
 Require Driver. 
 
-
-Cd "tmp".
+Cd "extracted".
 
 Set Extraction AccessOpaque.
 
