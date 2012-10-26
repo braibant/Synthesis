@@ -189,8 +189,9 @@ Section s.
   Definition cse_expr t (e : expr Phi V t) : expr Phi Var t * option (sval t). 
   refine (
       match e  with
+        | Einput t v => (Einput _ _ _ v, !!)
         (* | Eread t v => (Eread _ _ t v, Some (SRead t v))  *)
-        | Evar t v => (Evar (fst v), Some (snd v))
+        | Evar t v => (Evar (fst v), Some (snd v)) 
         | Eread t v => (Eread v, !!)
         | Eread_rf n t v adr =>   (Eread_rf v (fst adr), !! )
         | Ebuiltin args res f x => let v := DList.map (fun x dx => fst dx) x in 

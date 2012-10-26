@@ -16,10 +16,12 @@ let rec int_of_nat : int -> int = fun x -> x
 let mk_bus_size : int -> bus_size = int_of_nat
 
 type sync =
+| Tinput of bus_size 
 | Treg of bus_size
 | Tregfile of bus_size * int
     
 let mk_sync : Src.sync -> sync = function 
+  | Src.Tinput bus -> Tinput (mk_bus_size bus)
   | Src.Treg bus -> Treg (mk_bus_size bus)
   | Src.Tregfile (size, bus) -> Tregfile (mk_bus_size bus, int_of_nat size)
 
@@ -54,6 +56,7 @@ type constant =
 type expr =
 | E_var   of wire
 | E_read  of memory
+| E_input of memory
 | E_read_rf of memory * wire
 | E_andb  of wire * wire
 | E_orb   of wire * wire
@@ -87,6 +90,7 @@ let mk_expr (e: Src.expr) : bus_size * expr =
   match e with 
   | Src.E_var (n,w) -> !n,  E_var (Wire.mk w)
   | Src.E_read (n,s) -> !n, E_read (Memory.mk_read s)
+  | Src.E_input (n,s) -> !n, E_input (Memory.mk_read s)
   | Src.E_read_rf (_,n,s,adr) -> !n, E_read_rf (Memory.mk_read s, Wire.mk adr) (* check *)
   | Src.E_andb (a,b) -> 1, E_andb (Wire.mk a, Wire.mk b)
   | Src.E_orb (a,b) -> 1, E_orb (Wire.mk a, Wire.mk b) 
@@ -145,6 +149,7 @@ let pp_expr fmt (e : expr) =
   match e with 
   | E_var  w -> Format.fprintf fmt "%s" w
   | E_read  m -> Format.fprintf fmt "%s" m
+  | E_input m -> Format.fprintf fmt "%s" m
   | E_read_rf  (m,adr) -> Format.fprintf fmt "%s[%s]" m adr
   | E_andb  (a,b) -> Format.fprintf fmt "%s & %s" a b 
   | E_orb   (a,b) -> Format.fprintf fmt "%s | %s" a b 
@@ -216,6 +221,8 @@ let pp_effects fmt initials effects =
 
 let pp_sync fmt (name, ty) =
   match ty with 
+  | Tinput bus -> 
+    Format.fprintf fmt "input %a reg_%i;\n" pp_bus_size bus name;
   | Treg bus -> 
     Format.fprintf fmt "reg %a reg_%i;\n" pp_bus_size bus name;
   | Tregfile (bus,length) -> 
@@ -260,10 +267,15 @@ let mk_block name (b : Src.block) : block =
   
 let pp_params fmt l =
   let i = ref 0 in 
-  List.iter (fun _ -> Format.fprintf fmt ", reg_%i" !i ;incr i) l
+  List.iter (fun t -> 
+    begin match t with 
+    | Tinput bus -> 
+      Format.fprintf fmt ", reg_%i" !i 
+    | _ -> ()
+    end;incr i) l
 
 let pp fmt c =
-  Format.fprintf fmt "module %s (clk, rst_n, guard, value);\n" c.name;
+  Format.fprintf fmt "module %s (clk, rst_n, guard, value%a);\n" c.name pp_params c.state ;
   Format.fprintf fmt "integer index; // Used for initialisations\n";
   Format.fprintf fmt "input clk;\ninput rst_n;\n";
   Format.fprintf fmt "output guard;\noutput [%i:0] value;\n" (c.output_size - 1);

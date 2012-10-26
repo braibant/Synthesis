@@ -36,6 +36,7 @@ Section t.
   Require Import RTL. 
   Definition cp_expr t (e : expr Phi V t) : (expr Phi Var t) * (option bexpr). 
   refine (match e with
+            | Einput t v => (Einput _ _ _ v, !!)
             | Evar t x => 
                 match t as ty return V ty -> (expr Phi Var ty) * (option bexpr) with 
                   | Tbool => fun y => (Evar (fst y), bang (snd y)) 

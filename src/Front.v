@@ -4,12 +4,13 @@ Require Import Core.
 Require Word Array. 
 
 Inductive primitive (Phi : state) : list type -> type -> Type:=
+| input_read : forall t, var Phi (Tinput t) -> primitive Phi nil t
+(* register operations *)
 | register_read : forall t, var Phi (Treg t) ->  primitive Phi nil t
 | register_write : forall t, var Phi (Treg t) -> primitive Phi (t:: nil) Tunit
 (* register file primitives *)
 | regfile_read : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([ (Tint n)])%list  t
-| regfile_write : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([ (Tint n); t])%list  Tunit
-(* fifos primitives *).
+| regfile_write : forall n t (v : var Phi (Tregfile n t)), primitive Phi ([ (Tint n); t])%list  Tunit.
 
 Section s.
   
@@ -297,6 +298,9 @@ Module Sem.
       refine (match
           p in (primitive _ l t) return (DList.T eval_type l -> T (eval_type t))
         with
+          | input_read t v => 
+            fun _ (st: eval_state Phi) Delta => 
+            Some (DList.get v st, Delta)
           | register_read t v =>
               fun _ (st : eval_state Phi)
                   (Delta : Diff.T Phi) => Some (DList.get v st, Delta)

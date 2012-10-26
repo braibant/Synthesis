@@ -25,12 +25,14 @@ Inductive wire (t:type) := box : nat -> wire t.
 
 (* The type of memory elements depend on the bus size*)
 Inductive sync := 
-  | Treg : type -> sync
-  | Tregfile :  nat -> type -> sync. 
+| Tinput : type -> sync 
+| Treg : type -> sync
+| Tregfile :  nat -> type -> sync. 
 
 (* The denotation of a memory element is a word *)
 Fixpoint eval_sync s := 
   match s with
+    | Tinput t => Word.T t
     | Treg t => Word.T t
     | Tregfile n t => Regfile.T n (Word.T t)
   end. 
@@ -46,6 +48,7 @@ Section t.
   Context {Phi : list sync}. 
   Inductive expr : type -> Type :=
   | E_var : forall t, wire t -> expr t
+  | E_input : forall t, var Phi (Tinput t) -> expr t
   | E_read : forall t,  var Phi (Treg t) -> expr t
   | E_read_rf : forall n t (rf: var Phi (Tregfile n t))(adr: wire n),  expr t 
   | E_andb : wire 1 -> wire 1 -> expr 1
@@ -100,6 +103,7 @@ Section t.
   Definition eval_expr (st: DList.T eval_sync Phi) t (e : expr t) (env : Env) : option (Word.T t). 
     refine (match e with
       | E_var t x => [env # x]
+      | E_input t x => Some (DList.get x st)
       | E_read t x => Some (DList.get x st)
       | E_read_rf n t rf adr => 
         let rf := DList.get rf st in 
@@ -182,7 +186,8 @@ Fixpoint compile_type (t : Core.type) :  type :=
 
 Definition compile_sync s :=
   match s with 
-      Core.Treg t => Treg (compile_type t)
+    | Core.Tinput t => Tinput (compile_type t)
+    |  Core.Treg t => Treg (compile_type t)
     | Core.Tregfile n t => Tregfile n (compile_type t)
   end. 
 
@@ -220,6 +225,7 @@ Section s.
   Definition compile_expr Phi t (e: RTL.expr Phi Var t) :
     expr (List.map compile_sync Phi) (compile_type t):= 
     match e with 
+      | RTL.Einput t v => E_input (compile_type t) (var_map compile_sync Phi _ v)
       | RTL.Evar t v => E_var (compile_type t) (! v) 
       | RTL.Eread t m =>  E_read _ (var_map compile_sync Phi _ m)
       | RTL.Eread_rf n t m adr => E_read_rf n _ (var_map compile_sync Phi _ m) (! adr)

@@ -14,6 +14,7 @@ Section t.
     
     Inductive expr : type -> Type :=
     | Evar : forall t, Var t -> expr t
+    | Einput : forall t, var Phi (Tinput t) -> expr t 
     | Eread : forall t,  var Phi (Treg t) -> expr t
     | Eread_rf : forall n t, var Phi (Tregfile n t) -> Var (Tint n) -> expr t 
     | Ebuiltin : forall (args : list type) (res : type),
@@ -150,6 +151,8 @@ Section t.
                         end
                   | IR.telescope_bind a bd k => 
                       match bd with
+                        | IR.bind_input_read v => 
+                          x :- Einput a v; fold _ (k x)
                         | IR.bind_expr x => 
                             x :-- compile_expr _ x ; fold _ (k x)
                         | IR.bind_reg_read x => 
@@ -171,6 +174,7 @@ Section t.
             match e with
               | Evar t v => v
               | Eread t v => (DList.get v st)
+              | Einput t v => DList.get v st
               | Eread_rf n t v adr =>  
                   let rf := DList.get  v st in
                     Common.Regfile.get rf (adr)                

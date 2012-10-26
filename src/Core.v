@@ -318,6 +318,7 @@ Definition builtin_denotation (dom : list type) ran (f : builtin dom ran) :
   end. 
 
 Inductive sync : Type :=
+  | Tinput: forall (t: type), sync
   | Treg : forall (t : type), sync
   | Tregfile : forall (n : nat) (t : type), sync. 
 
@@ -325,6 +326,7 @@ Definition state := list sync.
 
 Definition eval_sync (s : sync) := 
   match s with
+    | Tinput t => eval_type t
     | Treg t => eval_type t 
     | Tregfile n t => Regfile.T n (eval_type t) 
   end. 

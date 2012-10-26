@@ -13,6 +13,7 @@ Section t.
   Inductive bind (t : type) : Type := 
   | bind_expr :  expr R t ->  bind t
   | bind_reg_read : var Phi (Treg t) -> bind t
+  | bind_input_read : var Phi (Tinput t) -> bind t
   | bind_regfile_read : forall n, var Phi (Tregfile n t) -> R (Tint n) -> bind t. 
     
   Inductive telescope (A : Type): Type :=
@@ -95,46 +96,46 @@ Section t.
                   r <- (bind_expr _ (Emux gA (Evar rA) (Evar rA'))%expr); 
                   & ( r , (orb gA gA')%expr , [e;e'])%list
           end in f t a).
-  (* primitive *)
-  revert exprs. 
-  refine (match p with
-            | register_read t v => _
-            | register_write t v => _
-            | regfile_read n t v  => _
-            | regfile_write n t v  => _
-          end); clear p; intros exprs. 
-  (* register read *)
-  refine (x <- (bind_reg_read _ v); &(x, #b true, nil)). 
-  (* register write *)
-  refine ( let env := convert _ exprs in 
-             let w := fst env in 
-               x <- bind_expr _ w; 
-           let e := ([neffect_reg_write _ v x])%list  in 
-             &( unit, #b true, e)
-         ). 
-  (* register file read *)
-  refine ( let env := convert _ exprs in 
-             let adr := fst env in 
-               adr <- bind_expr _ adr; 
-           x <- bind_regfile_read _ _ v adr; 
-           &( x, #b true, nil)
-         ). 
-  (* register file write *)
-  refine ( let env := convert _ exprs in 
-             match env with 
-               | (adr, (w, _)) => 
-                   adr <- bind_expr _ adr; 
-                   w <- bind_expr _ w;
-                   let e :=  ([neffect_regfile_write _ _ v  adr w])%list in                      
-                     &( unit, #b true, e)                      
-             end
-         ). 
-    (* or else *)  
+  refine (match p in primitive _ args res return DList.T (expr R) args -> 
+                                                  telescope (R res * expr R B * list neffect)         
+          with
+            | input_read t v => fun _ => x <- bind_input_read _ v; &(x, #b true, nil)
+            | register_read t v => fun _ => x <- (bind_reg_read _ v); &(x, #b true, nil) 
+            | register_write t v => fun exprs =>
+                                     let env := convert _ exprs in
+                                     let w := fst env in
+                                     x <- bind_expr _ w;
+                                     let e := ([neffect_reg_write _ v x])%list  in
+                                     &( unit, #b true, e)
+            | regfile_read n t v  => fun exprs =>
+                                       let env := convert _ exprs in
+                                       let adr := fst env in
+                                       adr <- bind_expr _ adr;
+                                       x <- bind_regfile_read _ _ v adr;
+                                       &( x, #b true, nil)
+            | regfile_write n t v  => fun exprs =>
+                                       let env := convert _ exprs in
+                                       match env with
+                                         | (adr, (w, _)) =>
+                                           adr <- bind_expr _ adr;
+                                         w <- bind_expr _ w;
+                                         let e :=  ([neffect_regfile_write _ _ v  adr w])%list in
+                                         &(unit, #b true, e)
+                                       end
+          end exprs). 
   Defined. 
     
-    Definition compile t a :=   
-      (unit <- (bind_expr _ (# Ctt))%expr; compile_inner unit t a). 
+  (* At this point, we take the opportunity to introduce several
+  extraneous bindings, that may end up being useful in ulterior steps,
+  namely the boolean optimisation and the common-sub-expression
+  elimination.  *)
 
+  Definition compile t a :=   
+    (unit <- (bind_expr _ (# Ctt))%expr; 
+     _ <- bind_expr _ (#b true)%expr;
+     _ <- bind_expr _ (#b false)%expr;
+     compile_inner unit t a). 
+  
   
   Inductive effect  : sync -> Type :=
   | effect_reg_write : forall t,  R t -> R Tbool -> effect (Treg t)
@@ -164,15 +165,16 @@ Section t.
       | effect_regfile_write _ _ x y z => (x,y,z)
     end. 
 
-  Definition merge s (a b : effect s) : telescope (effect s). 
-  refine (match s as s'  return effect s' -> effect s' -> telescope (effect s') with 
+  Definition merge s (a b : effect s) : telescope (option (effect s)). 
+  refine (match s as s'  return effect s' -> effect s' -> telescope (option (effect s')) with 
+              | Tinput t => fun a b => & None
               | Treg t => fun a b => 
                            let (va,ga) := inversion_effect_Treg t a in 
                            let (vb,gb) := inversion_effect_Treg t b in 
                              (
                                we <- bind_expr  _ (Evar ga || Evar gb)%expr ;
                                w <- bind_expr  _ (Emux  (Evar ga) (Evar va) (Evar vb) )%expr ;
-                               & (effect_reg_write  _ w we))
+                               & (Some (effect_reg_write  _ w we)))
               | Tregfile n t => fun a b => 
                            match inversion_effect_Tregfile t n a with 
                              | (va,adra,ga) =>
@@ -182,7 +184,7 @@ Section t.
                                          we <- bind_expr  _ (orb (Evar ga) (Evar gb))%expr; 
                                          wadr <- bind_expr _ (Emux (Evar ga) (Evar adra) (Evar adrb))%expr; 
                                          wdata <- bind_expr _ (Emux (Evar ga) (Evar va) (Evar vb))%expr; 
-                                         &  (effect_regfile_write _ _ wdata wadr we))
+                                         &  (Some (effect_regfile_write _ _ wdata wadr we)))
                                  end
                            end
           end a b). 
@@ -192,7 +194,7 @@ Section t.
   Definition update t (v : var Phi t) (e : effect t)  (acc: effects) : telescope effects. 
   refine ( match DList.get  v acc with 
                | Some old => 
-                   e :-- merge t old e ; & (DList.set v (Some e) acc)
+                   e :-- merge t old e ; & (DList.set v e acc)
                | None => 
                    & (DList.set v (Some e) acc)
            end). 
@@ -228,7 +230,6 @@ Section t.
                   (compile_neffects G q)
     end. 
 
-  (* guard was replaced by true  *)
   refine (compose_block B (fun res guard neffects => 
                              compose (compile_neffects (guard ) neffects (init_effects))
                              (fun effects => &(res, guard, effects)))). 
@@ -244,6 +245,7 @@ Section t.
     refine (match b with
               | bind_expr x =>  (eval_expr _ x)
               | bind_reg_read v => (DList.get v st)
+              | bind_input_read v => (DList.get v st)
               | bind_regfile_read n v adr => 
                   let rf := DList.get  v st in
                     Regfile.get rf (adr)                
@@ -448,6 +450,7 @@ Section t.
           t; trivial. 
       -                         (* primitive *)
       intros. destruct p.  
+        +  simpl. reflexivity. 
         +  simpl. reflexivity. 
         + simpl.
               
