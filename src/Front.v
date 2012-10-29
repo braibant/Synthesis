@@ -362,7 +362,7 @@ End Sem.
 
 Definition Eval Phi (st: eval_state Phi)  t (A : Action Phi t ) Delta :=  @Sem.eval_action Phi t (A _) st Delta. 
 
-Definition Next Phi st (A : Action Phi Tunit) := 
+Definition Next {t} Phi st (A : Action Phi t) := 
   let Delta := Eval Phi st _ A (Diff.init Phi) in 
     match Delta with 
       | None => st
