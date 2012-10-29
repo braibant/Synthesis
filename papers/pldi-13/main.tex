@@ -7,7 +7,7 @@
 \usepackage{amsmath}
 
 \authorinfo{Thomas Braibant}
-           {UdG/MIT}
+           {Inria}
            {thomas.braibant@inria.fr}
 \authorinfo{Adam Chlipala}
            {MIT}
@@ -30,7 +30,7 @@
   One key of our approach is that input programs to the compiler can
   be defined and proved correct inside Coq. Then, we use extraction
   and a Verilog back-end (written in OCaml) to get a certified version
-  of some hardware-designs.
+  of some hardware designs.
 \end{abstract}
 
 \section*{Introduction}
@@ -38,19 +38,20 @@ Verification of hardware designs has been thoroughly investigated, and
 yet, obtaining provably correct hardware of significant complexity is
 usually considered challenging and time-consuming. 
 %
-On the one hand, a common practice in hardware verification is to  take a given design
-written in an hardware description language like Verilog or VHDL,
-and argue about this design in a formal way using a model checker or
-an SMT solver. 
+On the one hand, a common practice in hardware verification is to take
+a given design written in an hardware description language like
+Verilog or VHDL, and argue about this design in a formal way using a
+model checker or an SMT solver.
 %
-On the second hand, a completely different approach is to design hardware via a
-shallow-embedding of circuits in a theorem
-prover~\cite{hanna-veritas,UCAM-CL-TR-77,hunt89,vamp,certifying-circuits-in-type-theory}. 
+On the second hand, a completely different approach is to design
+hardware via a shallow-embedding of circuits in a theorem
+prover~\cite{hanna-veritas,UCAM-CL-TR-77,hunt89,vamp,certifying-circuits-in-type-theory}.
 %
 Yet, both kind of approach suffer from the fact that most hardware
-designs are expressed in low-level RTL languages like Verilog or 
-VHDL, and that the level of abstraction they provide may be too low to
-do short and meaningful proof of high-level properties. 
+designs are expressed in low-level register transfer languages (RTL)
+like Verilog or VHDL, and that the level of abstraction they provide
+may be too low to do short and meaningful proof of high-level
+properties.
 
 \medskip
 
@@ -101,13 +102,56 @@ time-step).
 %
 Our target language can be sensibly interpreted as \emph{clocked
   sequential machines}: we generate an RTL description syntactically
-described as combinational definitions and next-state
-assignements. (Note that we do not investigate yet the correctness of an
-\emph{actual} implementation of this RTL description using the
-synthesisable subsets of Verilog or VHDL.)
+described as combinational definitions and next-state assignements.
+
+\medskip
+
+What is new about \project{} is that we embed a hardware decription
+language as a domain-specific-language in Coq: circuits correspond to
+a given datastructure implemented in Coq.
+%
+In particular, this makes it possible to use Coq as a metaprogramming
+tool to describe circuits: as an example, we shall see how we can
+build succint, and provably correct, description of recursive
+circuits.
+
+\paragraph{A case-study in seamless verification.}
 
 
-\section{Testing designs}
+\paragraph{Contributions.}
+We summarize the contributions of this work as follows:
+\begin{itemize}
+\item we define a domain specific language for (minimal, high-level)
+  hardware description language inside the Coq proof assistant;
+\item we prove the total correctness of a compiler for this DSL that
+  produces RTL code.  
+\end{itemize}
+
+
+%% (Note that we do not investigate yet the correctness of an
+%% \emph{actual} implementation of this RTL description using the
+%% synthesisable subsets of Verilog or VHDL.)
+
+\section{From Fe-Si to RTL}
+In this section, we present our source, intermediate, and target
+languages, along with their static and dynamic semantics.
+%
+In this section, we describe these languages using ``pen and paper''
+style mathematical notations, in order to avoid the clutter of Coq
+formal syntax.
+
+\section{Lightweight optimizations}
+\subsection{Common sub-expression elimination}
+\subsection{Using BDDs to reduce boolean expressions}
+
+\section{Detailed example: running IMP programs on certified
+  hardware.}
+
+\section{Further discussion}
+
+\subsection{Meta-programming features at work}
+
+\subsection{Testing designs}
 In order to gain confidenced in the fact that there is no lapse in
 either the semantics of the source language, nor the semantics of the
 target language, we test the simulated execution of compiled designs
@@ -115,12 +159,30 @@ against our semantics.
 
 Indeed, our use of program extraction is more delicate than what is
 done in, e.g., CompCert, because our program transformations use
-dependent type intensively. Either Coq extraction mechanism or
-our Verilog back-end could introduce bugs in the generated code.
+dependent types intensively. In the end, either Coq extraction
+mechanism or our Verilog back-end could introduce bugs in the
+generated code.
 
 Moreover, since the long-term idea is to generate high-confidence
 hardware, one should not blindly trust formally certified code that
-has not been tested. 
+has not been tested.
+
+\section{Implementation}
+The compiler implementation and documentation are available on- line
+at: 
+%
+\begin{center}
+  \texttt{htt://google.fr}
+\end{center}
+%
+The size of the development can be estimated from the line counts in
+Figure~\ref{fig:loc}.
+\begin{figure}
+  \centering  
+  \caption{Size of the development (non-blank lines of code)}
+  \label{fig:loc}
+\end{figure}
+
 
 % \category{CR-number}{subcategory}{third-level}
 
