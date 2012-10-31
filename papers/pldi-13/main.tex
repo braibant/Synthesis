@@ -14,6 +14,7 @@
            {adamc@csail.mit.edu}
 \title{Formal verification of hardware synthesis}
 \newcommand{\project}{Fe-Si}
+\newcommand{\action}{action}
 \begin{document}
 \maketitle
 
@@ -115,16 +116,17 @@ tool to describe circuits: as an example, we shall see how we can
 build succint, and provably correct, description of recursive
 circuits.
 
-\paragraph{A case-study in seamless verification.}
 
 
 \paragraph{Contributions.}
 We summarize the contributions of this work as follows:
 \begin{itemize}
-\item we define a domain specific language for (minimal, high-level)
-  hardware description language inside the Coq proof assistant;
-\item we prove the total correctness of a compiler for this DSL that
-  produces RTL code.  
+\item we demonstrate a novel use of PHOAS as a way to embed domain
+  specific languages (DSLs) in the Coq proof assistant;
+\item we define such a DSL for a (minimal, high-level) hardware
+  description language;
+\item we prove the correctness of a compiler for this DSL that
+  produces RTL code. 
 \end{itemize}
 
 
@@ -132,13 +134,163 @@ We summarize the contributions of this work as follows:
 %% \emph{actual} implementation of this RTL description using the
 %% synthesisable subsets of Verilog or VHDL.)
 
+\section{Overview of Fe-Si}
+Fe-Si is a purely functional language built around a \emph{monad} that
+makes it possible to define circuits. We start with a customary
+example: we show the implementation of a half adder.
+\begin{coq}
+Definition hadd (a b: Var Bool) : action [] (Bool $\otimes$ Bool) :=
+$\quad$do carry <- ret (andb a b; 
+$\quad$do sum     <- ret (xorb a b);
+$\quad$ret (carry, sum).  
+\end{coq}
+The typing of this circuit show that it has two input wires, and
+return a tuple of values. 
+%
+Here, we use Coq notations to implement some syntactic sugar: we
+borrow the \texttt{do}-notation to denote the monadic bind, and use
+\coqe{ret} as a short-hand for return. 
+% 
+Our explicit use of return may seem odd. It is due to the fact that
+Fe-Si has two classes of syntactic values, expressions and actions,
+and that return takes as argument an
+expression\footnote{Unfortunately, it is not possible to define return
+  as an implicit coercion from expressions to actions.}. 
+
+Up to this point, Fe-Si can be seen as an extension of the Lava
+language, implemented in Coq rather than Haskell. Yet, using Coq as a
+metalanguage offers the possibility to use dependent types in our
+circuit descriptions. For instance, one can define an adder circuit of
+the following type:
+\begin{coq}
+Definition adder n (a b: Var (Int n)): action [] (Int n) := ...
+\end{coq}
+In this definition, \coqe{n} of type \coqe{nat} is a formal parameter
+that denotes the size of the operands and the size of the result as
+well. (Here, we neglect the overflow that may occur when computing the
+result.)
+
+\paragraph{Stateful programs.}
+Fe-Si also features a small set of primitives for interacting with
+\emph{memory elements} that hold mutable state. In the following
+snippet, we build a counter that increments its value when its input
+is true.
+\begin{coq}
+Definition $\Phi$ := [Reg (Int n)]
+Definition count n (tick: Var Bool) : action $\Phi$ (Int n) :=
+$\quad$do x <- !var_0;
+$\quad$do _ <- if tick then {var_0 ::= x + 1} else {ret tt}; 
+$\quad$ret x. 
+\end{coq}
+Here, $\Phi$ is an environment that defines the set of memory elements
+(in a broad sense) of the circuit. In the first line, we read the
+content of register at position \coqe{var_0} in $\Phi$, and bind this
+value to \coqe{x}. Then, we test the value of the input \coqe{tick},
+and when it is true, we increment the value of the register. In any
+case, the output is the old value of the counter.
+
+Finally, note that the above ``if-then-else'' construct is defined
+using two primitives for guarded atomic actions that are reminiscent
+of transactionnal memory monads: \coqe{assert} and \coqe{orElse}. The
+former aborts the current action if its argument is false. 
+%
+The latter takes two arguments $a$ and $b$, and first executes $a$; if
+it aborts, then the effects of $a$ are discarded and $b$ is run. If
+$b$ aborts too, the whole action \coqe{$a$ orElse $b$} aborts.
+
+\paragraph{Synchronous semantics.} Recall that Fe-Si programs are
+intended to describe hardware circuits. Hence, we must stress that
+they are interpreted in a synchronous setting.
+%
+From a logical point of view the execution of a program (an atomic
+action) is clocked, and at each tick of its clock, the computation of
+its effects (i.e., updates to memory elements) is instantaneous; 
+yet these effects are applied all at once between ticks. 
+%
+In particular this means that it is not possible to observe, e.g.,
+partial updates to the memory elements, nor transient values in
+memory.
+
+\paragraph{From programs to circuits.} At this point, the reader may
+wonder how it is possible to generate circuits in a palatable format
+out of Fe-Si programs. Indeed, using Coq as a meta-language to embed
+Fe-Si yields two kind of issues. First, Coq lacks any kind of I/O; and
+second, a Fe-Si program may have been built using arbitrary Coq code,
+including, e.g., higher-order functions or fixpoints.
+
+Therefore, we take the following steps.  Starting from a closed Fe-Si
+program \coqe{foo}, we put the following definition in given Coq file:
+\begin{coq}
+Definition bar := fesic foo.  
+\end{coq}
+Coq's extraction mechanism makes it possible to generate OCaml code
+from Coq programs. Starting with the definition \coqe{bar}, it is
+possible to build an OCaml file that contains all the dependencies of
+\coqe{bar}, including the code of the \coqe{fesic} compiler!
+%
+We can then compile this OCaml file and link it to an (unverified)
+back-end that pretty-prints some Verilog code that corresponds to
+\coqe{bar}.
+%
+(We reckon that this is some devious use of the extraction mechanism,
+that palliates the fact that there is currently no I/O mechanism in
+Coq.)
+
 \section{From Fe-Si to RTL}
 In this section, we present our source, intermediate, and target
 languages, along with their static and dynamic semantics.
 %
-In this section, we describe these languages using ``pen and paper''
-style mathematical notations, in order to avoid the clutter of Coq
-formal syntax.
+We take the liberty to describe these languages using ``pen and
+paper'' style mathematical notations, in order to avoid the clutter of
+Coq formal syntax.
+
+\subsection{Fe-Si}
+The definition of Fe-Si programs (\coqe{action} in the following)
+takes the PHOAS approach. 
+%
+That is, we define an inductive type family parametrized by an
+arbitrary type \coqe{V} of variables. 
+\begin{figure}
+  \centering
+\begin{coq}
+Variable V: ty -> Type. 
+Variable Phi: list mem. 
+Inductive expr: ty -> Type :=
+| Evar : forall t (v : Var t), expr t
+| Ebuiltin: ... 
+
+Inductive $\action$: ty -> Type:=
+| Return: forall t, expr t -> $\action$ t
+| Bind: forall t u,  $\action$  t -> (V t -> $\action$ u) -> $\action$ u
+| OrElse: forall t, $\action$ t -> $\action$ t -> $\action$ t.
+| Assert: expr Tbool -> $\action$ Tunit    
+| Primitive: ....
+\end{coq}
+  \caption{The syntax of expressions and actions}
+  \label{fig:fesi}
+\end{figure}
+
+% We represent terms 
+% we will define an inductive type
+% family term(V). Here we see the source of the name “parametric
+% higher-order abstract syntax,” as the family term is parametric in
+% an arbitrary type V of variables.
+% term(V)
+% Var
+% App
+% Abs
+% :
+% :
+% :
+% :
+% V → term(V)
+% term(V) → term(V) → term(V)
+% (V → term(V)) → term(V)
+% Var, App, and Abs are the three constructors of terms. The new
+% representation strategy differs from the old HOAS strategy only in
+% that binders bind variables instead of terms, and those variables are
+% “injected” explicitly via the Var constructor. For example, we now
+% represent the identity function as:
 
 \section{Lightweight optimizations}
 \subsection{Common sub-expression elimination}
