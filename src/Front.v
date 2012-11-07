@@ -20,9 +20,22 @@ Section s.
     Variable Var : type -> Type. 
     Inductive expr :  type -> Type :=
     | Evar : forall t (v : Var t), expr t
-    | Ebuiltin : forall args res (f : builtin args res), 
-                   DList.T  expr (args) -> 
-                   expr  ( res)
+    | Eandb : expr B -> expr B -> expr B
+    | Eorb  : expr B -> expr B -> expr B
+    | Exorb : expr B -> expr B -> expr B
+    | Enegb : expr B -> expr B
+
+    (* "type-class" *)
+    | Eeq   : forall t, expr t -> expr t -> expr B
+
+    (* integer operations *)                                          
+    | Elt   : forall n, expr (W n) -> expr (W n) -> expr B
+    | Eadd  : forall n, expr (W n) -> expr (W n) -> expr (W n)
+    | Esub  : forall n, expr (W n) -> expr (W n) -> expr (W n)
+    | Elow  : forall n m, expr (W (n + m)) -> expr (W n)
+    | Ehigh  : forall n m, expr (W (n + m)) -> expr (W m)
+    | EcombineLH   : forall n m, expr (W n) -> expr (W m) -> expr (W (n + m))
+
     | Econstant : forall  ty (c : constant ty), expr ( ty)
                           
     | Emux : forall t, expr Tbool -> expr t -> expr t -> expr t 
@@ -33,7 +46,7 @@ Section s.
     | Enth : forall l t (m : var l t), expr (Ttuple l) -> expr t
     | Etuple : forall l (exprs : DList.T (expr) l), expr (Ttuple l). 
     
-    
+     (*
     Section induction. 
       (** Since the induction principle that is generated is not
       useful, we have to define our own.  *)
@@ -83,7 +96,7 @@ Section s.
       }
       Qed. 
     End induction. 
-
+*)
     Inductive action : type -> Type :=
     | Return : forall t (exp : expr t), action t
     | Bind :
@@ -107,11 +120,21 @@ Section s.
   Fixpoint eval_expr (t : type) (e : expr eval_type t) : eval_type t :=
     match e with
       | Evar t v => v
-      | Ebuiltin args res f exprs => 
-          let exprs := 
-              DList.to_tuple eval_expr  exprs
-          in
-            builtin_denotation args res f exprs                            
+      | Eandb a b => andb (eval_expr _ a) (eval_expr _ b)
+      | Eorb a b => orb (eval_expr _ a) (eval_expr _ b)
+      | Exorb a b => xorb (eval_expr _ a) (eval_expr _ b)
+      | Enegb a => negb (eval_expr _ a) 
+
+      (* "type-class" *)
+      | Eeq t a b => type_eq t (eval_expr t a) (eval_expr t b)
+                            
+      (* integer operations *)                                          
+      | Elt n a b => @Word.lt n (eval_expr _ a) (eval_expr _ b)
+      | Eadd n a b => @Word.add n (eval_expr _ a) (eval_expr _ b)
+      | Esub n a b => @Word.sub n (eval_expr _ a) (eval_expr _ b)
+      | Elow n m a => @Word.low n m (eval_expr _ a) 
+      | Ehigh n m a => @Word.high n m (eval_expr _ a)
+      | EcombineLH n m a b => @Word.combineLH n m (eval_expr _ a) (eval_expr _ b)
       | Emux t b x y => if eval_expr _ b then eval_expr t x else eval_expr t y
       | Econstant ty c => c
       | Etuple l exprs => 
@@ -190,23 +213,18 @@ Notation "'write' M [: x <- v ]" := (Primitive ([ (_); _])%list _ (regfile_write
 Arguments Enth  {Var l t} m _%expr. 
 Arguments Evar  {Var t} _. 
 
-Arguments Ebuiltin {Var} {args res} _ _%dlist. 
-Notation "{< f ; x ; y ; z >}" := (Ebuiltin f [ :: x ; y ; z]) : expr_scope. 
-Notation "{< f ; x ; y >}" := (Ebuiltin f [ :: x ; y]) : expr_scope. 
-Notation "{< f ; x >}" := (Ebuiltin f [ :: x]) : expr_scope. 
-
-Notation "~ x" :=  ({< BI_negb ; x >})%expr : expr_scope. 
-Notation "a || b" := ({< BI_orb ; a ; b >})%expr : expr_scope. 
-Notation "a && b" := ({< BI_andb ; a ; b >})%expr : expr_scope. 
-Notation "a - b" := ({< BI_minus _ ; a ; b >})%expr : expr_scope. 
-Notation "a + b" := ({< BI_plus _ ; a ; b >})%expr : expr_scope. 
-Notation "a = b" := ({< BI_eq _ ; a ; b >})%expr : expr_scope. 
-Notation "a < b" := ({< BI_lt _ ; a ; b >})%expr : expr_scope. 
+Notation "~ x" :=  (Enegb _  x)%expr : expr_scope. 
+Notation "a || b" := (Eorb _ a b)%expr : expr_scope. 
+Notation "a && b" := (Eandb _ a b)%expr : expr_scope. 
+Notation "a - b" := (Esub _ _ a b)%expr : expr_scope. 
+Notation "a + b" := (Eadd _ _ a b)%expr : expr_scope. 
+Notation "a = b" := (Eeq _ _ a b)%expr : expr_scope. 
+Notation "a < b" := (Elt _ _ a b)%expr : expr_scope. 
 Notation "x <= y" := ((x < y) || (x = y))%expr : expr_scope. 
 Notation "x <> y" := (~(x = y))%expr : expr_scope. 
-Notation low x := ( Ebuiltin (BI_low _ _) ([ :: x])%dlist). 
-Notation high x := ( Ebuiltin (BI_high _ _) ([ :: x])%dlist). 
-Notation combineLH x y := ( Ebuiltin  (BI_combineLH _ _) [ :: x ; y ]). 
+Notation low x := (Elow _ _ _ x).
+Notation high x := (Ehigh _ _ _ x).  
+Notation combineLH x y := (EcombineLH _ _ _ x y). 
 
 Arguments Econstant {Var ty} _.  
 Notation "#i x" := (Econstant (Cword x)) (at level 0). 

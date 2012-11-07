@@ -44,7 +44,7 @@ Definition eqb {n} : T n -> T n -> bool :=
   fun x y => 
     (match val x ?= val y with Eq => true | _ => false end) .
 
-Lemma eq_correct {n} : forall x y : T n, eqb x y = true <-> x = y. 
+Lemma eqb_correct {n} : forall x y : T n, eqb x y = true <-> x = y. 
 Proof. 
   split. 
   destruct x; destruct y. unfold eqb; simpl.  

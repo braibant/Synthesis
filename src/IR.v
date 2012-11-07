@@ -871,7 +871,7 @@ Proof.
   simpl.  rewrite compile_correct. reflexivity.   
 Qed. 
 
-
+(*
 Section equiv. 
   Import Core. 
   Variable U V : type -> Type. 
@@ -963,3 +963,4 @@ Section equiv.
 End equiv. 
 
 Definition WF Phi t (b : Block Phi t) := forall U V, block_equiv U V Phi t (nil _ _) (b _) (b _). 
+*)
