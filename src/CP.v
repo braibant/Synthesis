@@ -25,7 +25,6 @@ Section t.
   (* bang := lift Lift *)
   Notation bang x := (do e <- x; (Some (Lift e))). 
   Notation "!!" := (None). 
-
   Notation bop op dl:= 
   (let a := DList.hd dl in 
    let b := DList.hd (DList.tl dl) in 
@@ -34,17 +33,30 @@ Section t.
      Some (op a b)).            (* apply the operation on the symbolic values *)
 
   Require Import RTL. 
-  Definition cp_expr t (e : expr Phi V t) : (expr Phi Var t) * (option bexpr). 
-  refine (match e with
+  Definition cp_expr t (e : expr Phi V t) : (expr Phi Var t) * (option bexpr) :=
+    match e with
             | Einput t v => (Einput _ _ _ v, !!)
             | Evar t x => 
-                match t as ty return V ty -> (expr Phi Var ty) * (option bexpr) with 
-                  | Tbool => fun y => (Evar (fst y), bang (snd y)) 
+                match t as ty return V ty -> (expr Phi Var ty) * (option bexpr) with
+                  | Tbool => fun y => (Evar (fst y), bang (snd y))
                   | t => fun y  => (Evar (fst y), !!) end x
-            | Eread t v => (Eread v, !!)
-            | Eread_rf n t v adr => (Eread_rf v (fst adr), !!)
-            | Ebuiltin tys res f args  => 
-                (Ebuiltin f (DList.map (fun _ x => fst x) args), _)           
+            | Eread t v =>  (Eread v, !!)
+            | Eread_rf n t v adr => (Eread_rf v (fst adr), !!) 
+            | Eandb a b => (Eandb _ _ (fst a) (fst b), 
+                           (do a <- snd a; do b <- snd b; Some (And a b)))
+            | Eorb a b =>  (Eorb  _ _ (fst a) (fst b),
+                           do a <- snd a; do b <- snd b; Some (Or a b))                            
+            | Exorb a b => (Exorb _ _ (fst a) (fst b), 
+                           do a <- snd a; do b <- snd b; Some (Xor a b))
+            | Enegb a   => (Enegb _ _ (fst a), 
+                           do a <- snd a; Some (Not a))
+            | Eeq t a b => (Eeq _ _ t (fst a) (fst b), !!)
+            | Elt n a b => (Elt _ _ n (fst a) (fst b), !!)
+            | Eadd n a b => (Eadd _ _ n (fst a) (fst b), !!)
+            | Esub n a b => (Esub _ _ n (fst a) (fst b), !!)
+            | Elow n m a => (Elow _ _ n m (fst a), !!)
+            | Ehigh n m a => (Ehigh _ _ n m (fst a), !!)
+            | EcombineLH n m a b => (EcombineLH _ _ n m (fst a) (fst b), !!)
             | Econstant t x => 
                 match t as ty return constant ty -> (expr Phi Var ty * option bexpr) with
                   | Tbool => fun c => if ( c : bool)
@@ -52,7 +64,11 @@ Section t.
                                     else (Econstant c, Some (Lift BDD.F))
                   | t => fun c => (Econstant c, !!) end x
             | Emux ty c l r => 
-                (_ ,
+                (match snd c with 
+                   | Some BDD.T => (Evar (fst l))
+                   | Some BDD.F => (Evar (fst r))
+                   |  _ => Emux (fst c) (fst l) (fst r) end
+                 ,
                  match ty as t return V t -> V t  -> option bexpr with 
                    | Tbool => fun l r =>  
                                (do c <- (snd c);
@@ -64,19 +80,7 @@ Section t.
             | Esnd l t v => (Esnd (fst v) , !!)
             | Enth l t m v => (Enth m (fst v), !!)
             | Etuple l dl => (Etuple (DList.map (fun _ x => fst x) dl), !!)
-          end). 
-  refine (match f in builtin tys res return DList.T V tys -> option bexpr with
-            | BI_andb => fun dl =>  bop And dl
-            | BI_orb  => fun dl =>  bop Or  dl
-            | BI_xorb => fun dl =>  bop Xor dl
-            | BI_negb => fun dl =>  do e <- (snd (DList.hd dl)); Some (Not e)
-            | _ => fun _ => !!
-          end args); simpl.
-  refine (match snd c with 
-                   | Some BDD.T => (Evar (fst l))
-                   | Some BDD.F => (Evar (fst r))
-                   |  _ => Emux (fst c) (fst l) (fst r) end).  
-  Defined. 
+          end. 
 
   Record Env := mk
     {
@@ -271,13 +275,12 @@ Lemma cp_expr_correct Phi st :
             bvalue env sv r1. 
 Proof. 
   destruct 1; inversion 1; injectT;  try solve [destruct t; simpl; auto]; intros INV sv; simpl; try discriminate.  
-  - Require Import Equality. 
-    dependent destruction f; simpl; DList.inv; simpl;
-    intros; simpl_do; d; constructor; eapply inv_2; eassumption. 
-    Hint Constructors BDD.pvalue. 
-    Hint Constructors bvalue. 
-  - destruct c; simpl; intros H; inject H; eauto. 
-  - intros; simpl_do; d; constructor; eapply inv_2; eassumption. 
+  - intros; simpl_do. d. constructor; eapply inv_2; eassumption. 
+  - intros; simpl_do. d. constructor; eapply inv_2; eassumption.
+  - intros; simpl_do. d. constructor; eapply inv_2; eassumption.
+  - intros; simpl_do. d. constructor; eapply inv_2; eassumption. 
+  - destruct c; simpl; intros H; inject H; eauto. constructor. eauto. constructor. eauto. 
+  - intros; simpl_do. d. constructor; eapply inv_2; eassumption. 
 Qed. 
 
 Lemma cp_effects_correct (Phi : state) st Delta G e  (Hg : inv G e):
@@ -336,12 +339,7 @@ Proof.
       | H : DList.pointwise _ ( _ :: _) _ _ |- _ => apply DList.inversion_pointwise in H; destruct H
     end); try reflexivity; try f_equal. 
   intros e1. destruct e1; intros e2 H; inversion H; injectT; simpl; intros; unfold RTL.R in *; crush.
-  
-  - simpl. f_equal. 
-    clear H b. 
-    induction args; DList.inv;simpl; intuition. 
-    + crush;  eauto. 
-  -  destruct ty; crush. destruct c; crush. 
+  - destruct ty; crush. destruct c; crush. 
   - clear H.  
     destruct c2. simpl.  destruct s; simpl. destruct e3; simpl.
     
