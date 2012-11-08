@@ -17,10 +17,23 @@ Section t.
     | Einput : forall t, var Phi (Tinput t) -> expr t 
     | Eread : forall t,  var Phi (Treg t) -> expr t
     | Eread_rf : forall n t, var Phi (Tregfile n t) -> Var (Tint n) -> expr t 
-    | Ebuiltin : forall (args : list type) (res : type),
-                   builtin args res ->
-                   DList.T Var args ->
-                   expr res
+
+    | Eandb : Var B -> Var B -> expr B
+    | Eorb  : Var B -> Var B -> expr B
+    | Exorb : Var B -> Var B -> expr B
+    | Enegb : Var B -> expr B
+
+    (* "type-class" *)
+    | Eeq   : forall t, Var t -> Var t -> expr B
+
+    (* integer operations *)                                          
+    | Elt   : forall n, Var (W n) -> Var (W n) -> expr B
+    | Eadd  : forall n, Var (W n) -> Var (W n) -> expr (W n)
+    | Esub  : forall n, Var (W n) -> Var (W n) -> expr (W n)
+    | Elow  : forall n m, Var (W (n + m)) -> expr (W n)
+    | Ehigh  : forall n m, Var (W (n + m)) -> expr (W m)
+    | EcombineLH   : forall n m, Var (W n) -> Var (W m) -> expr (W (n + m))
+
     | Econstant : forall ty : type, constant ty -> expr ty
     | Emux : forall t : type,
                Var Tbool ->  Var t -> Var t -> expr  t
@@ -55,57 +68,87 @@ Section t.
     Definition effects := DList.T (option ∘ effect) Phi. 
     
     Definition block t := telescope (Var t * Var Tbool *  effects). 
+    Notation ret x := (telescope_end _ x). 
+    Notation " & e " := (telescope_bind _ _ e (fun x => ret x)) (at level 71). 
     Notation "x :- e1 ; e2" := (telescope_bind  _ _  e1 (fun x => e2)) (right associativity, at level 80, e1 at next level).  
-    Notation " & e " := (telescope_end _  e) (at level 71). 
     
     
-    Definition compile_expr t (e : Front.expr Var t) : telescope (Var t).
-    refine (
-        let fix fold t (e : Front.expr Var t) :=
-            let fix of_list (l : list type) (x : DList.T (Front.expr Var) l) : telescope (DList.T Var l) :=
-                match x in  (DList.T _ l)
-                   return
-                   (telescope (DList.T Var l)) with 
-                      | DList.nil => & ([ :: ])%dlist
-                      | DList.cons t q dt dq => 
-                          x  :-- fold t dt;
-                          dq :--   of_list q dq;   
-                          &  (x :: dq)%dlist
-                end in
-              
-              match e with
-                | Front.Evar t v => & v
-                | Front.Ebuiltin args res f x => 
-                    x :-- of_list args x; 
-                    y :- Ebuiltin args res f x; 
-                    &y 
-                | Front.Econstant ty c => c :- Econstant _ c; &c
-                | Front.Emux t c l r => 
-                    c :-- fold _ c;
-                    l :-- fold _ l;
-                    r :-- fold _ r;
-                    ret :- (Emux t c l r) ;
-                    & ret
-                | Front.Efst l t x => 
-                    x :-- fold _ x; ret :- Efst l t x; & ret
-                | Front.Esnd l t x => 
-                    x :-- fold _ x; ret :- Esnd l t x; & ret
-                | Front.Enth l t m x => 
-                    x :-- fold _ x; ret :- Enth l t m x; & ret
-                | Front.Etuple l exprs => 
-                    exprs :-- of_list l exprs; ret :- Etuple l exprs; &ret
-              end in fold t e).
-    Defined. 
+    Fixpoint compile_expr t (e : Front.expr Var t) : telescope (Var t) :=
+      match e with
+        | Front.Evar t v => ret v
+        | Front.Eandb a b => a :-- compile_expr _ a; 
+                            b :-- compile_expr _ b; 
+                            & (Eandb a b)
+        | Front.Eorb a b => a :-- compile_expr _ a; 
+                            b :-- compile_expr _ b; 
+                            & (Eorb a b)
+        | Front.Exorb a b => a :-- compile_expr _ a; 
+                            b :-- compile_expr _ b; 
+                            & (Exorb a b)
+        | Front.Enegb a => a :-- compile_expr _ a; 
+                          & (Enegb a)
+        | Front.Eeq t a b => a :-- compile_expr _ a; 
+                            b :-- compile_expr _ b; 
+                            & (Eeq _ a b)
+        | Front.Elt n a b => a :-- compile_expr _ a; 
+                            b :-- compile_expr _ b; 
+                            & (Elt _ a b)
+        | Front.Eadd n a b => a :-- compile_expr _ a; 
+                             b :-- compile_expr _ b; 
+                             & (Eadd _ a b)
+        | Front.Esub n a b => a :-- compile_expr _ a; 
+                              b :-- compile_expr _ b; 
+                              & (Esub _ a b)
+        | Front.Elow n m a => a :-- compile_expr _ a; 
+                             & (Elow n m a) 
+        | Front.Ehigh n m a => a :-- compile_expr _ a; 
+                              & (Ehigh n m a)
+        | Front.EcombineLH n m a b  => a :-- compile_expr _ a; 
+                                      b :-- compile_expr _ b;
+                                      & (EcombineLH n m a b)
+        | Front.Econstant ty c => & (Econstant _ c)
+        | Front.Emux t c l r => 
+            c :-- compile_expr _ c;
+            l :-- compile_expr _ l;
+            r :-- compile_expr _ r;
+            & (Emux t c l r)
+        | Front.Efst l t x => 
+          x :-- compile_expr _ x; 
+          & (Efst l t x)
+        | Front.Esnd l t x => 
+          x :-- compile_expr _ x; 
+          & (Esnd l t x)
+        | Front.Enth l t m x => 
+          x :-- compile_expr _ x;
+          & (Enth l t m x)
+        | Front.Etuple l exprs => 
+          let fix of_list 
+                  (l : list type) 
+                  (x : DList.T (Front.expr Var) l) : 
+                telescope (DList.T Var l) :=
+              match x in  (DList.T _ l)
+                    return
+                    (telescope (DList.T Var l)) with 
+                | DList.nil => ret ([ :: ])%dlist
+                | DList.cons t q dt dq => 
+                  x  :-- compile_expr t dt;
+                    dq :--   of_list q dq;   
+                   ret (x :: dq)%dlist
+              end in
+                  
+                  exprs :-- of_list l exprs; 
+                & (Etuple l exprs)
+      end.
     
     Fixpoint compile_exprs l (x: DList.T (Front.expr Var) l) :  telescope (DList.T Var l) :=
       match x in  (DList.T _ l)
          return
          (telescope (DList.T Var l)) with 
-        | DList.nil => & ([ :: ])%dlist
+        | DList.nil => ret ([ :: ])%dlist
         | DList.cons t q dt dq => 
             x  :-- compile_expr t dt;
             dq :--   compile_exprs q dq;   
-            &  (x :: dq)%dlist
+            ret  (x :: dq)%dlist
       end. 
     
     Lemma compile_exprs_fold : 
@@ -120,10 +163,11 @@ Section t.
           return
           (telescope (DList.T Var l0))
        with
-         | DList.nil => & DList.nil
+         | DList.nil => ret DList.nil
          | DList.cons t1 q0 dt dq =>
              x1 :-- compile_expr t1 dt;
-             dq0 :-- of_list q0 dq; & DList.cons x1 dq0
+             dq0 :-- of_list q0 dq; 
+             ret (DList.cons x1 dq0)
        end) = compile_exprs. 
     Proof. reflexivity. Qed. 
     
@@ -147,7 +191,7 @@ Section t.
                 match b with 
                   | IR.telescope_end x => 
                       match x with 
-                          (r, g,e) => g :-- compile_expr _ g; & (r,g,compile_effects e)
+                          (r, g,e) => g :-- compile_expr _ g; ret (r,g,compile_effects e)
                         end
                   | IR.telescope_bind a bd k => 
                       match bd with
@@ -168,37 +212,36 @@ Section t.
     
     Variable st : Core.eval_state Phi. 
     
-    Definition eval_expr (t : Core.type) (e : expr Core.eval_type t) : Core.eval_type t. 
-    refine ( 
-        let fix eval_expr t (e : expr Core.eval_type t) {struct e} : Core.eval_type t:=
-            match e with
-              | Evar t v => v
-              | Eread t v => (DList.get v st)
-              | Einput t v => DList.get v st
-              | Eread_rf n t v adr =>  
-                  let rf := DList.get  v st in
-                    Common.Regfile.get rf (adr)                
-
-              | Ebuiltin args res f exprs => 
-                  let exprs := 
-                      DList.to_tuple  
-                            (fun (x : Core.type) (X : Core.eval_type x) => X)
-                            exprs
-                  in
-                    Core.builtin_denotation args res f exprs
-              | Emux t b x y => if b then x else y 
-              | Econstant ty c => c
-              | Etuple l exprs => 
-                  DList.to_tuple (fun _ X => X) exprs
-              | Enth l t v e => 
-                  Common.Tuple.get _ _ v e
-              | Efst l t  e => 
-                  Common.Tuple.fst e
-              | Esnd l t  e => 
-                  Common.Tuple.snd e
-            end 
-        in eval_expr t e).  
-    Defined. 
+    Definition eval_expr (t : Core.type) (e : expr Core.eval_type t) : Core.eval_type t:=
+      match e with
+        | Evar t v => v
+        | Eread t v => (DList.get v st)
+        | Einput t v => DList.get v st
+        | Eread_rf n t v adr =>  
+          let rf := DList.get  v st in
+          Common.Regfile.get rf (adr)                
+        | Eandb a b => andb a b 
+        | Eorb a b =>  orb  a b
+        | Exorb a b => xorb  a b
+        | Enegb a => negb a
+        | Eeq t a b => Core.type_eq t a b
+        | Elt n a b => Word.lt a b
+        | Eadd n a b => Word.add a b 
+        | Esub n a b => Word.sub a b 
+        | Elow n m a =>  Word.low n m a  
+        | Ehigh n m a => Word.high n m a 
+        | EcombineLH n m a b  =>  Word.combineLH n m  a b
+        | Emux t b x y => if b then x else y 
+        | Econstant ty c => c
+        | Etuple l exprs => 
+          DList.to_tuple (fun _ X => X) exprs
+        | Enth l t v e => 
+          Common.Tuple.get _ _ v e
+        | Efst l t  e => 
+          Common.Tuple.fst e
+        | Esnd l t  e => 
+          Common.Tuple.snd e
+      end. 
         
     Definition eval_effects (e : effects Core.eval_type) (Delta : updates) : updates.  
     unfold effects in e. 
@@ -317,31 +360,23 @@ Section correctness.
     End compile_exprs. 
     Lemma compile_expr_correct t e (f : Core.eval_type t -> telescope _ _ A): 
       Ev (r :-- compile_expr Phi Core.eval_type t e; f r) = Ev (f (Front.eval_expr t e)). 
-    Proof. 
-      revert e.
-      induction e using Front.expr_ind_alt; try reflexivity. 
+    Proof.
       
-      Ltac t :=
-        match goal with 
-            |- context [ (_ :-- _ :-- _; _ ; _) ] => rewrite foo
-          | H : context [ _ :-- _ ; _ ] |- _ => rewrite H ; clear H
-      end.
-      
-      { simpl. rewrite (compile_exprs_fold Phi Core.eval_type). repeat rewrite foo; simpl.
-        rewrite compile_exprs_correct; auto.  simpl.  repeat f_equal. 
-        rewrite DList.map_to_tuple_commute. reflexivity. }       
-      
-      {simpl; repeat t; reflexivity.   }
-      {simpl; repeat t; reflexivity.   }
-      {simpl; repeat t; reflexivity.   }
-      {simpl; repeat t; reflexivity.   }
+      revert t e f . 
+
+      fix IHe 2; destruct e; intros f; simpl; 
+      repeat (match goal with 
+                  |- context [ (_ :-- _ :-- _; _ ; _) ] => (rewrite foo; simpl)
+                | |- context [_ :-- compile_expr _ _ ?t ?x; _] => rewrite (IHe t x)
+                                                                        
+             end); try reflexivity.       
       
       { simpl. rewrite (compile_exprs_fold Phi Core.eval_type). repeat rewrite foo; simpl.
-        rewrite compile_exprs_correct; auto.  simpl.  repeat f_equal.
+        rewrite compile_exprs_correct.
+        simpl; rewrite DList.map_to_tuple_commute. reflexivity. 
         
-        rewrite DList.map_to_tuple_commute. reflexivity. }       
-    
-    Qed. 
+        clear f. induction exprs; simpl. auto.
+        split. apply IHe. auto.  }  Qed. 
   End compile_expr. 
   
   Lemma compile_correct Phi st t (b : IR.block Phi Core.eval_type t) : 
@@ -384,9 +419,28 @@ Section equiv.
   | Eq_read_rf : forall n t v adr1 adr2, 
                    adr1 -- adr2 -> 
                    Eread_rf Phi U n t v adr1 == Eread_rf Phi V n t v adr2
-  | Eq_builtin : forall args res (f : builtin args res) dl1 dl2, 
-                   DList.pointwise R args dl1 dl2 ->
-                   Ebuiltin Phi U args res f dl1 == Ebuiltin Phi V args res f dl2
+  | Eq_andb : forall a1 a2 b1 b2, a1 -- a2 -> b1 -- b2 -> 
+                             Eandb Phi U a1 b1 == Eandb Phi V a2 b2
+  | Eq_orb : forall a1 a2 b1 b2, a1 -- a2 -> b1 -- b2 -> 
+                             Eorb Phi U a1 b1 == Eorb Phi V a2 b2
+  | Eq_xorb : forall a1 a2 b1 b2, a1 -- a2 -> b1 -- b2 -> 
+                             Exorb Phi U a1 b1 == Exorb Phi V a2 b2
+  | Eq_negb : forall a1 a2, a1 -- a2 ->                       
+                             Enegb Phi U a1 == Enegb Phi V a2
+  | Eq_eq : forall t a1 a2 b1 b2, a1 -- a2 -> b1 -- b2 -> 
+                             Eeq Phi U t a1 b1 == Eeq Phi V t a2 b2 
+  | Eq_lt : forall n a1 a2 b1 b2, a1 -- a2 -> b1 -- b2 -> 
+                             Elt Phi U n a1 b1 == Elt Phi V n a2 b2
+  | Eq_add : forall n a1 a2 b1 b2, a1 -- a2 -> b1 -- b2 -> 
+                             Eadd Phi U n a1 b1 == Eadd Phi V n a2 b2 
+  | Eq_sub : forall n a1 a2 b1 b2, a1 -- a2 -> b1 -- b2 -> 
+                              Esub Phi U n a1 b1 == Esub Phi V n a2 b2 
+  | Eq_low : forall n m a1 a2,  a1 -- a2 -> 
+                           Elow Phi U n m a1 == Elow Phi V n m a2
+  | Eq_high : forall n m a1 a2,  a1 -- a2 -> 
+                            Ehigh Phi U n m a1 == Ehigh Phi V n m a2
+  | Eq_combineLH : forall n m a1 a2 b1 b2,  a1 -- a2 -> b1 -- b2 -> 
+                            EcombineLH Phi U n m a1 b1 == EcombineLH Phi V n m a2 b2
   | Eq_constant : forall ty c, Econstant Phi U ty c == Econstant Phi V ty c
   | Eq_mux : forall t c1 c2 l1 l2 r1 r2, 
                c1 -- c2 -> l1 -- l2 -> r1 -- r2 -> 
@@ -528,7 +582,6 @@ Proof.
 Arguments Evar {Phi Var t} v. 
 Arguments Eread {Phi Var t} v. 
 Arguments Eread_rf {Phi Var n t} _ _ . 
-Arguments Ebuiltin {Phi Var args res} _ _%dlist. 
 Arguments Econstant {Phi Var ty} _. 
 Arguments Emux {Phi Var t} _ _ _. 
 Arguments Efst {Phi Var l t} _. 

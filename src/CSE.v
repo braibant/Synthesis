@@ -24,20 +24,6 @@ Proof.
   pose proof (e eq_refl). subst. reflexivity. 
 Qed. 
 
-(* (** The dependent type swiss-knife. *) *)
-(* Ltac t :=  subst; repeat match goal with  *)
-(*                        H : existT _ _ _ = existT _ _ _ |- _ =>  *)
-(*                          apply Eqdep.EqdepTheory.inj_pair2 in H *)
-(*                    |   H : context [eq_rect ?t _ ?x ?t ?eq_refl] |- _ =>  *)
-(*                          rewrite <- eq_rect_eq in H *)
-(*                    |   H : context [eq_rect ?t _ ?x ?t ?H'] |- _ =>  *)
-(*                          rewrite (UIP_refl _ _ H') in H; *)
-(*                          rewrite <- eq_rect_eq in H *)
-(*                    |   H : existT _ ?t1 ?x1 = existT _ ?t2 ?x2 |- _ => *)
-(*                        let H' := fresh "H'" in *)
-(*                          rewrite eq_sigT_iff_eq_dep in H; subst *)
-(*                          end; subst. *)
-
 Section s. 
   Variable Phi : state. 
   Variable st : eval_state Phi. 
@@ -52,11 +38,19 @@ Section s.
   | SConstant : forall t, constant t -> sval t
   | SMux : forall t, sval Tbool -> sval t -> sval t -> sval t
   | STuple : forall l, DList.T sval l ->  sval (Ttuple l)
-  | SBuiltin : forall arg res (f : Core.builtin arg res), 
-                 DList.T sval arg -> 
-                 sval res.
-
-    
+  | Sandb : sval B -> sval B -> sval B
+  | Sorb : sval B -> sval B -> sval B
+  | Sxorb : sval B -> sval B -> sval B
+  | Snegb : sval B -> sval B
+  | Seq : forall t : type, sval t -> sval t -> sval B
+  | Slt : forall n : nat, sval (W n) -> sval (W n) -> sval B
+  | Sadd : forall n : nat, sval (W n) -> sval (W n) -> sval (W n)
+  | Ssub : forall n : nat, sval (W n) -> sval (W n) -> sval (W n)
+  | Slow : forall n m : nat, sval (W (n + m)) -> sval (W n)
+  | Shigh : forall n m : nat, sval (W (n + m)) -> sval (W m)
+  | ScombineLH : forall n m : nat,
+                 sval (W n) -> sval (W m) -> sval (W (n + m)). 
+  (*
   Section induction. 
     (** Since the induction principle that is generated is not
       useful, we have to define our own.  *)
@@ -97,9 +91,8 @@ Section s.
       Qed. 
   End induction. 
 
-
+   *)
   Arguments STuple {l}%list _%dlist. 
-  Arguments SBuiltin {arg res} f _%dlist. 
 
 
   
@@ -132,9 +125,36 @@ Section s.
               do r <- eval_sval  r;
               Some (if c then l else r)
           | STuple l x =>  fold _ x
-          | SBuiltin arg res f x => 
-              do x <- fold _ x;
-              Some (builtin_denotation _ _ f x)
+          | Sandb a b => do a <- eval_sval a; 
+                        do b <- eval_sval b; 
+                        Some (andb a b)
+          | Sorb a b => do a <- eval_sval a; 
+                       do b <- eval_sval b; 
+                       Some (orb a b)
+          | Sxorb a b => do a <- eval_sval a; 
+                        do b <- eval_sval b; 
+                        Some (xorb a b)
+          | Snegb a => do a <- eval_sval a; 
+                      Some (negb a)
+          | Seq t a b => do a <- eval_sval a; 
+                        do b <- eval_sval b; 
+                        Some (type_eq t a b)
+          | Slt n a b => do a <- eval_sval a; 
+                        do b <- eval_sval b; 
+                        Some (@Word.lt n a b)
+          | Sadd n a b => do a <- eval_sval a; 
+                         do b <- eval_sval b; 
+                         Some (@Word.add n a b)
+          | Ssub n a b => do a <- eval_sval a; 
+                         do b <- eval_sval b; 
+                         Some (@Word.sub n a b)
+          | Slow n m a => do a <- eval_sval a; 
+                         Some (@Word.low n m a)
+          | Shigh n m a => do a <- eval_sval a; 
+                          Some (Word.high n m a)
+          | ScombineLH n m a b => do a <- eval_sval a; 
+                                 do b <- eval_sval b; 
+                                 Some (@Word.combineLH n m a b)
         end.
   End eval. 
 
@@ -154,7 +174,7 @@ Section s.
   Notation V := (fun t => Var t * sval t)%type. 
   
   Notation "!!" := (None). 
-
+  Reserved Notation "x == y" (at level 30). 
   Fixpoint sval_eqb {a b} (va: sval a) (vb : sval b) : bool :=
     let fix pointwise  {la lb} (dla : DList.T sval la) (dlb : DList.T sval lb) : bool :=
         match dla, dlb with 
@@ -169,12 +189,28 @@ Section s.
         | SConstant ta ca, SConstant tb cb =>
             match type_cast tb ca with | Some ca =>  type_eq tb ca cb | None => false end
         | SMux ta ca la ra, SMux tb cb lb rb => 
-            type_eqb ta tb && (sval_eqb ca cb && sval_eqb la lb && sval_eqb ra rb)
+            type_eqb ta tb && (ca == cb && la == lb && ra == rb)
         | STuple la dla, STuple lb dlb => pointwise dla dlb
-        | SBuiltin arga _ fa dla , SBuiltin argb _ fb dlb => 
-            type_list_eqb arga argb &&  builtin_eqb fa fb && pointwise dla dlb
+        | Sandb a1 b1, Sandb a2 b2 => a1 ==  a2 && b1 == b2
+        | Sorb  a1 b1, Sorb a2 b2 => a1 ==  a2 && b1 == b2
+        | Sxorb a1 b1, Sxorb a2 b2 => a1 ==  a2 && b1 == b2
+        | Snegb a1 , Snegb a2 => a1 ==  a2
+        | Seq t1 a1 b1, Seq t2 a2 b2 => 
+            type_eqb t1 t2 && (a1 == a2 && b1 == b2)          
+        | Slt n1 a1 b1, Slt n2 a2 b2 => 
+          NPeano.Nat.eqb n1 n2 && (a1 == a2 && b1 == b2)          
+        | Sadd n1 a1 b1, Sadd n2 a2 b2 => 
+          NPeano.Nat.eqb n1 n2 && (a1 == a2 && b1 == b2)          
+        | Ssub n1 a1 b1, Ssub n2 a2 b2 => 
+          NPeano.Nat.eqb n1 n2 && (a1 == a2 && b1 == b2)          
+        | Slow n1 m1 a1, Slow n2 m2 a2 => 
+          NPeano.Nat.eqb n1 n2 &&  NPeano.Nat.eqb m1 m2 && (a1 == a2)
+        | Shigh n1 m1 a1, Shigh n2 m2 a2 => 
+          NPeano.Nat.eqb n1 n2 &&  NPeano.Nat.eqb m1 m2 && (a1 == a2)
+        | ScombineLH n1 m1 a1 b1, ScombineLH n2 m2 a2 b2 => 
+          NPeano.Nat.eqb n1 n2 &&  NPeano.Nat.eqb m1 m2 && (a1 == a2) && b1 == b2
         | _, _ => false
-      end%bool . 
+      end%bool where "n == m" := (sval_eqb n m). 
   
   (** The actual implementation of cse on expressions. Recall that
   expressions are in a 3-adress code like representation (that is, all
@@ -188,14 +224,22 @@ Section s.
 
   Definition cse_expr t (e : expr Phi V t) : expr Phi Var t * option (sval t). 
   refine (
-      match e  with
+      match e in expr _ _ t return expr Phi Var t * option (sval t) with
         | Einput t v => (Einput _ _ _ v, !!)
         | Eread t v => (Eread v, Some (SRead t v))
         | Evar t v => (Evar (fst v), Some (snd v)) 
-        | Eread_rf n t v adr =>   (Eread_rf v (fst adr), !! )
-        | Ebuiltin args res f x => let v := DList.map (fun x dx => fst dx) x in 
-                                    let sv  := DList.map (fun x dx => snd dx) x in             
-                                      (Ebuiltin f v ,  Some (SBuiltin f sv) ) 
+        | Eread_rf n t v adr => (Eread_rf v (fst adr), !! ) 
+        | Eandb a b => (Eandb _ _ (fst a) (fst b), Some (Sandb (snd a) (snd b)))
+        | Eorb a b => (Eorb _ _ (fst a) (fst b), Some (Sorb (snd a) (snd b)))
+        | Exorb a b => (Exorb _ _ (fst a) (fst b), Some (Sxorb (snd a) (snd b)))
+        | Enegb a  => (Enegb _ _ (fst a),  Some (Snegb (snd a)))
+        | Eeq t a b => (Eeq _ _ t (fst a) (fst b), Some (Seq t (snd a) (snd b)))
+        | Elt n a b => (Elt _ _ n (fst a) (fst b), Some (Slt n (snd a) (snd b)))
+        | Eadd n a b => (Eadd _ _ n (fst a) (fst b), Some (Sadd n (snd a) (snd b)))
+        | Esub n a b => (Esub _ _ n (fst a) (fst b), Some (Ssub n (snd a) (snd b)))
+        | Elow n m a => (Elow _ _ n m (fst a), Some (Slow n m (snd a)))
+        | Ehigh n m a => (Ehigh _ _ n m (fst a), Some (Shigh n m (snd a)))
+        | EcombineLH n m a b => (EcombineLH _ _ n m (fst a) (fst b), Some (ScombineLH n m (snd a) (snd b)))
         | Econstant ty c =>  (Econstant c, Some (SConstant _ c)) 
         | Emux t c l r =>                          
             if sval_eqb (snd l) (snd r) 
@@ -405,37 +449,53 @@ Proof.
 Qed. 
 
 Require Import Equality. 
+Definition cast {t t'} (p : t = t') (b : sval  t) : sval (t') :=
+  match p in (_ = y) return (sval ( y)) with
+    | eq_refl => b
+  end. 
+
+Lemma sval_eqb_correct' t1 t2 (sv : sval t1) (sv' : sval t2) (H : t2 = t1):  
+  sval_eqb  sv sv' = true -> sv = cast H sv'. 
+Proof. 
+  revert t1 t2 sv sv' H. 
+  fix IH 3. 
+  Ltac t :=  
+    (match goal with 
+         H: (?x && ?y)%bool = true |- _ => (rewrite Bool.andb_true_iff in H; destruct H)
+       | H : type_eqb _ _ = true |- _ => apply type_eqb_correct in H
+       | H : NPeano.Nat.eqb _ _ = true |- _ => apply NPeano.Nat.eqb_eq in H
+       | H : var_eqb ?a ?b = true |- _ => apply var_eqb_correct_2 in H
+       | H : ?x = ?y |- _ => (is_var x ; is_var y ; destruct H)
+     end). 
+  
+  destruct sv; destruct sv'; intros H; try discriminate; simpl; intros; repeat t; 
+  try solve [repeat match goal with 
+                     | H : sval_eqb ?x ?y = true |- _ => apply (IH _ _ x y eq_refl) in H; simpl in H; destruct H
+                   end; clear IH; dependent destruction H; reflexivity].
+  - reflexivity.
+  - reflexivity. 
+  - rewrite type_cast_eq in H0.  apply type_eq_correct in H0. destruct H0. reflexivity. 
+  -
+    {
+      injection H. intros H'; destruct H'.
+      dependent destruction H. 
+      simpl. 
+      revert l0 t t0 H0. 
+      {
+        fix IHdl 2. 
+        intros l t1. destruct t1;  intros; DList.inv. 
+        reflexivity. 
+        repeat t. 
+        specialize (IHdl q t1 x0 H0). clear H0. 
+        apply IH with (H := eq_refl)in H. clear IH. simpl in H. 
+        subst. inject IHdl. injectT. reflexivity. 
+      }
+  }
+Qed.
 
 Lemma sval_eqb_correct t (sv sv' : sval t) : sval_eqb  sv sv' = true -> sv = sv'. 
 Proof. 
-  revert sv'. 
-  induction sv using sval_ind_alt; dependent destruction sv'; simpl;
-  intros;
-  repeat 
-    match goal with 
-        H: (?x && ?y)%bool = true |- _ => rewrite Bool.andb_true_iff in H; destruct H
-      | H : type_eqb _ _ = true |- _ => apply type_eqb_correct in H
-      | H : NPeano.Nat.eqb _ _ = true |- _ => apply NPeano.Nat.eqb_eq in H
-    end; subst; try discriminate; auto.
-  - apply var_eqb_correct_2 in H. subst. reflexivity. 
-  - revert H.
-    rewrite type_cast_eq. 
-    intros. apply type_eq_correct in H.  congruence. 
-  - repeat match goal with 
-      | H : forall t, _ -> _ , H' : _ |- _ => apply H in H'; clear H; rewrite H'
-  end. reflexivity.
-  - induction l; DList.inv. reflexivity.   
-    simpl in *. rewrite Bool.andb_true_iff in H0. destruct H0.
-    repeat f_equal. 
-    destruct H. auto. 
-    destruct H. specialize (IHl _ H2 _ H1). clear - IHl. injection IHl; intros; injectT; auto. 
-  - pose proof (type_list_eqb_correct  _ _ H0); subst. 
-    clear H0. 
-    apply builtin_eqb_correct in H2; subst. 
-    f_equal. 
-    clear f. induction t. DList.inv. reflexivity. 
-    DList.inv. rewrite Bool.andb_true_iff in H1. destruct H1.  f_equal.   
-    simpl in H. intuition.  apply IHt. simpl in H; intuition. auto. 
+  intros. apply (sval_eqb_correct' t t sv sv' eq_refl H). 
 Qed. 
 
 Lemma cse_expr_correct : forall t e1 r1, 
@@ -448,26 +508,7 @@ Lemma cse_expr_correct : forall t e1 r1,
         | None => True
       end.
 Proof. 
-  destruct 1; inversion 1; injectT;  try solve [simpl; auto]; intros. 
-  - simpl. clear X. intro_do x Hx.  repeat f_equal.      
-    {
-      revert Hx. clear f. 
-      induction args; simpl; DList.inv. 
-      + simpl;   congruence. 
-      + simpl in *. intro_do hd Hhd; try discriminate; intro_do tl Htl; try discriminate.   
-        intros H; injection H; intros; subst; clear H. 
-        specialize (IHargs _ _ p _ Htl). clear Htl. rewrite IHargs; clear IHargs. 
-        f_equal. eapply Gamma_inv_2 in i; eauto. congruence. 
-    }
-    
-    { exfalso. 
-      clear f. 
-      induction args; DList.inv; simpl in *.
-      +  discriminate. 
-      + simpl_do. 
-        eapply Gamma_inv_2 in i; eauto. congruence.  
-        eauto. 
-    }
+  destruct 1; inversion 1; injectT;  try solve [simpl; auto]; intros; try solve [simpl; repeat use; reflexivity]. 
   - intros. simpl.
     case_eq (sval_eqb (snd l2) (snd r2)). 
     * intros H'. simpl. 
@@ -599,32 +640,32 @@ Proof.
       H': List.nth_error (?l ++ ?l') ?n = None |- _ =>
         pose proof (nth_error_app l l' n x H);
         congruence
-    | H : forall t, _ -> _ , H' : _ |- _ => apply H in H'; clear H
     | H : ?x = ?y , H' : ?x = ?z |- _ => 
         assert (y = z) by congruence; subst; try rewrite H, H'; clear H H'
     | H : Some ?x = Some ?y |- _ => injection H; clear H; intros; subst
     | |- Some _ = Some _ => f_equal
+    | H : eval_sval ?l ?a = Some ?x,
+      H' : eval_sval (?l ++ ?l') ?a = Some ?y,
+      IH : forall (t : type) (x : eval_type t) (sv : sval t),
+             eval_sval ?l sv = Some x -> eval_sval (?l ++ ?l') sv = Some x 
+             |- _ =>       
+      assert (x = y) by (pose proof (IH _ _ _ H); congruence); clear H
+    | H : eval_sval ?l ?a = Some ?x,
+      H' : eval_sval (?l ++ ?l') ?a = None,
+      IH : forall (t : type) (x : eval_type t) (sv : sval t),
+             eval_sval ?l sv = Some x -> eval_sval (?l ++ ?l') sv = Some x 
+             |- _ => 
+      (pose proof (IH _ _ _ H); congruence)
   end;  auto || (try congruence) .
-  induction sv using sval_ind_alt; simpl; intuition; crush.
-
-  injectT. 
-  simpl. 
-  auto. 
-  - induction exprs; [intuition|inversion H; clear H];   intuition; crush. 
-
-  - f_equal. clear f0. 
-    induction args. simpl in *. clear; destruct x0; destruct o; reflexivity. 
-    DList.inversion. simpl in *. crush; f_equal.  
-    destruct H as [H _].  clear - H EQ1 EQ0.  crush. 
-    destruct H as [_ H]. apply (IHargs _ H _ EQ _ EQ2). 
-
-  - exfalso. clear f0. 
-    induction args; DList.inv.
-    discriminate.
-    destruct H as [H H']. specialize (IHargs _  H'). clear H'.  
-    invert_do EQ. rewrite (H _ EQ0 )  in H0. simpl in *. specialize (IHargs _ EQ). clear EQ. 
-    apply IHargs. clear IHargs.
-    invert_do H0; auto. discriminate. 
+  revert t x. 
+  fix IH 3; destruct sv; simpl; try tauto; try (solve [crush]).
+  - crush. injectT. auto. 
+  - intros. simpl_do. 
+    repeat (erewrite IH by eauto). simpl. reflexivity. Guarded. 
+  - revert l0 x t. 
+    fix IHdl 3; destruct t. 
+    tauto. 
+    intros. simpl_do. apply IH in H0. apply IHdl in H. rewrite H0; rewrite H. reflexivity. Guarded. 
 Qed. 
 
 
@@ -736,10 +777,6 @@ Proof.
     end); try reflexivity; try f_equal. 
   intros e1. destruct e1; intros e2 H; inversion H; injectT; simpl; intros; unfold RTL.R in *; crush.
   
-  - simpl. f_equal. 
-    clear dependent b. 
-    induction args; DList.inv;simpl; intuition. 
-    crush.  eauto. 
   - case_eq (sval_eqb _  (snd l2) (snd r2)); intros H'; rewrite H' in H0.    
     + apply sval_eqb_correct in H'. crush. simpl.
             

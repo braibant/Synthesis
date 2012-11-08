@@ -122,7 +122,7 @@ Section t.
       | E_negb x => do x <-  [env # x]; Some (Word.negb x)
       | E_eq n a b => do a <- [env # a]; 
                      do b <- [env # b]; 
-                     Some (Word.of_bool (Word.eq a b))
+                     Some (Word.of_bool (Word.eqb a b))
       | E_lt n a b => do a <- [env # a]; 
                      do b <- [env # b]; 
                      Some (Word.of_bool (Word.lt a b))
@@ -130,7 +130,7 @@ Section t.
         do c <- [env # c]; 
         do l <- [env # l]; 
         do r <- [env # r]; 
-        Some (if Word.eq c Word.true then l else r)
+        Some (if Word.eqb c Word.true then l else r)
       | E_plus n a b => do a <- [env # a]; 
                        do b <- [env # b]; 
                        Some (Word.add a b)
@@ -229,22 +229,17 @@ Section s.
       | RTL.Evar t v => E_var (compile_type t) (! v) 
       | RTL.Eread t m =>  E_read _ (var_map compile_sync Phi _ m)
       | RTL.Eread_rf n t m adr => E_read_rf n _ (var_map compile_sync Phi _ m) (! adr)
-      | RTL.Ebuiltin tys res f args => 
-        match f in Core.builtin tys res return DList.T Var tys -> expr (List.map compile_sync Phi) (compile_type res)  with
-          | Core.BI_andb => fun l => E_andb [l @1] [l @2]
-          | Core.BI_orb =>  fun l => E_orb [l @1] [l @2]
-          | Core.BI_xorb =>  fun l => E_xorb [l @1] [l @2]
-          | Core.BI_negb =>  fun l => E_negb [l @1] 
-          | Core.BI_eq t =>  fun l => E_eq _ [l @1] [l @2]
-          | Core.BI_lt t =>  fun l => E_lt _ [l @1] [l @2]
-          | Core.BI_mux t => fun l => E_mux _  [l @1] [l @2] [l @3] 
-          | Core.BI_plus n => fun l => E_plus _ [l @1] [l @2] 
-          | Core.BI_minus n => fun l => E_minus _ [l @1] [l @2] 
-          | Core.BI_low n m => fun l => E_low n m [l @1] 
-          | Core.BI_high n m => fun l => E_high n m [l @1]
-          | Core.BI_combineLH n m => fun l => E_combineLH n m [l @1] [l @2]
-          | Core.BI_next n => admit
-        end args              
+      | RTL.Eandb a b => E_andb (!a) (!b) 
+      | RTL.Eorb  a b  => E_orb (!a) (!b) 
+      | RTL.Exorb  a b  => E_xorb (!a) (!b) 
+      | RTL.Enegb  a  => E_negb (!a)
+      | RTL.Eeq t a b => E_eq _ (!a) (!b) 
+      | RTL.Elt n a b => E_lt _ (!a) (!b) 
+      | RTL.Eadd n  a b => E_plus _ (!a) (!b)
+      | RTL.Esub n  a b => E_minus _ (!a) (!b)
+      | RTL.Elow n m a => E_low n m (!a)
+      | RTL.Ehigh n m a => E_high n m (!a)
+      | RTL.EcombineLH n m a b => E_combineLH n m (!a) (!b)
       | RTL.Econstant ty c => E_constant _ (compile_constant _ c)
       | RTL.Emux t cond l r => E_mux _ (!cond) (!l) (!r)
       | RTL.Efst l t v => E_low _ _ (!v)
@@ -598,7 +593,7 @@ Notation W n:= (Core.Tint n).
 Notation "< >" := (Core.Ttuple nil). 
 Notation "< a ; .. ; b >" := (Core.Ttuple (a :: .. (b :: nil) ..))%list. 
 Notation "# a " := (box _ a) (no associativity, at level 71). 
-Notation "f @@ args" := (RTL.Ebuiltin _ _ _ _ f args) (no associativity, at level 71). 
+(* Notation "f @@ args" := (RTL.Ebuiltin _ _ _ _ f args) (no associativity, at level 71).  *)
 Notation "$ x" := (RTL.Econstant _ _ _ x) (no associativity, at level 71). 
 Notation nth v e := (RTL.Enth _ _ _ _ v e). 
 
