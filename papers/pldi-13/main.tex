@@ -178,13 +178,13 @@ is true.
 \begin{coq}
 Definition $\Phi$ := [Reg (Int n)]
 Definition count n (tick: Var Bool) : action $\Phi$ (Int n) :=
-$\quad$do x <- !var_0;
-$\quad$do _ <- if tick then {var_0 ::= x + 1} else {ret tt}; 
+$\quad$do x <- !member_0;
+$\quad$do _ <- if tick then {member_0 ::= x + 1} else {ret tt}; 
 $\quad$ret x. 
 \end{coq}
 Here, $\Phi$ is an environment that defines the set of memory elements
 (in a broad sense) of the circuit. In the first line, we read the
-content of register at position \coqe{var_0} in $\Phi$, and bind this
+content of register at position \coqe{member_0} in $\Phi$, and bind this
 value to \coqe{x}. Then, we test the value of the input \coqe{tick},
 and when it is true, we increment the value of the register. In any
 case, the output is the old value of the counter.
@@ -238,69 +238,216 @@ Coq.)
 
 \section{From Fe-Si to RTL}
 In this section, we present our source, intermediate, and target
-languages, along with their static and dynamic semantics.
+languages, along with their semantics.
 %
-We take the liberty to describe these languages using ``pen and
-paper'' style mathematical notations, in order to avoid the clutter of
-Coq formal syntax.
+% We take the liberty to describe these languages using ``pen and
+% paper'' style mathematical notations, in order to avoid the clutter of
+% Coq formal syntax.
+
+\subsection{The memory model}
+Fe-Si programs are meant to describe sequential circuits, whose
+``memory footprint'' must be known statically. We take a declarative
+approach: each state-holding element that is used in a program must be
+declared. 
+%
+We currently have three types of memory elements: inputs, registers,
+and register files. A register hold one value of a given type, while a
+register file of size $n$ stores $2^n$ values of a given type. 
+%
+An input is a memory element that can only be read by the circuit,
+and whose value is driven by the external world.
+%
+We show the inductive definitions of types and memory elements in
+Fig.~\ref{fig:type}. 
+%
+We have four constructors for the type \coqe{ty} of types: \coqe{Unit}
+(the unit type), \coqe{B} (Booleans), \coqe{Int} (integers of a given
+size), and \coqe{Tuple} (tuples of types). The inductive definition of
+memory elements (\coqe{mem}) should be self-explaining. 
+
+\begin{figure}
+  \centering
+\begin{twolistings}
+\begin{coq}
+Inductive ty : Type :=
+| Unit : ty 
+| B : ty 
+| Int : nat -> ty
+| Tuple : list ty -> ty.     
+\end{coq}&
+\begin{coq}
+Inductive mem : Type :=
+| Input: ty ->  mem
+| Reg : ty -> mem
+| Regfile : nat -> ty -> mem. 
+$ $
+\end{coq}
+\end{twolistings}
+\caption{Type and memory elements}
+  \label{fig:type}
+\end{figure}
+
+
 
 \subsection{Fe-Si}
 The definition of Fe-Si programs (\coqe{action} in the following)
 takes the PHOAS approach. 
 %
 That is, we define an inductive type family parametrized by an
-arbitrary type \coqe{V} of variables. 
+arbitrary type \coqe{V} of variables, where binders bind variables
+instead of arbitrary terms (as it would be the case using HOAS), and
+those variables are used explicitly via a dedicated term constructor.
+%
+The definition of Fe-Si syntax is split in two syntactic classes:
+expressions and actions. 
+%
+Expressions are side-effects free, and are built from variables,
+constants, and operations.
+%
+Actions are made of control-flow structures (assertions and
+alternatives), binders, and memory operations. 
+
+In this work, we follow an intrinsic
+approach~\cite{DBLP:journals/jar/BentonHKM12}: we mix the definition
+of the abstract syntax and the typing-rules from the start. That is,
+the type system of the meta-language (Coq) enforces that all Fe-Si
+programs are well-typed by construction.
+%
+Besides the obvious type-oblivious definitions (e.g., it is not
+possible to add a Boolean and an integer), this means that the
+definition of operations on state-holding elements requires some care.
+%
+Here, we use dependently-typed de Bruijn indices. 
+\begin{coq}
+Inductive member : list mem -> mem ->  Type :=
+| member_0 : forall E t, member (t::E) t
+| member_S : forall E t x, member E t -> member (x::E) t.
+\end{coq}
+Using the above definition, a term of type \coqe{member $\Phi$ M} denotes
+the fact that the memory element \coqe{M} appears at a given position
+in the environment of memory elements $\Phi$. 
+%
+We are now ready to present the (elided) Coq definitions of the
+inductives for \coqe{expr} and \coqe{action} in Fig.~\ref{fig:fesi}.
+%
+(For the sake of brevity, we omit the constructors for accesses to
+register files, in the syntax and, later, in the semantics. We refer
+the reader to the supplementary materials for more details.)
+
 \begin{figure}
   \centering
 \begin{coq}
 Variable V: ty -> Type. 
-Variable Phi: list mem. 
+Variable $\Phi$: list mem. 
 Inductive expr: ty -> Type :=
-| Evar : forall t (v : Var t), expr t
-| Ebuiltin: ... 
+| Evar : forall t (v : V t), expr t
+| Emux : forall t, expr B -> expr t -> expr t -> expr t
+(* operations on Booleans *)
+| Eandb : expr B -> expr B -> expr B | ... 
+(* operations on words *)
+| Eadd : forall n, expr (Int n) -> expr (Int n) -> expr (Int n) | ... 
+(* operations on tuples *)
+| Efst : forall l t, expr (Tuple (t::l)) -> expr t | ...
 
-Inductive $\action$: ty -> Type:=
-| Return: forall t, expr t -> $\action$ t
-| Bind: forall t u,  $\action$  t -> (V t -> $\action$ u) -> $\action$ u
-| OrElse: forall t, $\action$ t -> $\action$ t -> $\action$ t.
-| Assert: expr Tbool -> $\action$ Tunit    
-| Primitive: ....
+Inductive action: ty -> Type:=
+| Return: forall t, expr t -> action t
+| Bind: forall t u,  action  t -> (V t -> action u) -> action u
+(* control-flow *)
+| OrElse: forall t, action t -> action t -> action t.
+| Assert: expr B -> action Unit    
+(* memory operations on registers *)
+| RegRead : forall t, member $\Phi$ (Reg t) -> action t
+| Regwrite: forall t, member $\Phi$ (Reg t) -> expr t -> action Unit
+(* memory operations on register files *)
+| ... 
 \end{coq}
   \caption{The syntax of expressions and actions}
   \label{fig:fesi}
 \end{figure}
 
-% We represent terms 
-% we will define an inductive type
-% family term(V). Here we see the source of the name “parametric
-% higher-order abstract syntax,” as the family term is parametric in
-% an arbitrary type V of variables.
-% term(V)
-% Var
-% App
-% Abs
-% :
-% :
-% :
-% :
-% V → term(V)
-% term(V) → term(V) → term(V)
-% (V → term(V)) → term(V)
-% Var, App, and Abs are the three constructors of terms. The new
-% representation strategy differs from the old HOAS strategy only in
-% that binders bind variables instead of terms, and those variables are
-% “injected” explicitly via the Var constructor. For example, we now
-% represent the identity function as:
+\paragraph{Semantics.}
+We endow Fe-Si programs with a simple synchronous semantics:  starting
+from an initial state, the execution of a Fe-Si programs corresponds
+to a sequence of atomic updates to the memory elements. 
+%
+Each step goes as follows: reading the state, computing an update to
+the state, commiting this update.
+%
+
+\begin{figure*}
+  \centering
+  \begin{mathpar}
+    \inferrule{\Gamma \vdash e \leadsto v} {\Gamma, \Delta \vdash
+      \mathtt{Return}~e \to \mathtt{Some} (v,\Delta)}
+    \\
+    % bind
+    \inferrule{ \Gamma, \Delta_1 \vdash a \to \mathtt{None} } {\Gamma,
+      \Delta_1 \vdash \mathtt{Bind}~a~f \to \mathtt{None}} \and
+    \inferrule{ \Gamma, \Delta_1 \vdash a \to \mathtt{Some}~(v,
+      \Delta_2) \and \Gamma, \Delta_2 \vdash f~v \to r} {\Gamma,
+      \Delta_1 \vdash \mathtt{Bind}~a~f \to r}
+    \\
+    % assert
+    \inferrule{\Gamma \vdash e \leadsto \mathtt{true}} {\Gamma, \Delta
+      \vdash \mathtt{Assert}~e \to \mathtt{Some} (\mathtt{tt},\Delta)}
+    \and \inferrule{\Gamma \vdash e \leadsto \mathtt{false}} {\Gamma,
+      \Delta \vdash \mathtt{Assert}~e \to \mathtt{None}}
+    \\
+    % register
+    \inferrule{\Gamma(r) = v} {\Gamma, \Delta \vdash
+      \mathtt{RegRead}~r \to \mathtt{Some} (r,\Delta)} \and
+    \inferrule{\Gamma \vdash e \leadsto v} {\Gamma, \Delta \vdash
+      \mathtt{RegWrite}~r~e \to \mathtt{Some}
+      (\mathtt{tt},\Delta\oplus(r,v))}
+        
+  \end{mathpar}
+\caption{Dynamic semantics of Fe-Si programs}\label{fig:fesi-sem}
+\end{figure*}
+
+The reduction rules of Fe-Si programs are defined in
+Fig.~\ref{fig:fesi-sem}. The judgement $\Gamma, \Delta \vdash a \to r$
+reads ``in the state $\Gamma$ and with the partial update $\Delta$,
+evaluating $a$ produces the result $r$'', where $r$ is either
+\coqe{None} (meaning that the action aborted), or %
+\coqe{Some (v, $\Delta$)} (meaning that the action returned the value
+\coqe{v} and the partial update $\Delta$). 
+
+There are two peculiarities here: first, following the definition of
+$\oplus$, if two values are written to a memory element, only the
+first one (in program order) is commited; second, reading a register
+yield the value that was held at the beginning of the time step. 
+%
+(While it may seem an odd choice for a general purpose programming
+language, it is meaningful when it comes to hardware. We come back to
+this point in \S\ref{sec:discussion}.)
+
+\subsection{RTL} 
+
+\subsection{First-order RTL}
+
+\subsection{Compilation} 
 
 \section{Lightweight optimizations}
+In this section, we describe two optimizations on the RTL intermediate
+language. The first one is syntactic version of common sub-expression
+elimination, intended to reduce the amount of bindings, and introduce
+more sharing. The second is a semantic common sub-expression
+elimination: that is, we use BDDs to 
+
 \subsection{Common sub-expression elimination}
 \subsection{Using BDDs to reduce boolean expressions}
 
 \section{Detailed example: running IMP programs on certified
   hardware.}
 
-\section{Further discussion}
+\section{Further discussion}\label{sec:discussion}
+\begin{itemize}
+\item Limitation: each register file allows for at most one write
+  action in each atomic update step; yet, any number of reads are
+  allowed. We could lift this limitation to allow multiple write
+  to be performed at the same time, or to limit the number of reads. 
 
+\end{itemize}
 \subsection{Meta-programming features at work}
 
 \subsection{Testing designs}
