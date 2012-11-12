@@ -5,7 +5,7 @@
 \usepackage{mathpartir}
 \usepackage{amsfonts}
 \usepackage{amsmath}
-
+\usepackage{stmaryrd}
 \authorinfo{Thomas Braibant}
            {Inria}
            {thomas.braibant@inria.fr}
@@ -15,6 +15,7 @@
 \title{Formal verification of hardware synthesis}
 \newcommand{\project}{Fe-Si}
 \newcommand{\action}{action}
+\newcommand{\denote}[1]{\llbracket #1 \rrbracket}
 \begin{document}
 \maketitle
 
@@ -333,15 +334,17 @@ inductives for \coqe{expr} and \coqe{action} in Fig.~\ref{fig:fesi}.
 (For the sake of brevity, we omit the constructors for accesses to
 register files, in the syntax and, later, in the semantics. We refer
 the reader to the supplementary materials for more details.)
+%
+Our final definition \coqe{Action} of actions is a polymorphic
+function from a choice of variables to an action.
 
 \begin{figure}
   \centering
 \begin{coq}
-Variable V: ty -> Type. 
-Variable $\Phi$: list mem. 
+Section t. 
+Variable V: ty -> Type. Variable $\Phi$: list mem. 
 Inductive expr: ty -> Type :=
 | Evar : forall t (v : V t), expr t
-| Emux : forall t, expr B -> expr t -> expr t -> expr t
 (* operations on Booleans *)
 | Eandb : expr B -> expr B -> expr B | ... 
 (* operations on words *)
@@ -357,9 +360,11 @@ Inductive action: ty -> Type:=
 | Assert: expr B -> action Unit    
 (* memory operations on registers *)
 | RegRead : forall t, member $\Phi$ (Reg t) -> action t
-| Regwrite: forall t, member $\Phi$ (Reg t) -> expr t -> action Unit
-(* memory operations on register files *)
+| RegWrite: forall t, member $\Phi$ (Reg t) -> expr t -> action Unit
+(* memory operations on register files, and inputs *)
 | ... 
+End t. 
+Definition Action $\Phi$ t := forall V, action V $\Phi$ t.  
 \end{coq}
   \caption{The syntax of expressions and actions}
   \label{fig:fesi}
@@ -421,7 +426,93 @@ yield the value that was held at the beginning of the time step.
 language, it is meaningful when it comes to hardware. We come back to
 this point in \S\ref{sec:discussion}.)
 
+Finally, we define a wrapper function that computes the next state of
+the memory elements, using the aforementioned evaluation relation
+(starting with an empty partial update). 
+\begin{coq}
+Definition Next {t} $\Phi$ (st: $\denote{\Phi}$) (A : Action Phi t) : $\denote{\Phi}$ := ...
+\end{coq}
+
 \subsection{RTL} 
+We now turn to the presentation of our target language, which sits at
+the register-transfer level. At this level, synchronous circuit can be
+described as a set of state holding elements, and a next-state
+function, implemented using combinational logic.  
+%
+Therefore, The definition of RTL programs (\coqe{block} in the
+following) is quite simple: a program is simply a telescope of
+expressions (combinational operations, or reads from state holding
+elements), with a list of effects (i.e, writes to state holding
+elements) at the end.
+
+We show the definition of expressions, telescopes, and blocks in
+Fig.~\ref{fig:rtl}. 
+%
+The definition of expressions is similar to the one we used for Fe-Si,
+excepts that we have constructors for reads from memory elements, and
+that we moved to ``three-adress code''.
+%
+(That is, operands are variables, rather than arbitrary expressions.)
+%
+A telescope (type \coqe{scope A}) can be thought of as a sequence of
+bindings of expressions, with an element of type \coqe{A} at the
+end (\coqe{A} is instantiated later with a list of effects.)
+%
+Intuitively, the first binding of a telescope can only read from
+memory elements; the second binding may use the first value, or read
+from memory elements; and so on and so forth.
+
+A \coqe{block} is a telescope, with three elements at the end: a
+guard, a return-value, and a (dependently-typed) list of effects. 
+%
+The value of the guard (a Boolean) is equal to true when the
+return-value and the effects are valid (i.e., the effects should be
+commited to memory); and false otherwise.
+%
+The return-value denotes the outputs of the circuits. 
+%
+The datatype \coqe{effects} encode, for each memory element of the
+list $\Phi$, either an effect (a write of the right type), or None
+(meaning that this memory element is never written to). (For the sake
+of brevity, we omit the particular definition of dependently-typed
+heterogeneous lists \coqe{DList.T} that we use here.)
+
+
+\begin{figure}
+  \centering
+\begin{coq}
+Section t. 
+Variable V: ty -> Type. Variable $\Phi$: list mem. 
+Inductive expr: ty -> Type :=
+| Evar : forall t (v : V t), expr t
+(* read from memory elements *)
+| Einput : forall t, member $\Phi$ (Input t) -> expr t
+| Eread_r : forall t, member $\Phi$ (Reg t) -> expr t
+| Eread_rf : forall n t, member $\Phi$ (Regfile n t) -> V (Int n) -> expr t
+(* operations on Booleans *)
+| Emux : forall t, V B -> V t -> V t -> expr t
+| Eandb : V B -> V B -> V B | ... 
+(* operations on words *)
+| Eadd : forall n, V (Int n) -> V (Int n) -> expr (Int n) | ... 
+(* operations on tuples *)
+| Efst : forall l t, V (Tuple (t::l)) -> expr t | ...
+
+Inductive scope (A : Type): Type :=
+| Send : A -> scope A
+| Sbind : forall (t: ty), expr t -> (V t -> scope A) -> scope A. 
+
+Inductive write : mem -> Type :=
+| WR : forall t, V t -> V Tbool -> write (Reg t)
+| WRF : forall n t, V t -> V (Int n) -> V B ->  write (Regfile n t). 
+     
+Definition effects := DList.T (option $\circ$ write) $\Phi$. 
+Definition block t := scope (V B * V t *  effects).         
+End t.
+Definition Block $\Phi$ t := forall V, block $\Phi$ V t.
+\end{coq}
+  \caption{RTL programs with three-adress code expressions}
+  \label{fig:rtl}
+\end{figure}
 
 \subsection{First-order RTL}
 
