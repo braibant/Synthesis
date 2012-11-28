@@ -288,6 +288,9 @@ $ $
   \label{fig:type}
 \end{figure}
 
+\newcommand{\denotety}[1]{\denote{\mathtt{#1}}_{\mathtt{ty}}}
+\newcommand{\denotemem}[1]{\denote{\mathtt{#1}}_{\mathtt{mem}}}
+
 
 
 \subsection{Fe-Si}
@@ -416,6 +419,14 @@ evaluating $a$ produces the result $r$'', where $r$ is either
 \coqe{None} (meaning that the action aborted), or %
 \coqe{Some (v, $\Delta$)} (meaning that the action returned the value
 \coqe{v} and the partial update $\Delta$). 
+%
+The rules for the reduction of \coqe{Bind} may seem peculiar, in that
+they do not modify the state $\Gamma$. 
+%
+This is because the PHOAS approach makes it possible to manipulate
+closed-terms: we hijack Coq's $\beta$-reduction when dealing with
+$f~v$, and we do not need to have an explicit treatment of the binders
+nor the reduction environments.
 
 There are two peculiarities here: first, following the definition of
 $\oplus$, if two values are written to a memory element, only the
@@ -436,14 +447,15 @@ Definition Next {t} $\Phi$ (st: $\denote{\Phi}$) (A : Action Phi t) : $\denote{\
 \subsection{RTL} 
 We now turn to the presentation of our target language, which sits at
 the register-transfer level. At this level, synchronous circuit can be
-described as a set of state holding elements, and a next-state
-function, implemented using combinational logic.  
+faithfully described as a set of state holding elements, and a
+next-state function, implemented using combinational
+logic~\cite{DBLP:journals/cj/Gordon02}.
 %
 Therefore, The definition of RTL programs (\coqe{block} in the
 following) is quite simple: a program is simply a telescope of
 expressions (combinational operations, or reads from state holding
 elements), with a list of effects (i.e, writes to state holding
-elements) at the end.
+elements) at the end. 
 
 We show the definition of expressions, telescopes, and blocks in
 Fig.~\ref{fig:rtl}. 
@@ -514,18 +526,279 @@ Definition Block $\Phi$ t := forall V, block $\Phi$ V t.
   \label{fig:rtl}
 \end{figure}
 
-\subsection{First-order RTL}
+\paragraph{Semantics.} We now turn to define the semantics of our RTL
+language. 
+%
+To define  evaluation 
+We first define a denotation for closed expressions (in the
+same way as we did at the source-level, except that it is not a
+recursive definition).
+\begin{coq}
+Variable $\Gamma$: $\denote{\Phi}$. 
+Definition eval_expr (t : ty) (e : expr $\denotety{.}$ t) : $\denotety{.}$:=
+match e with
+| Evar t v => v
+| Einput t v => DList.get v $\Gamma$
+| Eread  t v =>  DList.get v $\Gamma$
+| Eread_rf n t v adr => Regfile.get (DList.get v $\Gamma$) adr
+| Emux t b x y => if b then x else y 
+| Eandb a b => andb a b | ...
+| Eadd n a b => Word.add a b  | ...
+| Efst l t e => Tuple.fst e | ...
+end. 
+\end{coq}
 
-\subsection{Compilation} 
+We now turn to define the (simple) denotation of telescopes: it is a
+simple recursive function that evaluates bindings in order, and apply
+an arbitrary function on the final (closed) object. 
+\begin{coq}
+Fixpoint eval_scope {A B} (F : A -> B) (T : scope $\denotety{.}$ A) :=
+match T with 
+| Send X => F X
+| Sbind t e cont => eval_scope F (cont (eval_expr t e))
+end.   
+\end{coq}
+%
+The final piece that we need is the denotation that corresponds to the
+\coqe{write} type. This function takes as argument a single effect,
+the initial state of this memory location, and either returns a new
+state for this memory location, or returns \coqe{None}, meaning that
+location is left in its previous state.
+\begin{coq}
+Definition eval_effect (m : mem) : 
+$\qquad$option (write $\denotety{.}$ m) -> $\denotemem{m}$ -> (option $\denotemem{m}$) := ... 
+\end{coq}
+%
+Using all this pieces, we will directly jump to the final next-state
+function. Doing so, we elide some of the wrapping that need to be done
+in our Coq development, for the sake of clarity.
+\begin{coq}
+Definition Next {t} $\Phi$ ($\Gamma$: $\denote{\Phi}$) (B : Block $\Phi$ t) : $\denote{\Phi}$ := ...
+\end{coq}
+
+\subsection{Compiling Fe-Si to RTL} 
+Our syntactic translation from Fe-Si to RTL is driven by the fact that
+our RTL language does not allow clashing assignements: syntactically,
+each register and register-file is updated at most one \coqe{write}
+expression.
+%
+With a wrinkle, we could say that we move to a language with
+\emph{single-static assignements}. 
+
+\paragraph{From control-flow to data-flow.}To do so, we have to transform
+the control-flow (the \coqe{Assert} and \coqe{OrElse}) of Fe-Si
+programs into data-flow.
+%
+We can do that in hardware, because circuits are inherently parallel:
+for instance, the circuit that compute the result of the conditional
+expression \mbox{\coqe{e ? a : b}} is a circuit that computes the value of
+\coqe{a} and the value of \coqe{b} in parallel, and then uses the
+value of \coqe{e} to select the right value for the whole expression. 
+
+Our first compilation pass transforms Fe-Si programs into an
+intermediate language called IR that implements A-normal form. That
+is, we assign names to every intermediate computation.
+%
+In order to do so, we also have to resolve the control-flow. To be
+more specific about the latter, given an expression like
+\begin{coq}
+do x <- (A OrElse B); ... 
+\end{coq}
+we want to know statically to what value \coqe{x} needs to be bound
+and when this value is \emph{valid}. 
+%
+In this particular case, we remark that if \coqe{A} yields a value
+$v_A$ which is valid, then \coqe{x} needs to be bound to $v_A$; if
+\coqe{A} yields a value that is invalid, then \coqe{x} needs to be
+bound to the value returned by \coqe{B}. In any case, the value bound
+in \coqe{x} is valid whenever the value returned by \coqe{A} or the
+value returned by \coqe{B} is valid.
+
+More generally, our compilation function takes as argument an
+arbitrary function, and returns a telescope\footnote{Here, we use
+  Coq's module system to discriminate between various incarnations of
+  our telescope and our expression data-type, and to provide
+  annotations for the reader.}:
+\begin{coq}
+Fixpoint compile t (a : action $\Phi$ V t) : 
+$\qquad$IR.scope (IR.expr V B * V t * list IR.neffect) := ...
+\end{coq}
+The first element of the tuple that is bound by the
+telescope is the \emph{guard}, that denotes the validity of the
+following components of the tuple.
+%
+The second element of the tuple is a variable, that is bound by the
+telescope to denote the value that was returned by the action. 
+%
+The third element of the tuple is a list of \emph{nested effects},
+which are a lax version of the effects that exist at the \coqe{RTL}
+level.
+\begin{coq}
+Inductive neffect  : Type :=
+| NGuard : forall (guard : expr V B), list neffect -> neffect 
+| NRegW : forall t, member $\Phi$ (Reg t) -> V t -> neffect
+| NRegfileW : ... 
+\end{coq}
+The rationale behind the \coqe{neffect} data-type is to represent
+trees of conditional blocks, with writes to state-holding elements at
+the leaves. (Using this data-type, several paths in such a tree may
+lead to a write to a given memory location; in this case, we use a
+notion of program order to discriminate between clashing
+assignements. Note also that the \coqe{list neffect} that sits at the
+end of the telescope in the \coqe{compile} is a shortcut for a
+degenerate \coqe{NGuard} whose guard is true.)
+
+The compilation by itself is quite straighforward. We give the code
+that corresponds to the \coqe{Assert} and the \coqe{Bind} cases below
+% \begin{coq}
+% | Bind t u A F =>
+% $\quad$[< rA, gA, eA >] :- compile _ A; 
+% $\quad$[< rB, gB, eB >] :- compile _ (F rA); 
+% $\quad$Send (rB, andb gA gB, List.app eA eB) 
+% \end{coq}
+\begin{coq}
+| Return t e => Sbind e (fun x => Send (true, Evar x, nil))
+| Bind t u A F =>
+$\quad$ compile _ A $\rhd$ (fun (rA, gA, eA) =>
+$\quad$ compile _ (F rA) $\rhd$ (fun (rB, gB, eB) =>
+$\quad$ Send (rB, andb gA gB, List.app eA eB))) 
+| Assert e => Sbind e (fun x => Send ( Evar x, tt, nil))
+\end{coq}
+where $\rhd$ corresponds to the composition of telescopes, and
+\coqe{andb} is a ``smart constructor'' of the expresssion data-types,
+that avoids building degenerate cases.
+
+\paragraph{Linearizing the effects} Our second compilation pass
+flattens the nested effects that were introduced in IR, and targets
+our second intermediate language, IR2. (The IR2 language is similar to
+the RTL language in all respects, except that it is not yet in
+three-adress code.)
+
+The idea of this translation is to associate two values to each
+register: a \emph{data} value (the value that ought to be written) and
+a \emph{write-enable} value. The data value is commited (i.e., stored)
+to the register if the write-enable Boolean is true.
+%
+Similarly, we associate three values to each register-file: a data, an
+address, and a write-enable. The data is stored to the field of the
+register file selected by the address if the write-enable is true.  
+
+The heart of this translation is a \coqe{merge} function that takes
+two \coqe{write} of the same type, and returns a telescope that
+encapsulates a single \coqe{write}: 
+\begin{coq}
+Definition merge s (a b : write s): scope (option (write s)) := ...   
+\end{coq}
+Despite requiring a bit of dependent-types hackery\footnote{The
+  reader may wonder why we need an option here; the answer is that we
+  could do without it, at the price of a more complicated definition
+  for \coqe{merge} that uses the fact that the type
+%
+  \mbox{\coqe{write (Input t)}} is not inhabited.}, the definition of
+\coqe{merge} is the expected one.
+%
+For instance, in the register case, given $(v_a,we_a)$ (resp. $(v_b,
+we_b)$) the value and the write-enable that corresponds to \coqe{a},
+the write-enable that corresponds to the merge of \coqe{a} and
+\coqe{b} is $we_a || we_b$, and the associated data is \mbox{$we_a~?~v_a :
+v_b$}.
+
+% We come back to the counter we used in the introduction, that needs to
+% be sligthly modified to get a closed Fe-Si program. 
+% \begin{coq}
+% Definition $\Phi$ := [Reg (Int n); Input Bool]
+% Definition count n : action $\Phi$ (Int n) :=
+% $\quad$do x <- !member_0; do tick <- input (member_S member_0);
+% $\quad$do _ <- if tick then {member_0 ::= x + 1} else {ret tt}; 
+% $\quad$ret x. 
+% \end{coq}
+
+\paragraph{Moving to RTL.} The only thing that remains to be done is
+the translation from IR2 to RTL, which amounts to a simple
+transformation into three-address code. 
 
 \section{Lightweight optimizations}
-In this section, we describe two optimizations on the RTL intermediate
+In this section, we describe two optimizations on the RTL
 language. The first one is syntactic version of common sub-expression
 elimination, intended to reduce the amount of bindings, and introduce
 more sharing. The second is a semantic common sub-expression
-elimination: that is, we use BDDs to 
+elimination that aims to reduce the size of the Boolean formula that
+were generated in the previous translation passes. 
 
-\subsection{Common sub-expression elimination}
+\subsection{CSE}
+We perform syntactic common sub-expression elimination using a simple
+recursive traversal of RTL programs. Indeed, since there is no
+iteration involved, there is no need to perform any kind of data-flow
+analysis. 
+
+We follow the approach used by
+Chlipala~\cite{DBLP:conf/popl/Chlipala10} to perform CSE in previous
+work. That is, we tag each variable that is used in the program with a
+symbolic value, as defined below.
+\begin{coq}
+Inductive sval: ty -> Type := ...  
+\end{coq}
+
+Contrary to our previous transformations that were just ``pushing
+variables around'' for each possible choice of variable representation
+\coqe{V}, here we need to tag variables with their symbolic values. 
+% 
+%
+Then, CSE goes as follows. We fold through a telescope and maintain a
+mapping from symbolic values to variables. For each binder of the
+telescope, we compute the symbolic representation of the expression
+that is bound. 
+%
+If this symbolic value is already in the map, we avoid the creation of
+an extraneous binder. Otherwise, we do create a new binder, and extend
+our association list accordingly. 
+ 
+% Between closure
+% conversion and flattening, we perform intrapro- cedural common
+% subexpression elimination (CSE) on closed pro- grams. Since our
+% languages have no intraprocedural iteration con- structs, there is no
+% need to perform dataflow analysis. Instead, a single recursive
+% traversal of a program suffices. The optimization still simplifies
+% cases like application of a known function, where it is possible to
+% avoid building a closure.
+
+% As we descend into a program’s structure, we maintain a map- ping from
+% variables to symbolic values, as defined below.  Symbolic values s ::=
+% #n | c | () | s, s | inl(s) | inr(s) Values not built from the basic
+% constant, unit, product, and sum constructors are represented with
+% symbolic variables #n, where a fresh n is generated for each new
+% input-program variable that cannot be determined to have more specific
+% structure.  The purpose of CSE is to remove some redundant bindings
+% and case analyses. This transformation may sound complicated enough to
+% require conversion of input programs to first-order form to analyze
+% them. However, it is possible to implement CSE in an elegant
+% higher-order way. In translating a parametric program P , we must
+% produce a CSE’d version of it for each possible variable
+% representation var. Our solution is to do so by instantiating P at
+% variable type var * sval, where sval is the type of symbolic values s.
+
+% Thus, each variable is tagged with a symbolic representation, and this
+% representation may be accessed directly at use sites. The main
+% translation maintains a mapping from symbolic values to vari-
+% ables. We use this mapping to simplify case expressions with dis-
+% criminees that we see statically are either inl or inr. When proceed-
+% ing under a let binder, the translation evaluates the bound expres-
+% sion symbolically. If the result is in the map, we avoid creating a
+% new binder in the translation. Instead, we apply the binder body,
+% which is a function over variable/value pairs, to the variable that
+% our map associates with the appropriate symbolic value, paired with
+% that value. If the value we are binding is not found in the map, we do
+% create a new binder, and, in the recursive call inside the binder’s
+% scope, we add the new variable to the symbolic map.  The main
+% correctness theorem for this translation is proved very similarly to
+% the main theorem for CPS conversion. The proof can be a bit simpler
+% because we need no value compatibility relation; CSE has no effect on
+% the values that appear during program evaluation.  We prove the main
+% theorem with about 20 lines of tactic code for performing appropriate
+% case analyses, applying IHes and a lemma about primops, and
+% materializing known facts about variables men- tioned in expression
+% equivalence derivations.
+
 \subsection{Using BDDs to reduce boolean expressions}
 
 \section{Detailed example: running IMP programs on certified
