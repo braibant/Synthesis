@@ -2,21 +2,8 @@ Require Import Common DList.
 Require Core Equality. 
 
 Require Import Eqdep. 
-Ltac tt :=  subst; 
-          repeat match goal with 
-                     H : existT _ _ _ = existT _ _ _ |- _ => 
-                     apply Eqdep.EqdepTheory.inj_pair2 in H
-                   |   H : context [eq_rect ?t _ ?x ?t ?eq_refl] |- _ => 
-                       rewrite <- eq_rect_eq in H
-                   |   H : context [eq_rect ?t _ ?x ?t ?H'] |- _ => 
-                       rewrite (UIP_refl _ _ H') in H;
-                         rewrite <- eq_rect_eq in H
-                   |   H : existT _ ?t1 ?x1 = existT _ ?t2 ?x2 |- _ => 
-                       let H' := fresh "H'" in 
-                       apply eq_sigT_sig_eq in H; destruct H as [H H']; subst
-                 end; subst.
 
-(* In this firstorder representation, everything ends up being
+(** In this firstorder representation, everything ends up being
 represented as packed bytes: a type is the size of the bus *)
 Notation type := nat (only parsing). 
 
@@ -130,7 +117,7 @@ Section t.
         do c <- [env # c]; 
         do l <- [env # l]; 
         do r <- [env # r]; 
-        Some (if Word.eqb c Word.true then l else r)
+        Some (if Word.eqb c (Word.of_bool true) then l else r)
       | E_plus n a b => do a <- [env # a]; 
                        do b <- [env # b]; 
                        Some (Word.add a b)
@@ -180,7 +167,6 @@ Fixpoint compile_type (t : Core.type) :  type :=
     | Core.Tunit => 0
     | Core.Tbool => 1
     | Core.Tint n => n
-    | Core.Tfin n => 0
     | Core.Ttuple l => sum (List.map compile_type l)
   end.
 
@@ -207,7 +193,6 @@ Section s.
       | Core.Tunit => fun _ => Word.repr 0 0
       | Core.Tbool => fun (x: bool) => if x then Word.repr 1 1 else Word.repr 1 0
       | Core.Tint n => fun x => x
-      | Core.Tfin n => fun x => admit
       | Core.Ttuple l => fun x => 
                           let fold :=
                               fix fold l : Core.Generics.constant (Core.Ttuple l) -> 
@@ -271,13 +256,13 @@ Section s.
   Lemma value_equiv_bool_inversion a b : value_equiv Core.Tbool a b -> 
                                          Word.of_bool a = b. 
   Proof. 
-    inversion 1; tt.  reflexivity. 
+    inversion 1; injectT.  reflexivity. 
   Qed. 
   
   Lemma value_equiv_int_inversion n a b : value_equiv (Core.Tint n) a b -> 
                                           a = b. 
   Proof. 
-    inversion 1; tt. congruence.
+    inversion 1; injectT. congruence.
   Qed. 
   
   (** R is the equivalence relation on the closures. *)
@@ -356,99 +341,7 @@ Section s.
         | H : value_equiv (Core.Tint ?n) ?a ?b |- _ => apply value_equiv_int_inversion in H
              end; try constructor. 
     t. subst. 
-(*     constructor.  *)
-(* dependent destruction r.  *)
-(*     apply H0.  *)
-    
-(*     simpl.  *)
-(*     repeat DList.inversion.  *)
-(*     specialize (IHv adr1 adr2 H).  *)
-(*     t. subst.  *)
-(*     dependent destruction Hst.  *)
-(*     specialize (IHv _ _ Hst). *)
-(*     setoid_rewrite H in IHv.  *)
-(*     simpl in IHv.  *)
-(*     inversion IHv; tt. clear IHv. auto.  *)
-(*     +  *)
-(*       Ltac s := subst;  *)
-(*                repeat match goal with  *)
-(*                           |- context [Word.of_bool ?x] => is_var x;  destruct x *)
-(*                       end; reflexivity. *)
-      
-(*       destruct f; t; try constructor; try s.  *)
-      
-(*       {subst. apply Word.eq_correct. destruct x; destruct x1; try reflexivity. } *)
-(*       {f_equal.  *)
-(*        case_eq (Core.type_eq t0 x x1); intros Heq.  apply Core.type_eq_correct in Heq. subst.  *)
-(*        Lemma value_equiv_inj_right :  *)
-(*          forall t x y z, *)
-(*            value_equiv t x y ->  *)
-(*            value_equiv t x z ->  *)
-(*            y = z.  *)
-(*        Proof.  *)
-(*          intros t. induction t using Core.type_ind; simpl; intros; t. *)
-(*          + destruct x. dependent destruction H; dependent destruction H0; tt. reflexivity.  *)
-(*          + destruct x; dependent destruction H; dependent destruction H0; tt; reflexivity.  *)
-(*          + subst. tauto.  *)
-(*          + admit.  *)
-(*          + destruct x; dependent destruction H; dependent destruction H0; reflexivity.  *)
-(*          + destruct x. dependent destruction H. dependent destruction H1; tt.                       *)
-(*            pose proof (IHt _ _ _ H H1_).  *)
-(*            pose proof (IHt0 _ _ _ H0 H1_0). clear - H1 H2.  *)
-(*            Lemma combine_low_high : forall n m (x : Word.T (n+m)),  *)
-(*                                       x = Word.combineLH n m (Word.low n m x)(Word.high n m x). *)
-(*            Admitted.  *)
-(*            rewrite (combine_low_high _ _ y).  *)
-(*            rewrite (combine_low_high _ _ z).  *)
-(*            setoid_rewrite H1. setoid_rewrite H2. f_equal.  *)
-(*        Qed.  *)
-(*        pose proof (value_equiv_inj_right _ _ _ _ H2 H0).  *)
-(*        subst.  *)
-(*        symmetry. rewrite  Word.eq_correct. reflexivity.  *)
-(*        admit.                   (* the type-class eq function must be complete *) *)
-(*       } *)
-(*       { *)
-(*         admit.                  (* we should drop lt as a type_class function *) *)
-(*       } *)
-(*       { *)
-(*         tt. destruct x; simpl. auto.  auto.  *)
-(*       } *)
-(*       { *)
-(*         admit.                  (* We should drop the finite numbres too *) *)
-(*       } *)
-
-(*     + induction ty using Core.type_ind. *)
-(*       destruct c. constructor. reflexivity. *)
-(*       destruct c; try constructor; apply Word.eq_correct; reflexivity.  *)
-(*       constructor. reflexivity.  *)
-(*       admit.                    (* fin *) *)
-(*       destruct c. constructor. reflexivity.  *)
-(*       destruct c. simpl. constructor. simpl.  *)
-(*       Lemma low_combine n m x y : Word.low n m (Word.combineLH n m x y) = x.  *)
-(*       Admitted.  *)
-(*       Lemma high_combine n m x y : Word.high n m (Word.combineLH n m x y) = y.  *)
-(*       Admitted.  *)
-(*       rewrite low_combine. auto.  *)
-(*       rewrite high_combine. simpl. apply IHty0.    *)
-(*     + t; subst. destruct c2; simpl; auto.  *)
-(*     + t. inversion H0; tt. apply H3.  *)
-(*     + t. inversion H0; tt. apply H6.  *)
-(*     + t. *)
-(*       clear  dl1 H.  *)
-(*       induction v.  *)
-(*       simpl.  inversion H0; tt. constructor. apply H2.  *)
-      
-(*       simpl. eapply IHv. inversion H0; tt. eauto. *)
-(*     + induction l. *)
-(*       repeat DList.inversion. simpl. constructor. constructor. reflexivity.  *)
-(*       simpl. repeat DList.inversion. simpl. t.  tt. simpl.  *)
-(*       specialize (IHl _ _ H0). inversion IHl. subst. simpl. constructor.  *)
-(*       constructor. simpl.  *)
-(*       rewrite low_combine. auto. simpl.  *)
-(*       rewrite high_combine. auto.  *)
-(*   Qed.  *)
   Admitted. 
-  Print Assumptions compile_expr_correct. 
   End protect. 
   Definition compile_effect s (e : RTL.effect Var s) : effect (compile_sync s) :=  
     match
@@ -493,7 +386,6 @@ Section s.
 End s. 
   
 
-(* Arguments RTL.Eval Phi _ {t} _ _.  *)
 
 (* Theorem compile_correct Phi t (b : RTL.block Phi Var t) state : *)
 (*   forall Delta, *)
@@ -593,7 +485,6 @@ Notation W n:= (Core.Tint n).
 Notation "< >" := (Core.Ttuple nil). 
 Notation "< a ; .. ; b >" := (Core.Ttuple (a :: .. (b :: nil) ..))%list. 
 Notation "# a " := (box _ a) (no associativity, at level 71). 
-(* Notation "f @@ args" := (RTL.Ebuiltin _ _ _ _ f args) (no associativity, at level 71).  *)
 Notation "$ x" := (RTL.Econstant _ _ _ x) (no associativity, at level 71). 
 Notation nth v e := (RTL.Enth _ _ _ _ v e). 
 

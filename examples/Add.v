@@ -29,8 +29,8 @@ Section s.
                   do yH <~ high y; 
                   do rL <- add n xL yL; 
                   do rH <- add n xH yH; 
-                  do (pL, gL, sL, tL) <- rL;
-                  do (pH, gH, sH, tH) <- rH;
+                  do (pL, gL, sL, tL) <~ rL;
+                  do (pH, gH, sH, tH) <~ rH;
                   do sH' <~ (Emux (gL) (tH) (sH))%expr;
                   do tH' <~ (Emux (pL) (tH) (sH))%expr;
                   do pH' <~ (gH || (pH && pL))%expr;

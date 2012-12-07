@@ -136,13 +136,6 @@ Section ops.
            end) l).
   Defined. 
 
-  Definition to_etuple (l : list X) : T F l -> ETuple.of_list G l. 
-  refine ((fix F l (hl : T F l) : ETuple.of_list G l :=
-           match hl in T _ l return ETuple.of_list G l with 
-                                  | nil => tt
-                                  | cons t q T Q =>  ETuple.pair X G (Op t T) (F q Q)
-           end) l).
-  Defined. 
   
   Definition map ( l : list X) : T F l -> T G l. 
   refine ((fix F l (hl : T F l) : T G l := 
@@ -153,7 +146,6 @@ Section ops.
   Defined. 
 End ops. 
 Arguments to_tuple {X F G} Op {_} _%dlist. 
-Arguments to_etuple {X F G} Op {_} _%dlist. 
 Arguments map {X F G} Op {_} _%dlist. 
 
 Lemma map_to_tuple_commute {X} (F G H : X -> Type)
@@ -161,17 +153,6 @@ Lemma map_to_tuple_commute {X} (F G H : X -> Type)
                             (l : list X) (dl : T F l) :
   to_tuple Op' (map Op dl) = 
   to_tuple (fun x dx => Op' x (Op x dx)) dl. 
-Proof.
-  induction dl. reflexivity.
-  simpl. f_equal. apply IHdl. 
-Qed. 
-
-
-Lemma map_to_etuple_commute {X} (F G H : X -> Type)
-                            (Op : forall x, F x -> G x) (Op' : forall x : X, G x -> H x)
-                            (l : list X) (dl : T F l) :
-  to_etuple Op' (map Op dl) = 
-  to_etuple (fun x dx => Op' x (Op x dx)) dl. 
 Proof.
   induction dl. reflexivity.
   simpl. f_equal. apply IHdl. 

@@ -60,8 +60,8 @@ Section t.
        refine (do PC' <- ! PC; 
                do I <- read IMEM [: PC' ]; 
                WHEN (opcode (I) = (#i 0) ) ; 
-               PC ::= PC' + #i 1;;
-               (write RF [: rd (I) <- const (I) ]);;
+               do _ <- PC ::= PC' + #i 1;
+               do _ <- (write RF [: rd (I) <- const (I) ]);
                ret (#Ctt))%action. 
       Defined. 
   
@@ -71,8 +71,8 @@ Section t.
       refine (do PC' <- ! PC ; 
               do I <- read IMEM [: PC' ]; 
               WHEN (opcode (I) =  (#i 1) ) ; 
-              PC ::= PC' + #i 1;;
-              write RF [: rd (I) <- (PC') ];;
+              do _ <- PC ::= PC' + #i 1;
+              do _ <- write RF [: rd (I) <- (PC') ];
               ret (#Ctt)). 
       Defined.
       
@@ -82,7 +82,7 @@ Section t.
       refine (do PC' <- ! PC; 
               do I <- read IMEM [: PC' ]; 
               WHEN (opcode (I) =  (#i 2) ) ; 
-              write [: PC <-  (PC' + #i 1)];;
+              do _ <- write [: PC <-  (PC' + #i 1)];
               do R1 <- read RF [: r1 (I) ];
               do R2 <- read RF [: r2 (I) ];
               do _ <- (write RF [: rd (I) <- (R1 + R2) ]);
@@ -123,8 +123,8 @@ Section t.
               WHEN (opcode (I) =  (#i 4) );
               do R2 <- read RF [: r2 (I) ];
               do D <- read DMEM [: (R2)];
-              write RF [: r1 (I) <-  (D)];;
-              PC ::= PC' + #i 1;;
+              do _ <- write RF [: r1 (I) <-  (D)];
+              do _ <- PC ::= PC' + #i 1;
               ret (#Ctt)). 
       Defined. 
       
@@ -136,8 +136,8 @@ Section t.
               WHEN (opcode (I) =  (#i 5) );
               do R1 <- read RF [: r1 I ];
               do R2 <- read RF [: r2 I ];
-              write DMEM [: R1 <-  R2];;
-              PC ::= PC' + #i 1;;
+              do _ <- write DMEM [: R1 <-  R2];
+              do _ <- PC ::= PC' + #i 1;
               ret (#Ctt)). 
       Defined. 
     
@@ -156,13 +156,6 @@ Definition t := (Compiler.fesiopt _ _ (Code 4)).
 
 Eval vm_compute in t. 
 
-
-(* Definition finish {Phi t} x := List.length (FirstOrder.bindings Phi t(FirstOrder.compile _ _ x)).  *)
-(* Eval vm_compute in finish (Compiler.Compile _ _ (Ex2.Code 4) _).  *)
-(* Definition step {Phi t} x :=  (CSE.Compile Phi t  (CP.Compile _ _ x)).  *)
-(* Eval vm_compute in finish (step (Compiler.Compile _ _ (Ex2.Code 4) ) _).  *)
-(* Eval vm_compute in finish (step (step (Compiler.Compile _ _ (Ex2.Code 4) )) _).  *)
-(* Eval vm_compute in finish (step (step (step (Compiler.Compile _ _ (Ex2.Code 4) ))) _).  *)
 
 
 

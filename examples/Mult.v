@@ -5,7 +5,6 @@ Require ZArith. Open Scope Z_scope.
 Section t. 
   Variable W : nat. 
   Notation NUM := (Tint W). 
-  Notation STATUS := (Tfin 3). 
 
   Definition Phi : state := (Treg NUM :: Treg NUM  :: Treg NUM ::  nil)%list. 
     

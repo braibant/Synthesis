@@ -32,7 +32,7 @@ Module  Ex2.
             do A <- read [: r1]; 
             do B <- read [: r2];
             WHEN (A < B); 
-            (write [: c <- #b false]);;
+            do _ <- (write [: c <- #b false]);
             ret  (#Ctt)
            ). 
     Defined. 

@@ -3,6 +3,15 @@ Require Import DList.
 Require Import Core. 
 Require Word Array. 
 
+
+(** * Definition of [expr] and [action] *)
+
+(** In order to factorise a bit development, we do not have exactly
+the same definition as the one in the paper, where each primitive is
+inlined in the following action data-type. Instead, with have a
+dependently typed notion of primitive, that encapsulates interaction
+with the external state.  *)
+
 Inductive primitive (Phi : state) : list type -> type -> Type:=
 | input_read : forall t, var Phi (Tinput t) -> primitive Phi nil t
 (* register operations *)
@@ -45,58 +54,8 @@ Section s.
     | Esnd : forall l t , expr (Ttuple (t::l)) -> expr (Ttuple l)
     | Enth : forall l t (m : var l t), expr (Ttuple l) -> expr t
     | Etuple : forall l (exprs : DList.T (expr) l), expr (Ttuple l). 
-    
-     (*
-    Section induction. 
-      (** Since the induction principle that is generated is not
-      useful, we have to define our own.  *)
 
-      Variable P : forall t : type, expr t -> Prop.  
-      Hypothesis Hvar : forall (t : type) (v : Var t), P t (Evar t v). 
-      Hypothesis Hbuiltin : 
-      forall (args : list type) (res : type) (f0 : builtin args res)
-        (t : DList.T expr args), 
-        (* (forall t (e : expr t), P t e) -> *)
-        DList.Forall P t ->
-        P res (Ebuiltin args res f0 t). 
-      Hypothesis Hconstant : 
-      forall (ty : type) (c : constant ty), P ty (Econstant ty c). 
-      Hypothesis Hmux : forall (t : type) (e : expr B) (l r : expr t),
-                          P B e -> P t l -> P t r ->  P t (Emux t e l r ).  
-      Hypothesis Hfst : forall (l : list type) (t : type) (e : expr (Ttuple (t :: l))),
-        P (Ttuple (t :: l)) e -> P t (Efst l t e).  
-      Hypothesis Hsnd : forall (l : list type) (t : type) (e : expr (Ttuple (t :: l))),
-        P (Ttuple (t :: l)) e -> P (Ttuple l) (Esnd l t e). 
-      Hypotheses Hnth : forall (l : list type) (t : type) (m : var l t) (e : expr (Ttuple l)),
-        P (Ttuple l) e -> P t (Enth l t m e). 
-      Hypothesis Htuple : forall (l : list type) (exprs : DList.T expr l),
-                            DList.Forall P exprs -> 
-                            P (Ttuple l) (Etuple l exprs). 
-      
-      Lemma expr_ind_alt (t : type) (e : expr t) :  P t e. 
-      refine (let fix fold (t : type) (e : expr t) :  P t e  := 
-                  match e with
-                    | Evar t v => Hvar t v
-                    | Ebuiltin args res f x =>  Hbuiltin args res f _ _
-                    | Econstant ty c => Hconstant ty c
-                    | Emux t x x0 x1 => Hmux t x x0 x1 (fold _ x) (fold _ x0) (fold _ x1)
-                    | Efst l t x => Hfst l t x (fold _ x)
-                    | Esnd l t x => Hsnd l t x (fold _ x) 
-                    | Enth l t m x => Hnth l t m x (fold _ x)
-                    | Etuple l exprs => Htuple l exprs _  end in fold t e);
-        clear Hbuiltin Hvar Hconstant Hmux Hfst Hsnd Hnth Htuple.
-      {
-        clear f.
-        induction x. simpl; apply I.
-        split; [apply fold | apply IHx]; auto.      
-      }
-      {
-        induction exprs. simpl; apply I. 
-        split; [apply fold | apply IHexprs]; auto.
-      }
-      Qed. 
-    End induction. 
-*)
+    
     Inductive action : type -> Type :=
     | Return : forall t (exp : expr t), action t
     | Bind :
@@ -115,8 +74,6 @@ Section s.
   Definition Action t := forall Var, action Var t.
   Definition Expr t := forall Var, expr Var t. 
 
-  Notation eval_type_list := (ETuple.of_list eval_type). 
-  
   Fixpoint eval_expr (t : type) (e : expr eval_type t) : eval_type t :=
     match e with
       | Evar t v => v
@@ -154,7 +111,7 @@ Delimit Scope action_scope with action.
 Arguments expr Var _%list. 
 Arguments action _%list _ _. 
 
-(** * Actions *)
+(** * Notations for actions and expressions  *)
 
 Arguments Bind {Phi Var t u} _%action _%action. 
 Arguments Return {Phi Var t} _%expr. 
@@ -167,19 +124,11 @@ Notation "'do' x <- a ; b" := (Bind' a (fun x =>  b))
                                (at level 200, x ident, a at level 100, b at level 200) 
                           : action_scope. 
 
-Notation "a ;; b" := (Bind a (fun _ => b)) 
-                            (at level 200,  b at level 200, right associativity) 
-                          : action_scope. 
-
+(** A notation for the general bind, when the right hand side is an expression  *)
 Notation "'do' x <~ a ; b " := (Bind' (Return a) (fun x =>  b)) 
                                 (at level 200, x ident, a at level 100, b at level 200) 
                               : action_scope. 
 
-(* (** Another notation to bind expressions  *) *)
-(* Notation "'do' x <- e ; b" := (Bind' (Return e) (fun x => b))  *)
-(*                                (at level 200, x ident, e at level 100, b at level 200)  *)
-(*                              : action_scope.  *)
-  
 Notation "'ret' x" := (Return x) (at level 0) : action_scope .   
 
 (** old style binding, deprecated  *)
@@ -194,7 +143,7 @@ Notation " 'when' e 'do' B" := (When e B) (at level 200, e at level 100, B at le
 
 Arguments Primitive {Phi Var} args res _ _%expr. 
 
-(** * Primitives *)
+(** ** Primitives *)
 Arguments register_read {Phi t} _. 
 Notation "'read' [: v ]" := (Primitive nil _ (register_read v) DList.nil) (no associativity).
 Notation "! v" := (Primitive nil _ (register_read v) DList.nil ) (no associativity, at level 71). 
@@ -209,7 +158,7 @@ Notation "'read' M [: v ]" := (Primitive ([ (_)])%list _ (regfile_read M ) (DLis
 Arguments regfile_write {Phi n t} _ . 
 Notation "'write' M [: x <- v ]" := (Primitive ([ (_); _])%list _ (regfile_write M ) (DList.cons (x)%expr (DList.cons (v)%expr (DList.nil)))) (no associativity). 
 
-(** * Expressions  *)
+(** ** Expressions  *)
 Arguments Enth  {Var l t} m _%expr. 
 Arguments Evar  {Var t} _. 
 
@@ -239,19 +188,22 @@ Arguments Esnd {Var l t} _%expr.
 Arguments Emux {Var t} _%expr _%expr _%expr. 
 Notation "b ? l : r" := (Emux b l r) (at level 200, l, r at level 200).  
 
+Notation apply x f := (f x) (only parsing). 
+
+(* A do-notation for tuple-expressions *)
 Definition Asplit {Phi Var l t u}  f (a: expr Var (Ttuple (t::l))) : action Phi Var u:= 
   (do x <- ret (Efst a);
    do y <- ret (Esnd a);
    f x y)%action. 
     
-Notation apply x f := (f x) (only parsing). 
-
-Notation "'do' ( x , .. , y ) <- a ; b" :=
+Notation "'do' ( x , .. , y ) <~ a ; b" :=
 (apply a (Asplit (fun x => .. ( Asplit (fun y _ => b)) .. ))) (at level 200, x closed binder, a at level 100, b at level 200): action_scope.  
+
 
 Arguments Etuple {Var l} _%dlist. 
 Notation "[ 'tuple' x , .. , y ]" := (Etuple (x :: .. (y :: [ :: ]) .. )%dlist) : expr_scope. 
 
+(** * Semantics of Fe-Si *)
 Module Diff. 
   Section t. 
     Variable Phi : state. 
@@ -367,9 +319,6 @@ Module Sem.
               end
         | Primitive args res p exprs => 
             Dyn.primitive_denote Phi args res p (DList.map eval_expr  exprs)
-        (* | Try a =>  *)
-        (*     let a := eval_action _ a in  *)
-        (*       Dyn.Try Phi a                     *)
         | OrElse t a b => Dyn.OrElse Phi (eval_action _ a) (eval_action _ b)  
       end.                 
     
@@ -380,6 +329,12 @@ End Sem.
 
 Definition Eval Phi (st: eval_state Phi)  t (A : Action Phi t ) Delta :=  @Sem.eval_action Phi t (A _) st Delta. 
 
+(** The next-step function computes what should be the next state of a
+circuit. TODO: remark that Diff.init initialize even the Inputs with
+None, which seems wrong. Yet, it is possible to reason about circuits
+that read something in their inputs, using "circuit generators" of the
+shape [Var t -> action Phi u].  *)
+
 Definition Next {t} Phi st (A : Action Phi t) := 
   let Delta := Eval Phi st _ A (Diff.init Phi) in 
     match Delta with 
@@ -387,3 +342,71 @@ Definition Next {t} Phi st (A : Action Phi t) :=
       | Some Delta => Diff.apply Phi (snd Delta) st
     end. 
 
+(** We define two functions that computes the output of a circuit --
+without internal state.  *)
+
+Definition output  (t : type) (A : action nil eval_type t) : 
+    option (eval_type t) :=    
+    match Sem.eval_action  A DList.DList.nil (Diff.init []%list)  with
+      | Some p => Some (fst p)
+      | None => None
+    end. 
+
+Definition Output (t : type) (A : Action nil t) :=
+  output t (A eval_type).
+
+
+Module Close. 
+  Section t.
+  (** * Closing a circuit.  
+
+      Circuits are oftne manipulated in an "open" fashion, using
+      variables instead of inputs. The function [internalize] takes as
+      input a circuit generator of type [Var t -> action Phi u], and
+      produces a circuit of type [action (Phi :: Tinput t) u], with the
+      variable being replaced by a formal input
+   *) 
+  Variable Var : type -> Type.
+
+  Definition primitive_generalize args res l1 (p : primitive l1 args res) l2:
+    primitive (List.app  l1 l2) args res :=
+    match p with
+      | input_read t x => input_read _ _  (var_lift x )
+      | register_read t x => register_read (var_lift x)
+      | register_write t x => register_write (var_lift x)
+      | regfile_read n t v => regfile_read  (var_lift v)
+      | regfile_write n t v => regfile_write (var_lift v)
+    end.
+      
+  Definition generalize (l1 : list sync) T (a : action l1 Var T) : forall l2, action (List.app l1 l2) Var T. 
+  refine (let fix aux (l1 : list sync) T (a : action l1 Var T) :
+                  forall l2, action (List.app l1 l2) Var T :=
+                match a  with
+                  | Return t exp => fun l2 => Return (exp)
+                  | Bind t u a f => fun l2 => let a' := aux _ _ a l2 in Bind a' (fun x => aux _ _ (f x) _)
+                  | Assert e => fun l2 => Assert e
+                  | Primitive args res p exprs => fun l2 : list sync =>
+                                                   Primitive args res 
+                                                             (primitive_generalize args res _ p l2)
+                                                             exprs
+                  | OrElse t b1 b2 => fun l2 => OrElse _ _ t (aux _ _ b1 l2) (aux _ _ b2 l2)
+                end
+            in aux l1 T a
+           ).
+  Defined. 
+
+  Fixpoint var_last {A} (l : list A) (t : A) : var (List.app l [t]) t :=
+    match l with 
+      | nil => var_0
+      | hd :: q => var_S (var_last q t)
+      end%list. 
+  
+  Definition internalize {Phi T U} (c : Var T -> action Phi Var U) : 
+    action (List.app Phi [Tinput T]) Var U :=
+    let v := (var_last Phi (Tinput T)) in 
+    (Bind  (Primitive nil T  (input_read (List.app Phi [Tinput T]) T  v) DList.DList.nil) (fun x => 
+      generalize _ _ (c x) _))%action.
+  End t. 
+End Close.
+  
+Definition Close := Close.internalize. 

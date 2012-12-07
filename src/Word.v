@@ -3,6 +3,7 @@ Require Import Eqdep_dec.
 Require Import FunctionalExtensionality. 
 
 Notation "[2^ n ]" := (two_power_nat n). 
+
 (** Implementation of parametric size machine words.  *)
 
 Record T n := mk { val :> Z ; 
@@ -58,6 +59,8 @@ Defined.
 
 
 Definition zlt x y := match x ?= y with Lt => true | _ => false end. 
+Definition zle x y := match x ?= y with Lt => true | Eq => true | _ => false end. 
+
 Lemma zlt_lt x y: Bool.reflect (x < y) (zlt x y).
 Proof. 
   unfold zlt. 
@@ -91,7 +94,7 @@ Definition sub {n} : T n -> T n -> T n := fun x y => repr n (x - y).
 Definition mul {n} : T n -> T n -> T n := fun x y => repr n (x * y).  
 
 Definition lt {n} : T n -> T n -> bool := zlt. 
-
+Definition le {n} : T n -> T n -> bool := zle. 
 
 Definition high n m (x : T (n+m)) : T m :=
   repr m (unsigned x / [2^n]).
@@ -107,10 +110,7 @@ Definition orb  : T 1 -> T 1 -> T 1 := fun x y => repr 1 (Z.max x y).
 Definition negb : T 1 -> T 1 := fun x => repr 1 (1 - x). 
 Definition xorb  : T 1 -> T 1 -> T 1 := fun x y => repr 1 (x + y). 
 
-Definition true := repr 1 1. 
-Definition false := repr 1 0. 
-
-Definition of_bool (b: bool) : T 1 := if b then true else false.
+Definition of_bool (b: bool) : T 1 := if b then repr 1 1 else repr 1 0.
 
 Definition zero {n} : T n := repr n 0. 
 Definition one {n} : T n := repr n 1. 
@@ -234,3 +234,48 @@ Section test.
   intros; ring. 
   Qed.
 End test. 
+
+Require Import Setoid. 
+      (* le_transitive : *)
+      (* le_total  : forall x y , le x y = true \/ le y x = true; *)
+      (* le_antisym : forall x y, le x y = true -> le y x = true -> x = y *)
+
+Lemma zify_le n : forall (x y : T n), le x y = true <-> (val x <= val y).
+Proof. 
+  intros. unfold le, zle. rewrite <- Z.compare_le_iff. destruct (x?=y); simpl; intuition congruence. 
+Qed. 
+
+Lemma zify_lt n : forall (x y : T n), lt x y = true <-> (val x < val y).
+Proof. 
+  intros. unfold lt, zlt. rewrite <- Z.compare_lt_iff. destruct (x?=y); simpl; intuition congruence. 
+Qed. 
+
+Lemma zify_eqb n : forall (x y : T n), eqb x y = true <-> (val x = val y).
+Proof. 
+  intros. unfold eqb. rewrite <- Z.compare_eq_iff. destruct (x?=y); simpl; intuition congruence. 
+Qed. 
+
+Lemma le_transitive n :  forall (x y z : T n), le x y = true -> le y z = true -> le x z = true.
+Proof.
+  intros. rewrite zify_le in *. omega. 
+Qed. 
+
+Lemma le_total  n : forall x y : T n, le x y = true \/ le y x = true. 
+Proof. 
+  intros; repeat rewrite zify_le in *. omega. 
+Qed. 
+
+Lemma le_antisym n : forall x y : T n,  le x y = true -> le y x = true -> x = y. 
+Proof. 
+  intros; repeat rewrite zify_le in *. apply unsigned_inj. unfold unsigned in *. omega. 
+Qed.
+
+Lemma le_is_lt_or_eq n : forall x y :T n, le x y = (lt x y || eqb x y)%bool.
+Proof. 
+  intros. 
+  rewrite Bool.eq_iff_eq_true; rewrite Bool.orb_true_iff. 
+  rewrite zify_le, zify_lt, zify_eqb. omega. 
+Qed. 
+   
+
+  

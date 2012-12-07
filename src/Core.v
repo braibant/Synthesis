@@ -4,12 +4,12 @@ Require Word Array.
 
 
 Unset Elimination Schemes. 
+
+(** This file describes the underlying "memory model" of our compiler *)
 Inductive type : Type :=
 | Tunit : type 
 | Tbool: type 
 | Tint: forall (n : nat), type
-| Tfin: forall n : nat,  type
-(* | Tabstract : ident -> Abstract.T -> type *)
 | Ttuple : forall l : list type,  type. 
 
 Section type_ind. 
@@ -17,7 +17,6 @@ Section type_ind.
   Variable Hunit : P Tunit. 
   Variable Hbool : P Tbool. 
   Variable Hint  : forall n, P (Tint n).
-  Variable Hfin  : forall n, P (Tfin n). 
   Variable Hnil  : P (Ttuple []). 
   Variable Hcons  : forall t q, P t -> P (Ttuple q) -> P (Ttuple (t :: q)). 
 
@@ -27,7 +26,6 @@ Section type_ind.
                 | Tunit => Hunit
                 | Tbool => Hbool
                 | Tint n => Hint n
-                | Tfin n => Hfin n
                 | Ttuple l => 
                     let fix fold l : P (Ttuple l) :=
                         match l with 
@@ -46,8 +44,6 @@ Fixpoint eval_type st : Type :=
     | Tunit => unit
     | Tbool => bool
     | Tint n => Word.T n
-    | Tfin n => Finite.T n
-    (* | Tabstract _ t => Abstract.carrier t *)
     | Ttuple l => Tuple.of_list eval_type l
   end.    
 
@@ -67,7 +63,6 @@ refine (let fix fold a b {struct a}: bool :=
                 | Tunit, Tunit => true
                 | Tbool, Tbool => true
                 | Tint n,  Tint m => Nat.eqb n m 
-                | Tfin n, Tfin m => Nat.eqb n m 
                 | Ttuple x, Ttuple y => pointwise x y
                 | _ , _ => false
               end in fold      
@@ -94,7 +89,6 @@ Proof.
   revert b. 
   induction a; induction b; try simpl; try (reflexivity || congruence). 
   intros. apply nat_eqb_eq in H. subst. reflexivity. 
-  intros. apply nat_eqb_eq in H. subst. reflexivity.
   case_eq (type_eqb a b); simpl; intros. 
   apply IHa in H. subst. repeat f_equal. specialize (IHa0 (Ttuple q0) H0). congruence. 
   discriminate. 
@@ -110,7 +104,6 @@ Qed.
 Lemma type_eqb_refl : forall t, type_eqb t t = true.
 Proof.  
   induction t using type_ind; simpl;  firstorder. 
-  apply NPeano.Nat.eqb_eq. reflexivity. 
   apply NPeano.Nat.eqb_eq. reflexivity. 
 Qed. 
  
@@ -128,9 +121,7 @@ Section type_ops.
     match t with 
       | Tunit => fun _ _  => true
       | Tint n => @Word.eqb n
-      | Tfin n => fun _ _ => false
       | Tbool  => eqb_bool 
-      (* | Tabstract _ t => Abstract.eqb t *)
       | Ttuple l => fun _ _ => false
     end. 
   
@@ -140,24 +131,7 @@ Section type_ops.
     destruct x; destruct y; auto. 
     intros. apply Word.eqb_correct; auto.  
     discriminate. 
-    discriminate. 
   Qed. 
-
-  Definition ltb_bool a b :=
-    match a, b with
-      | false, true => true
-      | _, _ => false
-    end. 
-  
-  Fixpoint type_lt (bt : type) : eval_type bt -> eval_type bt -> bool :=
-    match bt with
-      | Tunit => fun _ _  => false                              
-      | Tbool => ltb_bool 
-      | Tint n => @Word.lt n
-      | Tfin n => @Finite.ltb n
-      (* | Tabstract _ t => Abstract.lt t *)
-      | Ttuple _ => fun _ _ => false
-    end. 
 End type_ops. 
 
 
@@ -187,133 +161,6 @@ Definition Cword {n} x : constant (Tint n) := (Word.repr _ x).
 
 Notation B := Tbool. 
 Notation W n := (Tint n).
-
-Inductive builtin : list type -> type -> Type :=
-| BI_andb : builtin (B :: B :: nil)%list  B
-| BI_orb  : builtin (B :: B :: nil)%list  B
-| BI_xorb : builtin (B :: B :: nil)%list  B
-| BI_negb : builtin (B  :: nil)%list  B
-                    
-(* "type-classes" *)
-| BI_eq   : forall t, builtin (t :: t :: nil)%list B
-| BI_lt   : forall n, builtin (W n :: W n :: nil)%list B
-
-(* integer operations *)
-| BI_plus  : forall n, builtin (W n :: W n :: nil)%list (W n)
-| BI_minus : forall n, builtin (W n :: W n :: nil)%list (W n)
-| BI_low   : forall n m, builtin (W (n + m) :: nil)%list (W n)
-| BI_high   : forall n m, builtin (W (n + m) :: nil)%list (W m)
-| BI_combineLH   : forall n m, builtin (W n :: W m :: nil)%list (W (n + m))
-
-| BI_next : forall n, builtin (Tfin (S n) :: nil) (Tfin (S n)). 
-
-(* Module Builtin.  *)
-(*   Inductive t : Type := *)
-(*   |andb | orb | xorb | negb | eq | mux | plus | minus | next | low | high | combine.  *)
-  
-(*   Scheme Equality for t.  *)
-  
-(*   Definition forget {l r} (b: builtin l r) : t := *)
-(*     match b with *)
-(*       | BI_andb => andb *)
-(*       | BI_orb => orb *)
-(*       | BI_xorb => xorb *)
-(*       | BI_negb => negb *)
-(*       | BI_eq t => eq *)
-(*       | BI_lt t => lt  *)
-(*       | BI_plus n => plus *)
-(*       | BI_minus n => minus *)
-(*       | BI_next n => next *)
-(*       | BI_low _ _ => low *)
-(*       | BI_high _ _ => high *)
-(*       | BI_combineLH _ _ => combine *)
-(*     end.  *)
-(* End Builtin.  *)
-
-(* Definition builtin_eqb {arg res arg' res'} (b : builtin arg res) (b': builtin arg' res') := *)
-(*   match b,b' with *)
-(*     | BI_andb, BI_andb => true *)
-(*     | BI_orb, BI_orb => true *)
-(*     | BI_xorb, BI_xorb => true *)
-(*     | BI_negb, BI_negb => true *)
-(*     | BI_eq t, BI_eq t' => type_eqb t t'  *)
-(*     | BI_lt t, BI_lt t' => type_eqb t t' *)
-(*     | BI_mux t, BI_mux t' => type_eqb t t' *)
-(*     | BI_plus n, BI_plus m =>  Nat.eqb n m *)
-(*     | BI_minus n, BI_minus m => Nat.eqb n m *)
-(*     | BI_next n, BI_next m => Nat.eqb n m *)
-(*     | BI_low n m, BI_low n' m' => Nat.eqb n n' && Nat.eqb m m' *)
-(*     | BI_high n m, BI_high n' m' => Nat.eqb n n' && Nat.eqb m m' *)
-(*     | BI_combineLH n m, BI_combineLH n' m' => Nat.eqb n n' && Nat.eqb m m' *)
-(*     | _ , _ => false *)
-(*   end%bool.  *)
-
-(* Definition cast t {l l' }(p : l = l') (b : builtin l t) : builtin l' t := *)
-(*   match p in (_ = y) return (builtin y t) with *)
-(*     | eq_refl => b *)
-(*   end.  *)
-
-(* Lemma builtin_eqb_correct_ l t (b : builtin l t) l' (b' : builtin l' t) : *)
-(*   builtin_eqb b b' = true -> forall p : l' = l, *)
-(*    b = cast t p b'.  *)
-(* Proof. *)
-(*   intros H. assert (Builtin.forget b = Builtin.forget b'). *)
-(*   { *)
-(*   revert H. destruct b; simpl; try discriminate; destruct b'; simpl; try discriminate; try reflexivity.  } *)
-(*   clear H. *)
-
-(*   Require Import Equality JMeq. *)
-
-(*   destruct b; simpl; *)
-(*   dependent destruction b'; try (intros; dependent destruction p;  simpl; reflexivity) || simpl in *; try discriminate.  *)
-(*   intros. injection p. intros.  assert (m0 = m). omega. subst; dependent destruction p; reflexivity.  *)
-(*   intros. injection p. intros.  assert (n0 = n). omega. subst; dependent destruction p; reflexivity.  *)
-(* Qed.    *)
-
-(* Lemma builtin_eqb_correct l t (b : builtin l t) (b' : builtin l t) : *)
-(*   builtin_eqb b b' = true ->  *)
-(*    b = b'.  *)
-(* Proof. *)
-(*   intros H.  *)
-(*   apply  (builtin_eqb_correct_ l t b l b' H eq_refl). *)
-(* Qed.  *)
-
-
-
-(* (* applies a ternary function to three arguments *) *)
-(* Definition tri_op {a b c d } (f : eval_type a -> eval_type b -> eval_type c -> eval_type d)  *)
-(*   : eval_type_list (a :: b :: c :: nil)%list -> eval_type d := *)
-(*   fun X => match X with (x,(y,(z, tt))) => f x y z end.  *)
-
-(* (* applies a binary function to two arguments *) *)
-(* Definition bin_op {a b c} (f : eval_type a -> eval_type b -> eval_type c)  *)
-(*   : eval_type_list (a :: b :: nil)%list -> eval_type c := *)
-(*   fun X => match X with (x,(y,tt)) => f x y end.  *)
-
-(* (* applies a unary function to one arguments *) *)
-(* Definition un_op {a b} (f : eval_type a -> eval_type b)  *)
-(*   : eval_type_list (a :: nil) -> eval_type b := *)
-(*   fun X => match X with (x,tt) => f x end.  *)
-
-(*   (* denotation of the builtin functions *) *)
-(* Definition builtin_denotation (dom : list type) ran (f : builtin dom ran) :  *)
-(*   eval_type_list dom -> eval_type ran := *)
-(*   match f with *)
-(*     (* | BI_external s => Generics.value s *) *)
-(*     | BI_andb => @bin_op B B B andb *)
-(*     | BI_orb =>  @bin_op B B B orb *)
-(*     | BI_xorb => @bin_op B B B xorb *)
-(*     | BI_negb =>  @un_op B B negb *)
-(*     | BI_eq t => @bin_op t t B (type_eq t) *)
-(*     | BI_lt t => @bin_op t t B (type_lt t) *)
-(*     | BI_mux t => @tri_op B t t t (fun b x y => if b then x else y)  *)
-(*     | BI_plus n => @bin_op (W n) (W n) (W n) (@Word.add n) *)
-(*     | BI_minus n => @bin_op (W n) (W n) (W n) (@Word.sub n) *)
-(*     | BI_next n => @un_op (Tfin (S n)) (Tfin (S n)) (@Finite.next n) *)
-(*     | BI_low n m => @un_op (W (n + m)) (W n ) (@Word.low n m) *)
-(*     | BI_high n m => @un_op (W (n + m)) (W m)(@Word.high n m) *)
-(*     | BI_combineLH n m => @bin_op (W n) (W m) (W (n + m))(@Word.combineLH n m) *)
-(*   end.  *)
 
 Inductive sync : Type :=
   | Tinput: forall (t: type), sync
