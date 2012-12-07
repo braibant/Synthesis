@@ -3,10 +3,13 @@ MODULES := Stack Isa Mult MOD Add Driver Extraction
 
 VS      := $(MODULES:%=%.v)
 
-.PHONY: coq clean
+.PHONY: coq clean backend
 
-all: coq
-	ocamlbuild -Is extracted,backend main.byte
+backend:
+	ocamlbuild -lib unix -Is extracted,backend main.byte
+
+all: coq backend
+
 
 coq: Makefile.coq
 	$(MAKE) -f Makefile.coq

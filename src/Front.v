@@ -45,58 +45,8 @@ Section s.
     | Esnd : forall l t , expr (Ttuple (t::l)) -> expr (Ttuple l)
     | Enth : forall l t (m : var l t), expr (Ttuple l) -> expr t
     | Etuple : forall l (exprs : DList.T (expr) l), expr (Ttuple l). 
-    
-     (*
-    Section induction. 
-      (** Since the induction principle that is generated is not
-      useful, we have to define our own.  *)
 
-      Variable P : forall t : type, expr t -> Prop.  
-      Hypothesis Hvar : forall (t : type) (v : Var t), P t (Evar t v). 
-      Hypothesis Hbuiltin : 
-      forall (args : list type) (res : type) (f0 : builtin args res)
-        (t : DList.T expr args), 
-        (* (forall t (e : expr t), P t e) -> *)
-        DList.Forall P t ->
-        P res (Ebuiltin args res f0 t). 
-      Hypothesis Hconstant : 
-      forall (ty : type) (c : constant ty), P ty (Econstant ty c). 
-      Hypothesis Hmux : forall (t : type) (e : expr B) (l r : expr t),
-                          P B e -> P t l -> P t r ->  P t (Emux t e l r ).  
-      Hypothesis Hfst : forall (l : list type) (t : type) (e : expr (Ttuple (t :: l))),
-        P (Ttuple (t :: l)) e -> P t (Efst l t e).  
-      Hypothesis Hsnd : forall (l : list type) (t : type) (e : expr (Ttuple (t :: l))),
-        P (Ttuple (t :: l)) e -> P (Ttuple l) (Esnd l t e). 
-      Hypotheses Hnth : forall (l : list type) (t : type) (m : var l t) (e : expr (Ttuple l)),
-        P (Ttuple l) e -> P t (Enth l t m e). 
-      Hypothesis Htuple : forall (l : list type) (exprs : DList.T expr l),
-                            DList.Forall P exprs -> 
-                            P (Ttuple l) (Etuple l exprs). 
-      
-      Lemma expr_ind_alt (t : type) (e : expr t) :  P t e. 
-      refine (let fix fold (t : type) (e : expr t) :  P t e  := 
-                  match e with
-                    | Evar t v => Hvar t v
-                    | Ebuiltin args res f x =>  Hbuiltin args res f _ _
-                    | Econstant ty c => Hconstant ty c
-                    | Emux t x x0 x1 => Hmux t x x0 x1 (fold _ x) (fold _ x0) (fold _ x1)
-                    | Efst l t x => Hfst l t x (fold _ x)
-                    | Esnd l t x => Hsnd l t x (fold _ x) 
-                    | Enth l t m x => Hnth l t m x (fold _ x)
-                    | Etuple l exprs => Htuple l exprs _  end in fold t e);
-        clear Hbuiltin Hvar Hconstant Hmux Hfst Hsnd Hnth Htuple.
-      {
-        clear f.
-        induction x. simpl; apply I.
-        split; [apply fold | apply IHx]; auto.      
-      }
-      {
-        induction exprs. simpl; apply I. 
-        split; [apply fold | apply IHexprs]; auto.
-      }
-      Qed. 
-    End induction. 
-*)
+    
     Inductive action : type -> Type :=
     | Return : forall t (exp : expr t), action t
     | Bind :
@@ -239,15 +189,17 @@ Arguments Esnd {Var l t} _%expr.
 Arguments Emux {Var t} _%expr _%expr _%expr. 
 Notation "b ? l : r" := (Emux b l r) (at level 200, l, r at level 200).  
 
+Notation apply x f := (f x) (only parsing). 
+
+(* A do-notation for tuple-expressions *)
 Definition Asplit {Phi Var l t u}  f (a: expr Var (Ttuple (t::l))) : action Phi Var u:= 
   (do x <- ret (Efst a);
    do y <- ret (Esnd a);
    f x y)%action. 
     
-Notation apply x f := (f x) (only parsing). 
-
-Notation "'do' ( x , .. , y ) <- a ; b" :=
+Notation "'do' ( x , .. , y ) <~ a ; b" :=
 (apply a (Asplit (fun x => .. ( Asplit (fun y _ => b)) .. ))) (at level 200, x closed binder, a at level 100, b at level 200): action_scope.  
+
 
 Arguments Etuple {Var l} _%dlist. 
 Notation "[ 'tuple' x , .. , y ]" := (Etuple (x :: .. (y :: [ :: ]) .. )%dlist) : expr_scope. 
