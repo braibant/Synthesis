@@ -30,3 +30,7 @@ talks/coq-2012/.DS_Store
 talks/coq-2012/figs/.DS_Store
 talks/coq-2012/talk.rel
 .\#question.txt
+.dir-locals.el
+examples/backend/pprint/
+examples/main.byte
+papers/cav-13/--help
