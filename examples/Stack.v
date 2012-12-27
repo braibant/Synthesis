@@ -453,6 +453,8 @@ Section t.
       Rsp : List.length (Spec.stk m1) =%= sp m2
     }.
 
+  Hint Resolve Rpc1 Rpc2 Rstk Rsp. 
+  
   Notation "x == y" := (R x y) (at level 80).
 
   Lemma step_code_at {T} m1 m2 (f : expr V (W n) -> expr V (Circuit.INSTR n) -> 
@@ -660,6 +662,63 @@ Section t.
   Hint Extern 4  (_ > _) => list_length_tac. 
   Hint Extern 4  (_ >= _) => list_length_tac. 
 
+  Hint Extern 4 (R_stk _ _) => match goal with 
+                                | H : _ == _ |- _ => clear - H; destruct H; simpl in *
+                              end. 
+  Hint Extern 4 (_ =%= _) =>  match goal with 
+                               | H : _ == _ |- _ => clear - H; destruct H; simpl in * end.
+
+  Lemma pop2_correct_stk m1 m2 x y s: m1 == m2 -> 
+                                      Spec.stk m1 = x :: y :: s -> 
+                                      R_stk s  (DList.hd (DList.tl (DList.tl m2))).
+  Proof. 
+    intros. 
+    destruct H. simpl in *. 
+    apply (pop_correct_stk y). 
+    apply (pop_correct_stk x). 
+    rewrite <- H0. apply Rstk0. 
+  Qed. 
+  Hint Resolve pop2_correct_stk.  
+    
+
+          
+  Lemma stk_1 m1 m2 a1 a2 s: 
+    m1 == m2 -> 
+    Spec.stk m1 = a1 :: a2 :: s -> 
+    a1 =%= Regfile.get (stk m2) (Word.sub (sp m2) (Cword 1%Z)) . 
+  Proof. 
+    intros H Heq.
+    destruct H as [Hpc1 Hpc2 Hstk Hsp].
+    simpl in *. 
+    rewrite (Hstk (S(List.length s))); auto. 
+    rewrite Heq. simpl. 
+    rewrite List.app_nth2. rewrite List.app_length. simpl List.length. rewrite plus_comm. simpl plus. rewrite List.rev_length.  rewrite minus_diag. simpl. reflexivity. 
+    auto. 
+    rewrite <- Hsp. replace (S (List.length s)) with (List.length (Spec.stk m1) - 1). 
+    apply Rval_sub. 
+    auto.
+    rewrite Heq.  simpl.  reflexivity. 
+  Qed. 
+  
+  Lemma stk_2 m1 m2 a1 a2 s: 
+    m1 == m2 -> 
+    Spec.stk m1 = a1 :: a2 :: s -> 
+    a2 =%= Regfile.get (stk m2) (Word.sub (sp m2) (Cword 2%Z)) . 
+  Proof. 
+    intros H Heq.
+    destruct H as [Hpc1 Hpc2 Hstk Hsp].
+    simpl in *. 
+    rewrite (Hstk ((List.length s))); auto. 
+    rewrite Heq. simpl. 
+    rewrite List.app_nth1; auto.  
+    rewrite List.app_nth2; auto.
+    rewrite List.rev_length.  rewrite minus_diag. simpl. reflexivity.
+    rewrite <- Hsp. replace ((List.length s)) with (List.length (Spec.stk m1) - 2). 
+    apply Rval_sub. 
+    auto.
+    rewrite Heq.  simpl.  omega. 
+  Qed. 
+  
       
   Transparent Diff.apply. Transparent Diff.add. Transparent Diff.init. 
   Transparent DList.get. 
@@ -682,72 +741,21 @@ Section t.
     unfold Spec.step in Hm1; rewrite Hi in Hm1; simpl in Hm1. 
     destruct (Spec.stk m1) as [ | n2 [| n1 s]] eqn: Hs; try discriminate. 
     unfold step. simpl. unfold Sem.Dyn.Bind. unfold Sem.Dyn.OrElse. 
-    rewrite (Hcond n1 n2). 
-    destruct cond; simpl in *. 
-    - consider (NPeano.Nat.eqb n1 n2); intros Hn Hm.
-      unfold Spec.dyncheck in Hm; simpl in Hm;
-      consider (NPeano.Nat.ltb (Spec.pc m1 + 1 + ofs) n); intros Hofs Hm; try discriminate;
-      inject Hm; simpl.
-      constructor; simpl; eauto with *.  
-      destruct H; simpl in *; eauto. 
-      eapply (pop_correct_stk n2). 
-      eapply (pop_correct_stk n2). rewrite <- Hs. eauto. 
-
-      unfold Spec.dyncheck in Hm; simpl in Hm;
-      consider (NPeano.Nat.ltb (Spec.pc m1 + 1 ) n); intros Hofs Hm; try discriminate;
-      inject Hm; simpl.
-      constructor; simpl; eauto with *.  
-      destruct H; simpl in *; eauto. 
-      eapply (pop_correct_stk n1). 
-      eapply (pop_correct_stk n2). rewrite <- Hs. eauto. 
-    - consider (NPeano.Nat.eqb n1 n2); intros Hn Hm.
-      unfold Spec.dyncheck in Hm; simpl in Hm;
-      consider (NPeano.Nat.ltb (Spec.pc m1 + 1) n); intros Hofs Hm; try discriminate;
-      inject Hm; simpl.
-      constructor; simpl; eauto with *.  
-      destruct H; simpl in *; eauto. 
-      eapply (pop_correct_stk n2). 
-      eapply (pop_correct_stk n2). rewrite <- Hs. eauto. 
-
-      unfold Spec.dyncheck in Hm; simpl in Hm;
-      consider (NPeano.Nat.ltb (Spec.pc m1 + 1 +ofs) n); intros Hofs Hm; try discriminate;
-      inject Hm; simpl.
-      constructor; simpl; eauto with *.  
-      destruct H; simpl in *; eauto. 
-      eapply (pop_correct_stk n1). 
-      eapply (pop_correct_stk n2). rewrite <- Hs. eauto. 
-    - consider (NPeano.Nat.leb n1 n2); intros Hn Hm.
-      unfold Spec.dyncheck in Hm; simpl in Hm;
-      consider (NPeano.Nat.ltb (Spec.pc m1 + 1 + ofs) n); intros Hofs Hm; try discriminate;
-      inject Hm; simpl.
-      constructor; simpl; eauto with *.  
-      destruct H; simpl in *; eauto. 
-      eapply (pop_correct_stk n1). 
-      eapply (pop_correct_stk n2). rewrite <- Hs. eauto. 
-
-      unfold Spec.dyncheck in Hm; simpl in Hm;
-      consider (NPeano.Nat.ltb (Spec.pc m1 + 1) n); intros Hofs Hm; try discriminate;
-      inject Hm; simpl.
-      constructor; simpl; eauto with *.  
-      destruct H; simpl in *; eauto. 
-      eapply (pop_correct_stk n1). 
-      eapply (pop_correct_stk n2). rewrite <- Hs. eauto. 
-    - consider (NPeano.Nat.leb n1 n2); intros Hn Hm.
-      unfold Spec.dyncheck in Hm; simpl in Hm;
-      consider (NPeano.Nat.ltb (Spec.pc m1 + 1 ) n); intros Hofs Hm; try discriminate;
-      inject Hm; simpl.
-      constructor; simpl; eauto with *.  
-      destruct H; simpl in *; eauto. 
-      eapply (pop_correct_stk n1). 
-      eapply (pop_correct_stk n2). rewrite <- Hs. eauto. 
-
-      unfold Spec.dyncheck in Hm; simpl in Hm;
-      consider (NPeano.Nat.ltb (Spec.pc m1 + 1 + ofs) n); intros Hofs Hm; try discriminate;
-      inject Hm; simpl.
-      constructor; simpl; eauto with *.  
-      destruct H; simpl in *; eauto. 
-      eapply (pop_correct_stk n1). 
-      eapply (pop_correct_stk n2). rewrite <- Hs. eauto. 
+    rewrite (Hcond n1 n2).
+    destruct cond; simpl in *;
+    match goal with 
+        |- context [if ?x then _ else _] => consider x; intros
+    end; 
+    unfold Spec.dyncheck in *; simpl in *;
+    match goal with 
+        H : context[(check ?x ; _ )] |- _ => consider x; intros
+    end;
+      try discriminate;
+    match goal with 
+        H : Some _ = Some _ |- _ => inject H
+    end; simpl; 
+    now (constructor; simpl; eauto with *). 
+    
     - clear Hcond Hm1. 
       destruct H. rewrite (Rstk0 (List.length (Spec.stk m1) - 2)); auto. 
       rewrite Hs. simpl. rewrite List.app_nth1. rewrite List.app_nth2. 
@@ -755,17 +763,14 @@ Section t.
       rewrite <- minus_n_O. rewrite minus_diag.  simpl. reflexivity. 
       rewrite List.rev_length. omega.  simpl. 
       auto. 
-      auto.
-      apply Rval_sub_morphism. apply Rsp0. reflexivity. 
-      auto. 
+      auto with val.
     - clear Hcond Hm1. 
       destruct H. rewrite (Rstk0 (List.length (Spec.stk m1) - 1)); auto. 
       rewrite Hs. simpl. rewrite List.app_nth2. 
       rewrite List.app_length.
       rewrite List.rev_length. simpl List.length.  rewrite plus_comm. simpl plus. rewrite minus_diag. simpl. reflexivity. 
-      auto. 
-      apply Rval_sub_morphism. apply Rsp0. reflexivity.  auto. 
-      
+      auto with val.
+      auto with val. 
   Qed. 
 
                           (****************)
@@ -801,49 +806,50 @@ Section t.
     - (** Iconst *)
       unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1.  inject Hm1. 
       simpl. Transparent DList.get. Transparent Diff.apply.       simpl. 
-      constructor; simpl.
-      + auto with val.
-      + auto. 
-      + intros. apply push_correct_stk; destruct H; simpl in *; auto. 
-      + auto. 
-      + discriminate. 
+      Hint Resolve push_correct_stk. 
+      constructor; simpl; auto with *; eauto with *.
+       discriminate. 
     - (** Ivar *)
-      unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1.  inject Hm1.  
-      constructor; simpl. 
-      + auto with val.  
-      + auto. 
-      + apply push_correct_stk. admit. destruct H; simpl in *; auto. destruct H; simpl in *; auto. 
-      + auto. 
-      + discriminate. 
+      unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1.  inject Hm1.
+      
+      {constructor; simpl; auto with *; eauto with *.
+       + apply push_correct_stk. admit. auto. destruct H; simpl in *; auto. 
+      }
+      discriminate. 
+
     - (** Isetvar *)                        
       unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1; destruct (Spec.stk m1) eqn:?; try discriminate. inject Hm1.  
       simpl.  
-      constructor;simpl. 
-      + auto with val. 
-      + auto. 
+      constructor;simpl; auto with *; eauto with *. 
       + apply (pop_correct_stk n0 s) . rewrite <- Heqs. destruct H.  simpl in *; eauto. 
-      + eauto.           
     - unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1;  destruct (Spec.stk m1) as [ | a1 [ |a2 s]] eqn:?; try discriminate. inject Hm1.  
       {
-        constructor; simpl.  
-        + auto with val. 
-        + auto. 
+        constructor; simpl; auto with *; eauto with *. 
         + intros. 
           eapply push_correct_stk.
-          {apply Rval_add_morphism. destruct H. unfold R_stk in *. admit. admit. } 
-          eapply (pop_correct_stk a2). eapply (pop_correct_stk a1). 
-          rewrite <- Heqs. destruct H. simpl in *. eauto.
+          pose ( H1 := stk_1 m1 m2 a1 a2 s H Heqs). simpl in H1. rewrite <- H1. clear H1. 
+          pose ( H2 := stk_2 m1 m2 a1 a2 s H Heqs). simpl in H2. rewrite <- H2. clear H2. 
+          rewrite plus_comm. apply Rval_add. 
+
+          
+          eauto.
+ 
           replace (List.length s) with (List.length (Spec.stk m1) - 2).
           simpl. rewrite (Rval_sub _ 2). f_equal. destruct H; simpl in *; eauto. rewrite Heqs. simpl. omega. rewrite Heqs. simpl. omega. 
-        + eauto using  pop_correct_sp.   
       }
     - (** Isub *)
-      unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1;  destruct (Spec.stk m1) as [ | a2 [ |a1 s]] eqn:?; try discriminate. inject Hm1.
+      unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1;  destruct (Spec.stk m1) as [ | a1 [ |a2 s]] eqn:?; try discriminate. inject Hm1.
       {
         constructor; simpl. 
         + auto with val. 
         + auto. 
-        + intros.  eapply push_correct_stk. admit. eapply (pop_correct_stk a1). eapply (pop_correct_stk a2). rewrite <- Heqs. destruct H; simpl in *; eauto. 
+        + intros.  eapply push_correct_stk. 
+          pose ( H1 := stk_1 m1 m2 a1 a2 s H Heqs). simpl in H1. rewrite <- H1. clear H1. 
+          pose ( H2 := stk_2 m1 m2 a1 a2 s H Heqs). simpl in H2. rewrite <- H2. clear H2. 
+          apply Rval_sub. 
+          
+          admit. 
+          eauto. 
           replace (List.length s) with (List.length (Spec.stk m1) - 2). 
           simpl. rewrite (Rval_sub _ 2). f_equal. destruct H. simpl in *. eauto. rewrite Heqs. simpl. omega. rewrite Heqs. simpl. omega. 
         + eauto using pop_correct_sp. 
@@ -851,12 +857,7 @@ Section t.
     -  (** Branch_forward *)
       unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1; try discriminate. inject Hm1.
       {
-        constructor; simpl. 
-        + 
-          auto using Rval_add_morphism. 
-        + auto. 
-        + destruct H; simpl in *; auto. 
-        + destruct H; simpl in *; auto.       
+        constructor; simpl; auto with *; eauto with *. 
       }      
     - 
       unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1.  
@@ -865,11 +866,7 @@ Section t.
       intros Hm. inject Hm. 
       simpl. 
       {
-        constructor; simpl. 
-        + auto with val. 
-        + auto. 
-        + destruct H; simpl in *; auto. 
-        + destruct H; simpl in *; auto.       
+        constructor; simpl; auto with *; eauto with *.  
       } 
     - destruct c; 
       repeat match goal with 
