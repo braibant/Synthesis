@@ -1,4 +1,4 @@
-Require Import Common DList. 
+Add Rec LoadPath "." as Synthesis. Require Import Common DList. 
 Require Core Equality. 
 
 Require Import Eqdep. 
@@ -17,7 +17,7 @@ Inductive sync :=
 | Tregfile :  nat -> type -> sync. 
 
 (* The denotation of a memory element is a word *)
-Fixpoint eval_sync s := 
+Fixpoint eval_sync s : Type := 
   match s with
     | Tinput t => Word.T t
     | Treg t => Word.T t

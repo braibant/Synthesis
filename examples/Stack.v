@@ -100,6 +100,7 @@ Module Spec.
             | nil => None
             | cons _ nil => None
             | n2 :: n1 :: stk => 
+              check (n2 <=? n1);
               dyncheck (mk (c s) (pc s +1) (n1 - n2 :: stk)  (str s) )
           end
         | Ibranch_forward ofs => 
@@ -450,10 +451,12 @@ Section t.
       Rpc1 : Spec.pc m1 =%= pc m2;
       Rpc2 : Spec.pc m1 < n;
       Rstk : R_stk (Spec.stk m1) (stk m2);
-      Rsp : List.length (Spec.stk m1) =%= sp m2
+      Rsp1 : List.length (Spec.stk m1) =%= sp m2;
+      Rsp2 : List.length (Spec.stk m1) < n
+
     }.
 
-  Hint Resolve Rpc1 Rpc2 Rstk Rsp. 
+  Hint Resolve Rpc1 Rpc2 Rstk Rsp1 Rsp2. 
   
   Notation "x == y" := (R x y) (at level 80).
 
@@ -543,18 +546,6 @@ Section t.
   (** We use the [val] hint db for theorems that deal with the Rval relation *)
   Hint Resolve Rval_succ Rval_add Rval_sub Rval_add_morphism Rval_sub_morphism : val. 
   Hint Resolve Rval_length_1 Rval_length_2 : val. 
-  
-  Lemma gso {size X} (v : Regfile.T size X) i j x: 
-    i <> j -> 
-    Regfile.get (Regfile.set v i x) j = Regfile.get v j.
-  Proof. 
-  Admitted. 
-  
-  Lemma gss {size X} (v : Regfile.T size X) i j x: 
-    i = j -> 
-    Regfile.get (Regfile.set v i x) j = x.
-  Proof. 
-  Admitted. 
 
   Fixpoint case {A B} (eq : A -> A -> bool) e (l: list (A *B)) default :=
     match l with 
@@ -573,18 +564,27 @@ Section t.
   Lemma push_correct_stk stk1 stk2 x1 x2 p: x1 =%= x2 -> 
                                       R_stk stk1 stk2  ->
                                       p = mk_val (List.length stk1) ->
+                                      List.length stk1 < n -> 
                                       R_stk (x1 :: stk1) (Regfile.set (stk2) p x2).
   Proof. 
-    unfold R_stk; simpl. intros Hx H Hp i i' Hi Hi'. rewrite <- Hi'. clear Hi'. 
+    unfold R_stk; simpl. intros Hx H Hp Hstk i i' Hi  Hi' . rewrite <- Hi'. clear Hi'. 
     assert (Hi' : i < List.length stk1 \/ i = (List.length stk1)) by omega; clear Hi.
     destruct Hi' as [Hi | Hi]. 
-    * rewrite gso. rewrite List.app_nth1 by (rewrite List.rev_length;auto).      
+    * rewrite Regfile.gso. rewrite List.app_nth1 by (rewrite List.rev_length;auto).      
       apply H;auto. 
-      simpl in *. rewrite Hp. clear - Hi. admit. 
+      simpl in *. 
+      clear - Hstk Hi Hp. rewrite Hp. clear Hp. 
+      admit.
     * rewrite List.app_nth2 by (rewrite List.rev_length;omega). 
       rewrite Hi. rewrite List.rev_length. rewrite minus_diag. simpl. 
-      rewrite gss.  auto. 
-      simpl in *.  rewrite Hp. reflexivity. 
+      rewrite Regfile.gss.  auto. 
+      simpl in *.  rewrite Hp. 
+      
+      Lemma Word'eqb_refl : forall n (x: Word.T n), Word.eqb x x = true. 
+      Proof. 
+        intros. rewrite Word.eqb_correct. reflexivity.
+      Qed.
+      apply Word'eqb_refl. 
   Qed.  
   
   Hint Extern 4  (_ < _) => rewrite <- NPeano.Nat.ltb_lt. 
@@ -838,17 +838,21 @@ Section t.
           simpl. rewrite (Rval_sub _ 2). f_equal. destruct H; simpl in *; eauto. rewrite Heqs. simpl. omega. rewrite Heqs. simpl. omega. 
       }
     - (** Isub *)
-      unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1;  destruct (Spec.stk m1) as [ | a1 [ |a2 s]] eqn:?; try discriminate. inject Hm1.
+      unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; 
+      simpl in Hm1; destruct (Spec.stk m1) as [ | a1 [ |a2 s]] eqn:?; try discriminate;
+      repeat (match goal with 
+                | H : context [ check ?x; _ ] |- _ => consider x; intros
+              end); try discriminate.       
+      inject H2.
       {
         constructor; simpl. 
         + auto with val. 
         + auto. 
         + intros.  eapply push_correct_stk. 
-          pose ( H1 := stk_1 m1 m2 a1 a2 s H Heqs). simpl in H1. rewrite <- H1. clear H1. 
-          pose ( H2 := stk_2 m1 m2 a1 a2 s H Heqs). simpl in H2. rewrite <- H2. clear H2. 
+          pose ( H' := stk_1 m1 m2 a1 a2 s H Heqs). simpl in H'. rewrite <- H'. clear H'. 
+          pose ( H' := stk_2 m1 m2 a1 a2 s H Heqs). simpl in H'. rewrite <- H'. clear H'. 
           apply Rval_sub. 
-          
-          admit. 
+          auto. 
           eauto. 
           replace (List.length s) with (List.length (Spec.stk m1) - 2). 
           simpl. rewrite (Rval_sub _ 2). f_equal. destruct H. simpl in *. eauto. rewrite Heqs. simpl. omega. rewrite Heqs. simpl. omega. 
