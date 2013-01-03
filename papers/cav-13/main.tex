@@ -31,19 +31,19 @@
 \maketitle
 
 \begin{abstract}
-  We report on the implementation of a certified compiler for an
+  We report on the implementation of a certified compiler for a
   high-level hardware description language (HDL) called \emph{Fe-Si}
   (FEatherweight SynthesIs).
   %
   Fe-Si is a simplified version of Bluespec, an HDL based on a notion
   of \emph{guarded atomic actions}. Fe-Si is defined as a
-  dependently typed deep-embedding in Coq. The target language of the
+  dependently typed deep embedding in Coq. The target language of the
   compiler corresponds to a synthesisable subset of Verilog or VHDL.
   %
   One key of our approach is that input programs to the compiler can
   be defined and proved correct inside Coq. Then, we use extraction
   and a Verilog back-end (written in OCaml) to get a certified version
-  of some hardware designs.
+  of a hardware design.
 \end{abstract}
 
 \section*{Introduction}
@@ -53,11 +53,11 @@ usually considered challenging and time-consuming.
 %
 On the one hand, a common practice in hardware verification is to take
 a given design written in an hardware description language like
-Verilog or VHDL, and argue about this design in a formal way using a
+Verilog or VHDL and argue about this design in a formal way using a
 model checker or an SMT solver.
 %
-On the second hand, a completely different approach is to design
-hardware via a shallow-embedding of circuits in a theorem
+On the other hand, a completely different approach is to design
+hardware via a shallow embedding of circuits in a theorem
 prover~\cite{hanna-veritas,UCAM-CL-TR-77,hunt89,vamp,certifying-circuits-in-type-theory}.
 %
 Yet, both kind of approach suffer from the fact that most hardware
@@ -76,7 +76,7 @@ compiled to an RTL description.
 %
 High-level synthesis has two benefits. 
 %
-First, it reduces the effort necessary to produce an hardware design.
+First, it reduces the effort necessary to produce a hardware design.
 %
 Second, writing or reasoning about a high-level program is simpler
 than reasoning about the (much more complicated) RTL description
@@ -91,7 +91,7 @@ presence of compiler-introduced bugs.
 
 \medskip In this paper, we investigate the formal verification of a
 lightly optimizing compiler from a Bluespec-inspired language called
-\project{} to RTL, quite literally applying the ideas behind the
+\project{} to RTL, applying (to a lesser extent) the ideas behind the
 CompCert project~\cite{Leroy-Compcert-CACM} to hardware synthesis.
 
 \medskip
@@ -100,12 +100,12 @@ CompCert project~\cite{Leroy-Compcert-CACM} to hardware synthesis.
 of Bluespec: in both languages, hardware designs are described in
 terms of \emph{guarded atomic actions} on storage elements. 
 %
-In our development, we define a (dependently-typed) deep-embedding of
+In our development, we define a (dependently typed) deep embedding of
 the \project{} programming language in Coq using \emph{parametric
   higher-order abstract syntax (PHOAS)}~\cite{phoas-chlipala}, and
 give it a semantics\thomas{~} using an interpreter: the semantics of a program
 is a Coq function that takes as inputs the current state of the
-storage elements, and produces a list of updates to be commited to
+storage elements and produces a list of updates to be committed to
 storage elements.
 %
 The one odditiy here is that this language and its semantics have a
@@ -120,12 +120,12 @@ described as combinational definitions and next-state assignements.
 \medskip
 
 What is new about \project{} is that we embed a hardware decription
-language as a domain-specific-language in Coq: circuits correspond to
+language as a domain-specific language in Coq: circuits correspond to
 a given datastructure implemented in Coq.
 %
 In particular, this makes it possible to use Coq as a metaprogramming
 tool to describe circuits: as an example, we shall see how we can
-build succint, and provably correct, description of recursive
+build succint, and provably correct, descriptions of recursive
 circuits.
 
 
@@ -133,8 +133,8 @@ circuits.
 \subsubsection{Contributions.}
 We summarize the contributions of this work as follows:
 \begin{itemize}
-\item we demonstrate a novel use of PHOAS as a way to embed domain
-  specific languages (DSLs) in the Coq proof assistant;
+\item we demonstrate a novel use of PHOAS as a way to embed
+  domain-specific languages (DSLs) in the Coq proof assistant;
 \item we define such a DSL for a (minimal, high-level) hardware
   description language;
 \item we prove the correctness of a compiler for this DSL that
@@ -149,15 +149,15 @@ makes it possible to define circuits. We start with a customary
 example: we show the implementation of a half adder.
 \begin{coq}
 Definition hadd (a b: Var Bool) : action [] (Bool $\otimes$ Bool) :=
-$\quad$do carry <- ret (andb a b; 
+$\quad$do carry <- ret (andb a b); 
 $\quad$do sum    <- ret (xorb a b);
 $\quad$ret (carry, sum).  
 \end{coq}
-The typing of this circuit show that it has two input wires, and
-return a tuple of values. 
+The typing of this circuit shows that it has two inputs, and
+returns a tuple of values. 
 %
 Here, we use Coq notations to implement some syntactic sugar: we
-borrow the \texttt{do}-notation to denote the monadic bind, and use
+borrow the \texttt{do}-notation to denote the monadic bind and use
 \coqe{ret} as a short-hand for return. 
 % 
 Our explicit use of return may seem odd. It is due to the fact that
@@ -166,7 +166,7 @@ and that return takes as argument an
 expression\footnote{Unfortunately, it is not possible to define return
   as an implicit coercion from expressions to actions in our setting.}. 
 
-Up to this point, Fe-Si can be seen as an extension of the Lava
+Up to this point, Fe-Si can be seen as an extension of the Lava~\cite{Bjesse98lava:hardware}
 language, implemented in Coq rather than Haskell. Yet, using Coq as a
 metalanguage offers the possibility to use dependent types in our
 circuit descriptions. For instance, one can define an adder circuit of
@@ -176,8 +176,7 @@ Definition adder n (a b: Var (Int n)): action [] (Int n) := ...
 \end{coq}
 In this definition, \coqe{n} of type \coqe{nat} is a formal parameter
 that denotes the size of the operands and the size of the result as
-well. \thomas{(Here, we neglect the overflow that may occur when computing the
-result.)}
+well. 
 
 \subsubsection{Stateful programs.}
 Fe-Si also features a small set of primitives for interacting with
@@ -185,7 +184,7 @@ Fe-Si also features a small set of primitives for interacting with
 snippet, we build a counter that increments its value when its input
 is true.
 \begin{coq}
-Definition $\Phi$ := [Reg (Int n)]
+Definition $\Phi$ := [Reg (Int n)].
 Definition count n (tick: Var Bool) : action $\Phi$ (Int n) :=
 $\quad$do x <- !member_0;
 $\quad$do _ <- if tick then {member_0 ::= x + 1} else {ret tt}; 
@@ -228,9 +227,9 @@ second, a Fe-Si program may have been built using arbitrary Coq code,
 including, e.g., higher-order functions or fixpoints.
 
 Fortunately, Coq's extraction mechanism makes it possible to solve
-both problems at once: it generate OCaml code from Coq
+both problems at once: it generates OCaml code from Coq
 programs. Starting from a closed Fe-Si program \coqe{foo}, we put the
-following definition in given Coq file: 
+following definition in a Coq file: 
 \begin{coq}
 Definition bar := fesic foo.  
 \end{coq}
@@ -251,12 +250,12 @@ this paper.
 
 \subsection{The memory model}
 Fe-Si programs are meant to describe sequential circuits, whose
-``memory footprint'' must be known statically. We take a declarative
+``memory footprints'' must be known statically. We take a declarative
 approach: each state-holding element that is used in a program must be
 declared. 
 %
 We currently have three types of memory elements: inputs, registers,
-and register files. A register hold one value of a given type, while a
+and register files. A register holds one value of a given type, while a
 register file of size $n$ stores $2^n$ values of a given type. 
 %
 An input is a memory element that can only be read by the circuit,
@@ -327,7 +326,7 @@ alternatives), binders, and memory operations.
 
 In this work, we follow an intrinsic
 approach~\cite{DBLP:journals/jar/BentonHKM12}: we mix the definition
-of the abstract syntax and the typing-rules from the start. That is,
+of the abstract syntax and the typing rules from the start. That is,
 the type system of the meta-language (Coq) enforces that all Fe-Si
 programs are well-typed by construction.
 %
@@ -335,7 +334,7 @@ Besides the obvious type-oblivious definitions (e.g., it is not
 possible to add a Boolean and an integer), this means that the
 definition of operations on state-holding elements requires some care.
 %
-Here, we use dependently-typed de Bruijn indices. 
+Here, we use dependently typed de Bruijn indices. 
 \begin{coq}
 Inductive member : list mem -> mem ->  Type :=
 | member_0 : forall E t, member (t::E) t
@@ -435,17 +434,18 @@ evaluating $a$ produces the result $r$'', where $r$ is either
 \coqe{v} and the partial update $\Delta$). 
 %
 The rules for the reduction of \coqe{Bind} may seem odd, in that they
-do not modify the state $\Gamma$.
+do not modify the state $\Gamma$. Indeed $\Gamma$ only stores the
+mutable state, and not the variable values. 
 %
 This is because the PHOAS approach makes it possible to manipulate
-closed-terms: we hijack Coq's $\beta$-reduction when dealing with
+closed terms: we hijack Coq's $\beta$-reduction when dealing with
 $f~v$, and we do not need to have an explicit treatment of the binders
 nor the reduction environments.
 
 There are two peculiarities here: first, following the definition of
 $\oplus$, if two values are written to a memory element, only the
 first one (in program order) is commited; second, reading a register
-yield the value that was held at the beginning of the time step. 
+yields the value that was held at the beginning of the time step. 
 %
 (While it may seem an odd choice for a general purpose programming
 language, it is meaningful when it comes to hardware. We come back to
@@ -461,21 +461,21 @@ Definition Next {t} $\Phi$ (st: $\denote{\Phi}$) (A : Action Phi t) : $\denote{\
 \subsection{RTL} 
 We now turn to the presentation of our target language, which sits at
 the register-transfer level. At this level, synchronous circuit can be
-faithfully described as a set of state holding elements, and a
+faithfully described as a set of state-holding element, and a
 next-state function, implemented using combinational
 logic~\cite{DBLP:journals/cj/Gordon02}.
 %
 Therefore, The definition of RTL programs (\coqe{block} in the
-following) is quite simple: a program is simply a telescope of
-expressions (combinational operations, or reads from state holding
-elements), with a list of effects (i.e, writes to state holding
+following) is quite simple: a program is simply a telescope\footnote{TODO} of
+expressions (combinational operations, or reads from state-holding
+elements), with a list of effects (i.e, writes to state-holding
 elements) at the end. 
 
 We show the definition of expressions, telescopes, and blocks in
 Fig.~\ref{fig:rtl}. 
 %
 The definition of expressions is similar to the one we used for Fe-Si,
-excepts that we have constructors for reads from memory elements, and
+except that we have constructors for reads from memory element, and
 that we moved to ``three-adress code''.
 %
 (That is, operands are variables, rather than arbitrary expressions.)
@@ -489,18 +489,18 @@ memory elements; the second binding may use the first value, or read
 from memory elements; and so on and so forth.
 
 A \coqe{block} is a telescope, with three elements at the end: a
-guard, a return-value, and a (dependently-typed) list of effects. 
+guard, a return value, and a (dependently typed) list of effects. 
 %
 The value of the guard (a Boolean) is equal to true when the
-return-value and the effects are valid (i.e., the effects should be
+return value and the effects are valid (i.e., the effects should be
 commited to memory); and false otherwise.
 %
-The return-value denotes the outputs of the circuits. 
+The return value denotes the outputs of the circuits. 
 %
 The datatype \coqe{effects} encode, for each memory element of the
 list $\Phi$, either an effect (a write of the right type), or None
 (meaning that this memory element is never written to). (For the sake
-of brevity, we omit the particular definition of dependently-typed
+of brevity, we omit the particular definition of dependently typed
 heterogeneous lists \coqe{DList.T} that we use here.)
 
 
@@ -543,10 +543,10 @@ Definition Block $\Phi$ t := forall V, block $\Phi$ V t.
 \subsubsection{Semantics.} We now turn to define the semantics of our RTL
 language. 
 %
-To define  evaluation 
-We first define a denotation for closed expressions (in the
+First, we endow closed expressions  with a denotation function (in the
 same way as we did at the source-level, except that it is not a
 recursive definition).
+
 \begin{coq}
 Variable $\Gamma$: $\denote{\Phi}$. 
 Definition eval_expr (t : ty) (e : expr $\denotety{.}$ t) : $\denotety{.}$:=
@@ -562,8 +562,8 @@ match e with
 end. 
 \end{coq}
 
-We now turn to define the (simple) denotation of telescopes: it is a
-simple recursive function that evaluates bindings in order, and apply
+We now turn to define the denotation of telescopes: it is a
+recursive function that evaluates bindings in order and applies
 an arbitrary function on the final (closed) object. 
 \begin{coq}
 Fixpoint eval_scope {A B} (F : A -> B) (T : scope $\denotety{.}$ A) :=
@@ -575,15 +575,15 @@ end.
 %
 The final piece that we need is the denotation that corresponds to the
 \coqe{write} type. This function takes as argument a single effect,
-the initial state of this memory location, and either returns a new
+the initial state of this memory location  and either returns a new
 state for this memory location, or returns \coqe{None}, meaning that
 location is left in its previous state.
 \begin{coq}
 Definition eval_effect (m : mem) : 
-$\qquad$option (write $\denotety{.}$ m) -> $\denotemem{m}$ -> (option $\denotemem{m}$) := ... 
+$\qquad$option (write $\denotety{.}$ m) -> $\denotemem{m}$ -> option $\denotemem{m}$ := ... 
 \end{coq}
 %
-Using all this pieces, it is quite easy to define what is the final
+Using all these pieces, it is quite easy to define what is the final
 next-state function. 
 \begin{coq}
 Definition Next {t} $\Phi$ ($\Gamma$: $\denote{\Phi}$) (B : Block $\Phi$ t) : $\denote{\Phi}$ := ...
