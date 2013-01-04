@@ -353,7 +353,7 @@ Section t.
           | nil => default
           | (c,a) :: q => 
             (WHEN (x = c); a) 
-              \oplus case x q default
+              \oplus (WHEN (x <> c); case x q default)
         end. 
 
       Require Import ZArith. 
@@ -554,11 +554,57 @@ Section t.
       end.
   
     
-  Lemma step_case {S T k} (e: expr V S) l (default : action _ V T): 
-    step (Circuit.case k V e l default) =
-    step (case (fun x y => type_eq _ (eval_expr _ x) (eval_expr _ y)) e l default).
+  Lemma step_case {S T k} (e: expr V S) l (default : action _ V T) d: 
+    step (Circuit.case k V e l default) d =
+    step (case (fun x y => type_eq _ (eval_expr _ x) (eval_expr _ y)) e l default) d.
   Proof. 
-  Admitted. 
+    induction l. 
+    - reflexivity. 
+    - simpl. destruct a. 
+      destruct (type_eq S (eval_expr S e) (eval_expr S e0)) eqn: He. 
+      destruct (step a d) eqn:Ha. 
+      + 
+      Lemma step_OrElse2 Phi t  A B d:
+        step B d = None -> 
+        step (OrElse Phi V t A B) d = step A d.
+      Proof. 
+        unfold step. simpl. intros H. unfold Sem.Dyn.OrElse. 
+        destruct (        Sem.eval_action A d (Diff.init Phi)) eqn: HA.
+        f_equal. 
+        auto. 
+      Qed. 
+      rewrite step_OrElse2. 
+      Lemma step_when_true  Phi t A C d :                
+        eval_expr Tbool C = true -> 
+        step (when C do A) d = @step Phi t A d.
+      Proof. 
+        unfold step. simpl. intros H. rewrite H. unfold Sem.Dyn.Bind.  simpl. reflexivity. 
+      Qed. 
+      
+      rewrite step_when_true; simpl;  auto. 
+      Lemma step_when_false  Phi t A C d :                
+        eval_expr Tbool C = false -> 
+        @step Phi t (when C do A) d = None.
+      Proof. 
+        unfold step. simpl. intros H. rewrite H. unfold Sem.Dyn.Bind.  simpl. reflexivity. 
+      Qed. 
+      rewrite step_when_false. auto. simpl. rewrite He. reflexivity. 
+      
+      + rewrite step_OrElse2. rewrite step_when_true. auto. 
+        simpl; auto.
+        rewrite step_when_false. auto. simpl; rewrite He; auto. 
+      + 
+        Lemma step_OrElse1 Phi t A B d:
+          step A d = None -> 
+          step (OrElse Phi V t A B) d = step B d.
+        Proof. 
+          unfold step. simpl. intros H.  unfold Sem.Dyn.OrElse.       destruct (        Sem.eval_action A d (Diff.init Phi)) eqn: HA. discriminate.  reflexivity. 
+        Qed.
+        rewrite step_OrElse1.
+        rewrite step_when_true. auto. 
+        simpl. rewrite Bool.negb_true_iff. auto. 
+        rewrite step_when_false. auto. auto. 
+  Qed. 
   
   (** pushing elements on the stack preserves the stk part of the invariant *)
   Lemma push_correct_stk stk1 stk2 x1 x2 p: x1 =%= x2 -> 
@@ -754,7 +800,7 @@ Section t.
     match goal with 
         H : Some _ = Some _ |- _ => inject H
     end; simpl; 
-    now (constructor; simpl; eauto with *). 
+    constructor; simpl; eauto with *. 
     
     - clear Hcond Hm1. 
       destruct H. rewrite (Rstk0 (List.length (Spec.stk m1) - 2)); auto. 

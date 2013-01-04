@@ -10,6 +10,7 @@
 \usepackage{graphics}
 \bibliographystyle{plain}
 \pagestyle{plain}
+\usepackage{array}
 
 
 % \authorinfo{Thomas Braibant}
@@ -115,17 +116,17 @@ time-step).
 %
 Our target language can be sensibly interpreted as \emph{clocked
   sequential machines}: we generate an RTL description syntactically
-described as combinational definitions and next-state assignements.
+described as combinational definitions and next-state assignments.
 
 \medskip
 
-What is new about \project{} is that we embed a hardware decription
+What is new about \project{} is that we embed a hardware description
 language as a domain-specific language in Coq: circuits correspond to
-a given datastructure implemented in Coq.
+a given data structure implemented in Coq.
 %
-In particular, this makes it possible to use Coq as a metaprogramming
+In particular, this makes it possible to use Coq as a meta programming
 tool to describe circuits: as an example, we shall see how we can
-build succint, and provably correct, descriptions of recursive
+build succinct, and provably correct, descriptions of recursive
 circuits.
 
 
@@ -198,7 +199,7 @@ bind this value to \coqe{x}. Then, we test the value of the input
 register. In any case, the output is the old value of the counter.
 
 The above ``if-then-else'' construct is defined using two primitives
-for guarded atomic actions that are reminiscent of transactionnal
+for guarded atomic actions that are reminiscent of transactional
 memory monads: \coqe{assert} and \coqe{orElse}. The former aborts the
 current action if its argument is false.
 %
@@ -310,10 +311,11 @@ $ $
 The definition of Fe-Si programs (\coqe{action} in the following)
 takes the PHOAS approach. 
 %
-That is, we define an inductive type family parametrized by an
+That is, we define an inductive type family parameterized by an
 arbitrary type \coqe{V} of variables, where binders bind variables
-instead of arbitrary terms (as it would be the case using HOAS), and
-those variables are used explicitly via a dedicated term constructor.
+instead of arbitrary terms (as it would be the case using
+HOAS~\cite{DBLP:conf/pldi/PfenningE88}), and those variables are used
+explicitly via a dedicated term constructor.
 %
 The definition of Fe-Si syntax is split in two syntactic classes:
 expressions and actions. 
@@ -352,7 +354,8 @@ register files, in the syntax and, later, in the semantics. We refer
 the reader to the supplementary materials for more details.)
 %
 Our final definition \coqe{Action} of actions is a polymorphic
-function from a choice of variables to an action.
+function from a choice of variables to an action \adam{Add a note
+  saying that past PHOAS papers explain why this is a good idea}.
 
 \begin{figure}
   \centering
@@ -392,7 +395,7 @@ from an initial state, the execution of a Fe-Si programs corresponds
 to a sequence of atomic updates to the memory elements. 
 %
 Each step goes as follows: reading the state, computing an update to
-the state, commiting this update.
+the state, committing this update.
 %
 
 \begin{figure*}
@@ -455,7 +458,7 @@ Finally, we define a wrapper function that computes the next state of
 the memory elements, using the aforementioned evaluation relation
 (starting with an empty partial update). 
 \begin{coq}
-Definition Next {t} $\Phi$ (st: $\denote{\Phi}$) (A : Action Phi t) : $\denote{\Phi}$ := ...
+Definition Eval {t} {$\Phi$} (st: $\denote{\Phi}$) (A : Action Phi t) : option ($\denotety{t}$ * $\denote{\Phi}$) := ...
 \end{coq}
 
 \subsection{RTL} 
@@ -497,7 +500,7 @@ commited to memory); and false otherwise.
 %
 The return value denotes the outputs of the circuits. 
 %
-The datatype \coqe{effects} encode, for each memory element of the
+The data type \coqe{effects} encode, for each memory element of the
 list $\Phi$, either an effect (a write of the right type), or None
 (meaning that this memory element is never written to). (For the sake
 of brevity, we omit the particular definition of dependently typed
@@ -543,9 +546,13 @@ Definition Block $\Phi$ t := forall V, block $\Phi$ V t.
 \subsubsection{Semantics.} We now turn to define the semantics of our RTL
 language. 
 %
-First, we endow closed expressions  with a denotation function (in the
+First, we endow closed expressions with a denotation function (in the
 same way as we did at the source-level, except that it is not a
 recursive definition).
+%
+Note that we instantiate the variable parameter of \coqe{expr} with
+the function $\denotety{.}$, effectively tagging variables with their
+denotations.
 
 \begin{coq}
 Variable $\Gamma$: $\denote{\Phi}$. 
@@ -586,34 +593,35 @@ $\qquad$option (write $\denotety{.}$ m) -> $\denotemem{m}$ -> option $\denotemem
 Using all these pieces, it is quite easy to define what is the final
 next-state function. 
 \begin{coq}
-Definition Next {t} $\Phi$ ($\Gamma$: $\denote{\Phi}$) (B : Block $\Phi$ t) : $\denote{\Phi}$ := ...
+Definition Eval {t} {$\Phi$} ($\Gamma$: $\denote{\Phi}$) (B : Block $\Phi$ t) : option ($\denotety{t}$ * $\denote{\Phi}$) := ...
 \end{coq}
 
 \subsection{Compiling Fe-Si to RTL} 
 Our syntactic translation from Fe-Si to RTL is driven by the fact that
 our RTL language does not allow clashing assignements: syntactically,
-each register and register-file is updated at most one \coqe{write}
+each register and register file is updated by at most one \coqe{write}
 expression.
 %
-With a wrinkle, we could say that we move to a language with
-\emph{single-static assignements}. 
+With one wrinkle, we could say that we move to a language with
+\emph{static single assignment}. 
 
-\subsubsection{From control-flow to data-flow.}To do so, we have to transform
-the control-flow (the \coqe{Assert} and \coqe{OrElse}) of Fe-Si
-programs into data-flow.
+\subsubsection{From control flow to data flow.}To do so, we have to
+transform the control flow (the \coqe{Assert} and \coqe{OrElse}) of
+Fe-Si programs into data-flow.
 %
 We can do that in hardware, because circuits are inherently parallel:
-for instance, the circuit that compute the result of the conditional
-expression \mbox{\coqe{e ? a : b}} is a circuit that computes the value of
-\coqe{a} and the value of \coqe{b} in parallel, and then uses the
-value of \coqe{e} to select the right value for the whole expression. 
+for instance, the circuit that computes the result of the conditional
+expression \mbox{\coqe{e ? a : b}} is a circuit that computes the
+value of \coqe{a} and the value of \coqe{b} in parallel and then uses
+the value of \coqe{e} to select the proper value for the whole
+expression.
 
 \subsubsection{Administrative normal form.} Our first compilation pass
 transforms Fe-Si programs into an intermediate language that
-implements A-normal form. That is, we assign names to every
+implements A-normal form. That is, we assign a name to every
 intermediate computation.
 %
-In order to do so, we also have to resolve the control-flow. To be
+In order to do so, we also have to resolve the control flow. To be
 more specific, given an expression like
 \begin{coq}
 do x <- (A OrElse B); ... 
@@ -639,19 +647,19 @@ effects that exist at the \coqe{RTL} level.
 
 The rationale behind these nested effects is to represent trees of
 conditional blocks, with writes to state-holding elements at the
-leaves. (Using this data-type, several paths in such a tree may lead
+leaves. (Using this data type, several paths in such a tree may lead
 to a write to a given memory location; in this case, we use a notion
-of program order to discriminate between clashing assignements.)
+of program order to discriminate between clashing assignments.)
 
 \subsubsection{Linearizing the effects} Our second compilation pass
 flattens the nested effects that were introduced in the first pass.
 
 The idea of this translation is to associate two values to each
 register: a \emph{data} value (the value that ought to be written) and
-a \emph{write-enable} value. The data value is commited (i.e., stored)
+a \emph{write-enable} value. The data value is committed (i.e., stored)
 to the register if the write-enable Boolean is true.
 %
-Similarly, we associate three values to each register-file: a data, an
+Similarly, we associate three values to each register-file: a data value, an
 address, and a write-enable. The data is stored to the field of the
 register file selected by the address if the write-enable is true.  
 
@@ -661,36 +669,36 @@ encapsulates a single \coqe{write}:
 \begin{coq}
 Definition merge s (a b : write s): scope (option (write s)) := ...   
 \end{coq}
-Despite requiring a bit of dependent-types hackery\footnote{The
+Despite requiring a bit of dependent types hackery\footnote{The
   reader may wonder why we need an option here; the answer is that we
   could do without it, at the price of a more complicated definition
   for \coqe{merge} that uses the fact that the type
 %
   \mbox{\coqe{write (Input t)}} is not inhabited.}, the definition of
-\coqe{merge} is the expected one.
+\mbox{\coqe{merge}} is the expected one.
 %
 For instance, in the register case, given $(v_a,we_a)$ (resp. $(v_b,
-we_b)$) the value and the write-enable that corresponds to \coqe{a},
-the write-enable that corresponds to the merge of \coqe{a} and
-\coqe{b} is $we_a || we_b$, and the associated data is \mbox{$we_a~?~v_a :
-v_b$}.
+we_b)$) the data value and the write-enable that correspond to
+\coqe{a}, the write-enable that corresponds to the merge of \coqe{a}
+and \coqe{b} is $we_a || we_b$, and the associated data value is
+\mbox{$we_a~?~v_a : v_b$}.
 
 \subsubsection{Moving to RTL.} The third pass of our compiler translates
 the previous intermediate language to RTL, which amounts to a simple
 transformation into three-address code. This transformation simply
-introduce new variables for all the intermediate expressions that
+introduces new variables for all the intermediate expressions that
 appear in the computations. 
 
 \subsection{Lightweight optimizations}
 We will now describe two optimizations that we perform on programs
 expressed in the RTL language. 
 %
-The first one is syntactic version of common sub-expression
-elimination, intended to reduce the amount of bindings, and introduce
+The first one is a syntactic version of common sub-expression
+elimination, intended to reduce the number of bindings and introduce
 more sharing. 
 %
 The second is a semantic common sub-expression elimination that aims
-to reduce the size of the Boolean formula that were generated in the
+to reduce the size of the Boolean formulas that were generated in the
 previous translation passes.
 
 \subsubsection{Syntactic common-subexpression elimination.}
@@ -702,7 +710,7 @@ overall approach used by Chlipala~\cite{DBLP:conf/popl/Chlipala10}.)
 Contrary to our previous transformations that were just ``pushing
 variables around'' for each possible choice of variable representation
 \coqe{V}, here we need to tag variables with their symbolic values,
-which are approximations the actual values held by variables.
+which approximate the actual values held by variables.
 % 
 %
 Then, CSE goes as follows. We fold through a telescope and maintain a
@@ -714,70 +722,48 @@ If this symbolic value is already in the map, we avoid the creation of
 an extraneous binder. Otherwise, we do create a new binder, and extend
 our association list accordingly. 
  
-% Between closure
-% conversion and flattening, we perform intrapro- cedural common
-% subexpression elimination (CSE) on closed pro- grams. Since our
-% languages have no intraprocedural iteration con- structs, there is no
-% need to perform dataflow analysis. Instead, a single recursive
-% traversal of a program suffices. The optimization still simplifies
-% cases like application of a known function, where it is possible to
-% avoid building a closure.
-
-% As we descend into a program’s structure, we maintain a map- ping from
-% variables to symbolic values, as defined below.  Symbolic values s ::=
-% #n | c | () | s, s | inl(s) | inr(s) Values not built from the basic
-% constant, unit, product, and sum constructors are represented with
-% symbolic variables #n, where a fresh n is generated for each new
-% input-program variable that cannot be determined to have more specific
-% structure.  The purpose of CSE is to remove some redundant bindings
-% and case analyses. This transformation may sound complicated enough to
-% require conversion of input programs to first-order form to analyze
-% them. However, it is possible to implement CSE in an elegant
-% higher-order way. In translating a parametric program P , we must
-% produce a CSE’d version of it for each possible variable
-% representation var. Our solution is to do so by instantiating P at
-% variable type var * sval, where sval is the type of symbolic values s.
-
-% Thus, each variable is tagged with a symbolic representation, and this
-% representation may be accessed directly at use sites. The main
-% translation maintains a mapping from symbolic values to vari-
-% ables. We use this mapping to simplify case expressions with dis-
-% criminees that we see statically are either inl or inr. When proceed-
-% ing under a let binder, the translation evaluates the bound expres-
-% sion symbolically. If the result is in the map, we avoid creating a
-% new binder in the translation. Instead, we apply the binder body,
-% which is a function over variable/value pairs, to the variable that
-% our map associates with the appropriate symbolic value, paired with
-% that value. If the value we are binding is not found in the map, we do
-% create a new binder, and, in the recursive call inside the binder’s
-% scope, we add the new variable to the symbolic map.  The main
-% correctness theorem for this translation is proved very similarly to
-% the main theorem for CPS conversion. The proof can be a bit simpler
-% because we need no value compatibility relation; CSE has no effect on
-% the values that appear during program evaluation.  We prove the main
-% theorem with about 20 lines of tactic code for performing appropriate
-% case analyses, applying IHes and a lemma about primops, and
-% materializing known facts about variables men- tioned in expression
-% equivalence derivations.
 
 \subsubsection{Using BDDs to reduce boolean expressions.}
 Our compilation process introduces a lot of extra boolean
 variables. We use BDDs to implement semantic common-subexpression
-elimination. The purpose of this pass is to simplify the extraneous
-boolean operations that were introduced by our compilation passes. In
-order to simplify only the Boolean computations that we introduced, we
-could use two different kinds of Booleans (the one that were present
-at the source level, and the others); and use our simplification pass
-only on the later. 
+elimination: we annotate each Boolean expression with an approximation
+of its runtime value, which is a pointer to a node in the BDD. Our use
+of BDDs enforces that Boolean expressions that are equivalent are
+hash-consed together.
 
-\textbf{Implementing OBDDs in Coq.} 
-Persistence of the data-structure, reasonning about hash-consing.
+The purpose of this pass is to simplify the extraneous boolean
+operations that were introduced by our compilation passes. In order to
+simplify only the Boolean computations that we introduced, we could
+use two different kinds of Booleans (the ones that were present at the
+source level and the others); and use our simplification pass only on
+the later.
 
-\subsection{Putting all together}
-In the end, we prove that our whole compilate that goes from Fe-Si to
-RTL, and implements the two lightweight optimisations described above
+\subsection{Putting it all together}
+In the end, we prove that our whole compiler that goes from Fe-Si to
+RTL and implements the two lightweight optimizations described above
 is correct. That is, we prove that that next-step functions at the
 source level and the target level are compatible.
+
+\begin{twolistings}
+  \begin{coq}
+Variable ($\Phi$: list mem) (t : ty). 
+Definition fesic  (A : Fesi.Action $\Phi$ t) : RTL.Block $\Phi$ t :=
+  let x := IR.Compile $\Phi$  t a in
+  let x := RTL.Compile $\Phi$ t x in 
+  let x := CSE.Compile $\Phi$ t x in  
+  BDD.Compile $\Phi$ t x.
+\end{coq}
+&
+\begin{coq}
+Lemma fesic_correct A :
+forall ($\Gamma$ : $\denote{\Phi}$), 
+Front.Eval $\Gamma$ A = 
+RTL.Eval $\Gamma$ (fesic A).
+
+$ $
+\end{coq}
+\end{twolistings}
+
 
 \section{Design and verification of a sorter core}
 We now turn to the description of a first hardware circuit implemented
@@ -786,16 +772,16 @@ and proved correct in Fe-Si.
 A \emph{sorting network}~\cite{DBLP:books/mg/CormenLRS01} is a
 parallel sorting algorithm that sorts a sequence of values using only
 compare-and-swap operations, in a data-independent way. This makes it
-suitable for an hardware implementation.
+suitable for a hardware implementation.
 
 Bitonic sorters for sequences of length $2^n$ can be generated using
 short and simple algorithmic descriptions. Yet, formally proving their
 correctness is a challenge that was only partially solved in two
-different line of previous work.
+different lines of previous work.
 %
-First, sorter core generators were studied from an hardware design
+First, sorter core generators were studied from a hardware design
 perspective in Lava~\cite{DBLP:conf/charme/ClaessenSS01}, but formal
-proof was limited to circuits with a fixed size -- bounded by tge
+proof was limited to circuits with a fixed size -- bounded by the
 performances of the automated verification tools that existed at this
 time.
 %
@@ -803,11 +789,11 @@ Second, machine-checked formal proofs of bitonic sort were performed
 e.g., in Agda~\cite{DBLP:conf/types/BoveC04}, but without a
 connection with an actual hardware implementation. 
 %
-Our main contribution here is to implement such generators, and to
+Our main contribution here is to implement such generator and to
 propose a formal proof of their correctness.
 
 More precisely, we implemented a version of bitonic sort as a regular
-Coq program, and proved that it sorts its inputs. This proof follows
+Coq program and proved that it sorts its inputs. This proof follows
 closely the one described by Bove and
 Coquand~\cite{DBLP:conf/types/BoveC04} -- in Agda -- and amounts to
 roughly 1000 lines of Coq, including a proof of the so-called
@@ -821,18 +807,19 @@ Fig.~\ref{fig:reverse}.
 The version on the left-hand side can be seen as a specification: it
 takes as argument a sequence of $2^n$ inputs\footnote{Such a sequence
   is represented as a complete binary tree of depth $n$, with data on
-  the leaves.}, and reverse the order of this sequence.
+  the leaves.} and reverses the order of this sequence.
 %
 The code on the right-hand side implements part of the
 connection-pattern of the sorter. More precisely, it takes as input a
-sequence of input variables and build a circuit that outputs this
+sequence of input variables and builds a circuit that outputs this
 sequence in reverse order. 
 
 Next, we turn to the function that is at the heart of the bitonic
 sorting network.
 %
-A bitonic sequence is a sequence $(x_i)_{0 \le i < n}$ such that
-$$ x_0 \le \cdots x_k \ge \cdots x_n, \text{with } 0 \le k < n $$
+A bitonic sequence is a sequence $(x_i)_{0 \le i < n}$ is a sequence
+whose monotonicity changes less than two times, i.e., 
+$$ x_0 \le \cdots \le x_k \ge \cdots x_n, \text{with } 0 \le k < n $$
 or a circular shift of such a sequence.
 %
 Given a bitonic input sequence of length $2^n$, the left-hand side
@@ -842,16 +829,16 @@ the elements in the second sequence.
 %
 The right-hand side version of this function builds the corresponding
 comparator network: it takes as arguments a sequence of input
-variables, and returns a circuit. 
+variables and returns a circuit. 
 
 We go on with the same ideas to finish the Fe-Si implementation of
 bitonic sort. The rest of the code is unsurprising, except that it
 requires to implement a dedicated bind operation of type
 \begin{coq}
-forall U n : Var (domain n) -> (T n -> action [] Var U) -> action [] Var U. 
+forall (U: ty) n,  Var (domain n) -> (T n -> action [] Var U) -> action [] Var U. 
 \end{coq}
 that makes it possible to recover the tree structure out of the
-result-type of a circuit (\coqe{domain n}).
+result type of a circuit (\coqe{domain n}).
 
 \begin{figure}
   \centering
@@ -888,6 +875,10 @@ match n with
   let (c,d) := min_max_swap p (right l) (right r) in 
   (N p a c, N p b d)
 end. 
+
+...
+
+Fixpoint sort n : tree A n -> tree A n := ...
 \end{coq}
 & $\quad$
 \begin{coq}
@@ -922,6 +913,10 @@ match n  with
   do (c,d) <- min_max_swap p (right l) (right r); 
   ret ([tuple mk_N a c, mk_N b d])
 end.
+
+...
+
+Fixpoint sort n : T n -> C n := ...
 \end{coq}
 \end{twolistings}
   
@@ -932,49 +927,213 @@ end.
 We are now ready to state (and prove) the correctness of our sorter
 core. We chose to settle in a context where the type of data that we
 sort are integers of a given size, but we could generalize this proof
-to other data-types, e.g., to sort tuples in a lexicographic order.
-\begin{coq}
-Theorem sort_correct : ...  
-\end{coq}
+to other data types, e.g., to sort tuples in a lexicographic order.
+We side-step the presentation of some of our Coq, to present the final
+theorem in a stylized fashion.
+\begin{theorem}
+Let $I$ be a sequence of length $2^n$ of integers of size $m$. The
+circuit always produces an output sequence that is sorted. 
+\end{theorem}
+
+\begin{tabular}{|l|}
+  \hline
+  \begin{minipage}{1.0\linewidth}
+    Alternatively, I wonder if the following definition could appear
+    in the paper: Eval is the Fe-si evaluation function. Circuit.sort is
+    the circuit described in the right-hand side of
+    Fig.~\ref{fig:reverse}; Spec.sort is the algorithm that appears in
+    the left-hand side of Fig.~\ref{fig:reverse}. Spec.tsorted is the
+    specification of what it means to be ``sorted'' for sequences
+    represented as trees. The relation $\equiv$ relates sequences
+    represented as trees and sequences represented as tuples (type
+    domain n) in the circuit world...    
+  \end{minipage}\\
+  \begin{minipage}{1.0\linewidth}
+\begin{lstlisting}[language=Coq]
+Notation A := (Int m).
+Theorem circuit_sort_correct n (I : tree (Var A) n) : 
+match Eval (Circuit.sort n I) with 
+   | None => False (* i.e., the circuit always outputs a value *)
+   | Some (_,out) => out $\equiv$ (Spec.sort n I) /\ Spec.tsorted n (Spec.sort n I)
+end. 
+\end{lstlisting}
+  \end{minipage}\\
+  \hline
+
+\end{tabular}
+
+
 \subsubsection{Testing the design}
-Finally, we indulge ourselves with the pleasure to test a design that
-was formally proven, using a stock Verilog
-simulator~\cite{iverilog}. We set the word-size to 4, and the number
-of inputs of the sorter to 16, and we generate the corresponding
-Verilog code. Unsurprisingly, the sorter core sorts its input
-sequence.
+Finally, we indulge ourselves and test a design that was formally
+proven, using a stock Verilog simulator~\cite{iverilog}. We set the
+word size to 4, and the number of inputs of the sorter to 16, and we
+generate the corresponding Verilog code. Unsurprisingly, the sorter
+core sorts its input sequence in every one of our test runs.
 
-
-\section{Verifying a stack machine.}
+\section{Verifying a stack machine}
 The circuit that was described in the previous section is a simple
 combinational sorter: we could have gone one step further in this
-verification effort and pipelined our design by resgistering the
-output of each compare-and-swap operators. However, we chose here to
-describe a more interesting design: a hardware implementation of a
-simple stack machine, inspired from the IMP virtual machine, i.e., a
-small subset of the Java virtual machine.
+verification effort and pipelined our design by registering the output
+of each compare-and-swap operator. However, we chose here to describe
+a more interesting design: a hardware implementation of a simple stack
+machine, inspired from the IMP virtual
+machine~\cite{Leroy-Marktoberdorf-09}, i.e., a small subset of the
+Java virtual machine.
 
-\section{Further discussion}\label{sec:discussion}
-
-\subsubsection{Testing designs}
-In order to gain confidenced in the fact that there is no lapse in
-either the semantics of the source language, nor the semantics of the
-target language, we test the simulated execution of compiled designs
-against our semantics. 
-
-Indeed, our use of program extraction is more delicate than what is
-done in, e.g., CompCert, because our program transformations use
-dependent types intensively. In the end, either Coq extraction
-mechanism or our Verilog back-end could introduce bugs in the
-generated code.
+Again, we proceed in two steps: first, we define a specification of
+the behavior of our stack machine; second, we build a Fe-Si
+implementation and prove that it behaves as prescribed. 
 %
-Moreover, since the long-term idea is to generate high-confidence
-hardware, one should not blindly trust formally certified code that
-has not been tested: their might always be some lapse in the
-specification itself.
+The instruction set of our machine is given in Fig.~\ref{fig:stack},
+where we let $x$ range over identifiers (represented as natural
+numbers) and $n,\delta$ range over values (natural numbers).
+%
+The state of the machine is composed of the code (a list of
+instruction), a program counter (an integer), a variable stack (a list
+of values), and a store (a mapping from variables to values). The
+semantics of the machine is given by a one-step transition relation in Fig.~\ref{fig:stack}.
+%
+Remark that this specification uses natural numbers and lists in a
+pervasive manner: this cannot be faithfully encoded using finite-size
+machine words and register files. For simplicity reasons, we resolve
+this tension by adding some dynamic checks to the transition relations
+to rule out such ill-defined behaviors.
 
-\subsubsection{Optimising the layout of the desings}
-Lava features a number of layout primitives, that makes it possible to
+\begin{figure}
+  \centering
+  \begin{twolistings}
+    \begin{tabular}{rcll}
+i & ::=   & \texttt{const $n$                     }\\
+  & $|$   & \texttt{var   $x$                              }\\
+  & $|$   & \texttt{setvar  $x$                            }\\
+  & $|$   & \texttt{add                                        }\\
+  & $|$   & \texttt{sub                                        }\\
+  & $|$   & \texttt{bfwd $\delta$             }\\
+  & $|$   & \texttt{bbwd $\delta$              }\\
+  & $|$   & \texttt{bcond $c$ $\delta$ }\\
+  & $|$   & \texttt{halt                                       }\\
+      \end{tabular}
+& \qquad 
+      \begin{tabular}{ll}
+$C \vdash pc,\sigma,s \to pc+1, n :: \sigma,s$ & \text{if $C(pc)$ = \texttt{add $n$}} \\
+$C \vdash pc,\sigma,s \to pc+1, s(x) :: \sigma,s$ & \text{if $C(pc)$ = \texttt{var $x$}} \\
+$C \vdash pc,v::\sigma,s \to pc+1, \sigma,s[x \leftarrow v]$ & \text{if $C(pc)$ = \texttt{setvar $x$}} \\
+$C \vdash pc,n_2::n_1::\sigma,s \to pc+1, (n_1+n_2)::\sigma,s$ & \text{if $C(pc)$ = \texttt{add}} \\
+$C \vdash pc,n_2::n_1::\sigma,s \to pc+1, (n_1-n_2)::\sigma,s$ & \text{if $C(pc)$ = \texttt{sub}} \\
+$C \vdash pc,\sigma,s \to pc+1+\delta, \sigma,s$ & \text{if $C(pc)$ = \texttt{bfwd $\delta$}} \\
+$C \vdash pc,\sigma,s \to pc+1-\delta, \sigma,s$ & \text{if $C(pc)$ = \texttt{bbwd $\delta$}} \\
+$C \vdash pc,n_2:::n_1::\sigma,s \to pc+1+\delta, \sigma,s$ & \text{if $C(pc)$ = \texttt{bcond c $\delta$} and $c~n_1~n_2$} \\
+$C \vdash pc,n_2:::n_1::\sigma,s \to pc+1, \sigma,s$ & \text{if $C(pc)$ = \texttt{bcond c $\delta$} and $\neg (c~n_1~n_2)$} \\
+      \end{tabular}
+\end{twolistings}
+  \caption{Instruction set and transition relation of our stack machine}
+  \label{fig:stack}
+\end{figure}
+
+
+The actual Fe-Si implementation is straightforward. The definition of
+the internal state is depicted below: the stack is implemented using a
+register file, and a stack pointer; the store is a simple register
+file; the code is implemented as another register file that is
+addressed by the program counter.
+
+\begin{twolistings}
+\begin{coq}
+Variable n : nat. 
+Notation OPCODE := (Tint 4).  
+Notation VAL := (Tint n). 
+
+Definition INSTR := OPCODE $\otimes$ VAL.  
+$ $
+\end{coq}
+&
+\begin{coq}
+Definition $\Phi$ : state := [
+Tregfile n INSTR;       (* the code *)
+Treg VAL;               (* the program counter PC *)
+Tregfile n VAL;         (* the stack STACK *)
+Treg VAL;               (* the stack pointer SP  *)
+Tregfile n VAL          (* the registers REGS *)]. 
+\end{coq}
+\end{twolistings}
+
+The actual implementation of the machine is unsurprising: we access
+the code memory at the address given by the program counter; we
+case-match over the value of the opcode and update the various
+elements of the machine state accordingly. 
+%
+For the sake of space, we only present the code for the \texttt{setvar
+  $x$} instruction below.
+
+\begin{twolistings}
+\begin{coq}
+Definition pop :=
+do sp <- ! SP;       
+do x <- read STACK [: sp - #i 1];
+do _ <- SP ::= sp - #i 1;
+ret x.    
+\end{coq}
+&
+\begin{coq}
+Definition Isetvar pc i := 
+do v <- pop; 
+do _ <- write REGS [: snd i <- v];
+PC ::= pc + #i 1.
+$ $
+\end{coq}
+\end{twolistings}
+
+\subsubsection{Correctness.} We are now ready to prove that our
+hardware design is a sound implementation of its specification. 
+%
+First, we define a logical relation between that relates the two
+encodings of machine state (in the specification and in the
+implementation), written $\equiv$. 
+%
+Then, we prove a simulation property between related states.
+\begin{theorem}
+  Let $s_1$ be a machine state as implemented in the specification, and
+  be $c_1$ the machine state as implemented in the circuit, such that
+  $s_1 \equiv c_1$.
+%
+  If $s_1$ makes a transition to $s_2$, then $m_1$ makes a transition
+  to $m_2$ such that $s_2 \equiv m_2$.
+\end{theorem}
+Note that we do not prove completeness here: it is indeed the case
+that our implementation exhibits behaviors that cannot be mapped to
+behaviors of the specification. 
+%
+In this example, the specification should be regarded as an
+abstraction of the actual behaviors of the implementation, which could
+be used to reason about the soundness of programs, either written by
+hand or produced by a certified compiler.
+%
+
+\subsubsection{Testing the design}
+Again, we compiled our Fe-Si design to an actual Verilog
+implementation. We load binary blobs that correspond to test programs
+in the code memory, and run it while monitoring the content of given
+memory locations. This gives rise to an highly stylized way of
+computing e.g., the Fibonacci sequence.
+
+\section{Discussion}\label{sec:discussion}
+We quickly review some elements that were not described in previous sections. 
+
+\subsubsection{Testing designs.}
+We put some emphasis on testing designs: a first obvious reason is to
+gain confidence that there is no lapse in either the semantics of the
+source language, nor the semantics of the target language. 
+%
+Another reason is that our use of program extraction is more delicate
+than what is done in, e.g., CompCert, because our program
+transformations use dependent types intensively. 
+%
+In the end, either Coq extraction mechanism or our Verilog back-end
+could introduce bugs in the generated code: by itself, this is a
+sufficient reason for testing.
+
+\subsubsection{Optimizing the layout of the designs.}
+Lava features a number of layout primitives, which makes it possible to
 describe more precisely what should be the hardware layout, yielding
 more efficient FPGA implementations. From a verification point of
 view, these layout combinators are irrelevant (they should have the
@@ -982,7 +1141,7 @@ same semantics as a general purpose binding combinator). Yet, we could
 investigate the use of a more expressive monad for combinational and
 pipelined circuits, in order to produce more efficient implementations. 
 
-\subsubsection{Scheduling actions}
+\subsubsection{Scheduling actions.}
 In Bluespec, a program is a set of rules (i.e., guarded atomic
 actions) that are non-deterministically executed one at a time. To
 implement a Bluespec program in hardware, the compiler needs to
@@ -993,23 +1152,25 @@ It was argued that scheduling can be implemented as rule
 composition~\cite{DBLP:conf/memocode/DaveAP07}, using a few
 combinators. 
 %
-In Fe-si, we look forward to implement more combinators that make it
+In Fe-Si, we look forward to implement more combinators that make it
 possible to assemble more efficient circuits, in a sound and precise
 way.
 %
 
-\subsubsection{Non-determinism}
-Non-determinism is useful when it comes to specification; and we find
-it pleasant to have a deterministic semantics for our Fe-Si
-programs. We would argue to have non-deterministic
+\subsubsection{Non-determinism.}
+Non-determinism is useful when it comes to specification, and we
+considered for a while adding non-determinism to Fe-Si. Yet, we argue
+that deterministic semantics are easier to reason with, and are closer
+to the deterministic behavior of the generated hardware. 
 
-\section{Implementation}
-The compiler implementation and documentation are available on- line
-at: 
+\section{Conclusion}
+Our compiler and its documentation are available on-line along with
+our test programs at the following url:
 %
 \begin{center}
-  \texttt{htt://foo.bar}
+  \url{http://gallium.inria.fr/~braibant/fe-si/}
 \end{center}
+
 
 
 
