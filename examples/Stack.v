@@ -24,6 +24,10 @@ Definition Next {A} (f : A -> option A) (m : A ):=
   end. 
 
 Module Spec. 
+  
+  (** This module corresponds to our specification of the stack
+  machine: it uses natural numbers everywhere, and uses dynamic check
+  to map undefined behaviors to the halting state *)
 
   Notation id := nat. 
   Inductive cond := Ceq | Cne | Cle | Cgt. 
@@ -40,7 +44,6 @@ Module Spec.
 
   
   Definition code := list instruction.
-
 
   Fixpoint code_at (C: code) (pc: nat) : option instruction :=
     match C, pc with
@@ -69,20 +72,28 @@ Module Spec.
   Require Import List. 
   
   Section t. 
-    (** Dynamic check that the state we reach is valid  *)
+    (** We use a dynamic check to verify that the state we reach is
+    valid, and some checks on, e.g., results of arithmetic operations,
+    to ensure that we are not outside of the scope of validity of this
+    definition. *)
   
-    Variable max_pc : nat.
+    Variable bound : nat.
     Definition dyncheck  (s : machine) :=
-      if Nat.ltb (pc s) max_pc then 
-        Some s
-      else None.
-    
+      check (Nat.ltb (pc s) bound);
+      check (Nat.ltb (List.length (stk s)) bound);
+      Some s.
+
     Definition step (s : machine) : option machine :=
       do op <- code_at (c s) (pc s);
       match op with 
-        | Iconst n => dyncheck (mk (c s) (pc s +1) (n :: stk s) (str s))
-        | Ivar x =>   dyncheck (mk (c s) (pc s +1) ((str s) x :: stk s) (str s))
+        | Iconst n => 
+          check (n <? bound);
+          dyncheck (mk (c s) (pc s +1) (n :: stk s) (str s))
+        | Ivar x => 
+          check (x <? bound);
+          dyncheck (mk (c s) (pc s +1) ((str s) x :: stk s) (str s))
         | Isetvar x => 
+          check (x <? bound);
           match stk s with
             | nil => None
             | v :: stk => 
@@ -93,6 +104,7 @@ Module Spec.
             | nil => None
             | cons _ nil => None
             | n1 :: n2 :: stk => 
+              check (n1 + n2 <? bound);
               dyncheck (mk (c s) (pc s +1) (n1 + n2 :: stk)  (str s) )
           end
         | Isub =>
@@ -116,8 +128,8 @@ Module Spec.
               let t := match test with 
                            | Ceq => NPeano.Nat.eqb n1 n2 
                            | Cne => negb (NPeano.Nat.eqb n1 n2)
-                           | Cle => NPeano.Nat.leb n1 n2 
-                           | Cgt => negb (NPeano.Nat.leb n1 n2)
+                           | Cle => (NPeano.Nat.leb n1 n2)%bool
+                           | Cgt => negb ((NPeano.Nat.leb n1 n2 ))%bool
                        end
               in
               if t  
@@ -130,7 +142,8 @@ Module Spec.
         | _ => None
       end.
   End t.
-(*             
+(** We were heavily inspired by the following definition that comes from a course by X. Leroy
+
   Inductive transition (C: code): machine_state -> machine_state -> Prop :=
   | trans_const: forall pc stk s n,
                    code_at C pc = Some(Iconst n) ->
@@ -207,13 +220,6 @@ Section t.
 
   Open Scope list_scope. 
   Definition INSTR := Ttuple (OPCODE :: VAL :: nil). 
-  
-  (*
-      c   : code;      
-      pc : nat;
-      stk : stack;
-      str : store
-   *)
   Definition Phi : state := 
     [
       Tregfile n INSTR;       (* the code *)
@@ -222,14 +228,7 @@ Section t.
       Treg VAL;                 (* the stack pointer *)
       Tregfile n VAL         (* the registers *)     
     ]. 
-  
-  Ltac set_env := 
-    set (CODE  := (var_0) : var Phi (Tregfile n INSTR));
-    set (PC    := var_S (var_0) : var Phi (Treg VAL));
-    set (STACK := var_S (var_S (var_0)) : var Phi (Tregfile n VAL));
-    set (SP    := var_S (var_S (var_S (var_0))) : var Phi (Treg VAL));
-    set (REGS  := var_S (var_S (var_S (var_S (var_0)))) : var Phi (Tregfile n INSTR)).
-    
+      
   Definition opcode {V} (I : expr V INSTR) : expr V OPCODE. 
     eapply Enth. 2: apply I. apply var_0.  
   Defined. 
@@ -242,7 +241,7 @@ Section t.
   Notation "x \oplus y" := (OrElse _ _ _ x y) (at level 51, right associativity). 
 
   Section code. 
-    (* We parametrise the following code by the variable parameter of the PHOAS representation.   *)
+    (** We parametrise the following code by the variable parameter of the PHOAS representation.   *)
     Variable V : type -> Type. 
 
     Definition CODE  := (var_0) : var Phi (Tregfile n INSTR).
@@ -383,7 +382,8 @@ End t.
 End Circuit.
 
 Section t. 
-  Variable n : nat. 
+  Variable size : nat. 
+  Notation n := (Word.power2 size). 
 
   Notation V := eval_type. 
   
@@ -394,14 +394,15 @@ Section t.
       | None => None
     end. 
   Require Import ZArith DList. 
-  Definition mk_val v : eval_type (W n) := Word.repr n (Z.of_nat v).
+  Definition mk_val v : eval_type (W size) := Word.repr size (Z.of_nat v).
 
   Notation "x =%= y" := (mk_val x = y) (at level 80).
   
-  Notation c  m2 := (DList.DList.get (Circuit.CODE n) m2).    
-  Notation pc m2 := (DList.DList.get (Circuit.PC n) m2).    
-  Notation stk m2 := (DList.DList.get (Circuit.STACK n) m2).
-  Notation sp m2 := (DList.DList.get (Circuit.SP n) m2).
+  Notation c  m2 := (DList.DList.get (Circuit.CODE size) m2).    
+  Notation pc m2 := (DList.DList.get (Circuit.PC size) m2).    
+  Notation stk m2 := (DList.DList.get (Circuit.STACK size) m2).
+  Notation sp m2 := (DList.DList.get (Circuit.SP size) m2).
+  Notation str m2 := (DList.DList.get (Circuit.REGS size) m2).
   (* 
     Definition CODE  := (var_0) : var Phi (Tregfile n INSTR).
     Definition PC    := var_S (var_0) : var Phi (Treg VAL).
@@ -410,12 +411,12 @@ Section t.
     Definition REGS  := var_S (var_S (var_S (var_S (var_0)))) : var Phi (Tregfile n VAL).
    *)
 
-  Eval compute in eval_type (Circuit.INSTR 3).
   Require Import ZArith. 
-
-  Definition cast_instr op val : eval_type (Circuit.INSTR n) :=
+  
+  Definition cast_instr op val : eval_type (Circuit.INSTR size) :=
     (Word.repr _ (Z.of_nat op), (Word.repr _ (Z.of_nat val) , tt)).
-  Definition mk_instr (i : Spec.instruction) : eval_type (Circuit.INSTR n) :=
+  
+  Definition mk_instr (i : Spec.instruction) : eval_type (Circuit.INSTR size) :=
     match i with
       | Spec.Iconst x =>  cast_instr 0 x 
       | Spec.Ivar x =>    cast_instr 1 x
@@ -432,7 +433,7 @@ Section t.
     end.
 
   (** The property that states that the code on both machines are compatible  *)
-  Definition R_code (m1 : Spec.machine) (m2 : eval_state (Circuit.Phi n)) :  Prop :=
+  Definition R_code (m1 : Spec.machine) (m2 : eval_state (Circuit.Phi size)) :  Prop :=
     forall p, p < n -> 
          match Spec.code_at (Spec.c m1) p with 
            | None => False
@@ -445,23 +446,32 @@ Section t.
          i =%= i' ->
          Regfile.get v i' = mk_val (List.nth i (List.rev l) 0).
   
+  Definition R_str st v := 
+    forall i i', i < n ->  
+            i =%= i' ->
+            st i =%= Regfile.get v i'.
+    
   (** The invariant that relates the execution of the machines  *)
-  Record R (m1 : Spec.machine) (m2 : eval_state (Circuit.Phi n)) :  Prop := 
+  Record R (m1 : Spec.machine) (m2 : eval_state (Circuit.Phi size)) :  Prop := 
     {
       Rpc1 : Spec.pc m1 =%= pc m2;
       Rpc2 : Spec.pc m1 < n;
+      (* properties about the stack *)
       Rstk : R_stk (Spec.stk m1) (stk m2);
       Rsp1 : List.length (Spec.stk m1) =%= sp m2;
-      Rsp2 : List.length (Spec.stk m1) < n
-
+      Rsp2 : List.length (Spec.stk m1) < n;
+      Rsp3 : forall x, List.In x (Spec.stk m1) -> x < n;
+      (* properties about the store *)
+      Rstr1  : R_str (Spec.str m1) (str m2);
+      Rstr2  : forall x, Spec.str m1 x < n
     }.
 
-  Hint Resolve Rpc1 Rpc2 Rstk Rsp1 Rsp2. 
+  Hint Resolve Rpc1 Rpc2 Rstk Rsp1 Rsp2 Rsp3 Rstr1 Rstr2. 
   
   Notation "x == y" := (R x y) (at level 80).
 
-  Lemma step_code_at {T} m1 m2 (f : expr V (W n) -> expr V (Circuit.INSTR n) -> 
-                                  action (Circuit.Phi n) V T):          
+  Lemma step_code_at {T} m1 m2 (f : expr V (W size) -> expr V (Circuit.INSTR size) -> 
+                                  action (Circuit.Phi size) V T):          
     R_code m1 m2 ->
     m1 == m2 -> 
     step (Circuit.code_at _ _ f)%action m2
@@ -478,7 +488,7 @@ Section t.
     tauto. 
   Qed.
   
-  Add  Ring wring : (Word.ring n).
+  Add  Ring wring : (Word.ring size).
     
   Lemma repr_add m x y: Word.repr m (x + y) = Word.add (Word.repr m x) (Word.repr m y).
     apply Word.unsigned_inj. simpl. 
@@ -523,6 +533,7 @@ Section t.
     rewrite <- H, <- H0. 
     apply Rval_sub. omega. 
   Qed. 
+
 
   Lemma Rval_length_1 {A} (l: list A) hd tl x: 
     l = hd :: tl ->
@@ -609,7 +620,7 @@ Section t.
   (** pushing elements on the stack preserves the stk part of the invariant *)
   Lemma push_correct_stk stk1 stk2 x1 x2 p: x1 =%= x2 -> 
                                       R_stk stk1 stk2  ->
-                                      p = mk_val (List.length stk1) ->
+                                      mk_val (List.length stk1) = p ->
                                       List.length stk1 < n -> 
                                       R_stk (x1 :: stk1) (Regfile.set (stk2) p x2).
   Proof. 
@@ -619,8 +630,8 @@ Section t.
     * rewrite Regfile.gso. rewrite List.app_nth1 by (rewrite List.rev_length;auto).      
       apply H;auto. 
       simpl in *. 
-      clear - Hstk Hi Hp. rewrite Hp. clear Hp. 
-      admit.
+      clear - Hstk Hi Hp. rewrite <- Hp. clear Hp. 
+      apply (Word.not_eqb size); assumption. 
     * rewrite List.app_nth2 by (rewrite List.rev_length;omega). 
       rewrite Hi. rewrite List.rev_length. rewrite minus_diag. simpl. 
       rewrite Regfile.gss.  auto. 
@@ -714,6 +725,15 @@ Section t.
   Hint Extern 4 (_ =%= _) =>  match goal with 
                                | H : _ == _ |- _ => clear - H; destruct H; simpl in * end.
 
+  Lemma hint_length m1 m2 x y s: m1 == m2 -> 
+                           Spec.stk m1 = x :: y :: s ->                                          
+                           Datatypes.length s < n.
+  Proof.
+    intros. destruct H; simpl in *.  rewrite H0 in Rsp5.  simpl in *. omega. 
+  Qed. 
+  
+  Hint Resolve hint_length. 
+  
   Lemma pop2_correct_stk m1 m2 x y s: m1 == m2 -> 
                                       Spec.stk m1 = x :: y :: s -> 
                                       R_stk s  (DList.hd (DList.tl (DList.tl m2))).
@@ -728,22 +748,21 @@ Section t.
     
 
           
-  Lemma stk_1 m1 m2 a1 a2 s: 
+  Lemma stk_1 m1 m2 a1 s: 
     m1 == m2 -> 
-    Spec.stk m1 = a1 :: a2 :: s -> 
+    Spec.stk m1 = a1 :: s -> 
     a1 =%= Regfile.get (stk m2) (Word.sub (sp m2) (Cword 1%Z)) . 
   Proof. 
     intros H Heq.
     destruct H as [Hpc1 Hpc2 Hstk Hsp].
     simpl in *. 
-    rewrite (Hstk (S(List.length s))); auto. 
+    rewrite (Hstk ((List.length s))); auto.
     rewrite Heq. simpl. 
-    rewrite List.app_nth2. rewrite List.app_length. simpl List.length. rewrite plus_comm. simpl plus. rewrite List.rev_length.  rewrite minus_diag. simpl. reflexivity. 
-    auto. 
-    rewrite <- Hsp. replace (S (List.length s)) with (List.length (Spec.stk m1) - 1). 
-    apply Rval_sub. 
+    rewrite List.app_nth2. rewrite List.rev_length.  rewrite minus_diag. simpl. reflexivity. 
     auto.
-    rewrite Heq.  simpl.  reflexivity. 
+    change (Cword 1%Z) with (mk_val 1). rewrite <- Hsp.
+    rewrite <- Rval_sub. 
+    rewrite Heq. simpl. rewrite <- minus_n_O. reflexivity. rewrite Heq. simpl. omega. 
   Qed. 
   
   Lemma stk_2 m1 m2 a1 a2 s: 
@@ -768,6 +787,48 @@ Section t.
       
   Transparent Diff.apply. Transparent Diff.add. Transparent Diff.init. 
   Transparent DList.get. 
+
+  Lemma Rsp3_pop2 m1 m2 x1 x2 s : 
+    m1 == m2 -> 
+    Spec.stk m1 = x1 :: x2 :: s -> 
+    (forall x, List.In x s -> x < n). 
+  Proof. 
+    intros. apply (Rsp3 _ _ H).  rewrite H0. simpl.  intuition. 
+  Qed.
+  Hint Resolve Rsp3_pop2 : stack. 
+
+  Lemma Rsp3_pop1 m1 m2 x1 s : 
+    m1 == m2 -> 
+    Spec.stk m1 = x1 :: s -> 
+    (forall x, List.In x s -> x < n). 
+  Proof. 
+    intros. apply (Rsp3 _ _ H).  rewrite H0. simpl.  intuition. 
+  Qed.
+  Hint Resolve Rsp3_pop1 : stack. 
+
+  Ltac t := 
+    match goal with 
+        H : Spec.step ?n ?m = Some ?m', 
+            Hi : Spec.code_at _ _ = _    
+        |- _ =>
+        unfold Spec.step in H;
+          rewrite Hi in H; 
+          unfold Spec.dyncheck in H;
+          simpl in H; 
+          repeat match type of H with 
+                   | context [match ?x with | [] => _ | _::_ => _ end] => 
+              destruct (x) eqn:?
+                 end;                      
+          (repeat match goal with 
+                    | H : (check ?x ; _) = _ |- _ => consider x; intros
+                  end);
+          (try match goal with 
+                 | H : Some _ = Some _ |- _ => simpl in H; inject H
+                                                       | H : Some _ =  None |- _ => discriminate
+                                                       | H : None = Some _ |- _ => discriminate
+               end)
+    end.
+
   
   Lemma branch_cond_correct m1 m2 (Hcode : R_code m1 m2) (H : m1 == m2) m1' 
         (Hm1: Spec.step n m1 = Some m1') 
@@ -775,11 +836,12 @@ Section t.
         cond ofs
         (Hi : Spec.code_at (Spec.c m1) (Spec.pc m1) = Some (Spec.Ibranch_cond cond ofs))
         (Hcond : forall x1 y1 x2 y2, 
+                   x1 < n -> y1 < n ->
               x1 =%= x2 -> 
               y1 =%= y2 ->
               eval_expr B (test (Evar x2) (Evar y2)) = branch_cond_eval cond x1 y1)
   : 
-    match step (Circuit.Ibranch_cond n V test (Evar (mk_val (Spec.pc m1))) (Evar (mk_instr (Spec.Ibranch_cond cond ofs)))) m2 with 
+    match step (Circuit.Ibranch_cond size V test (Evar (mk_val (Spec.pc m1))) (Evar (mk_instr (Spec.Ibranch_cond cond ofs)))) m2 with 
       | None => False
       | Some m2' => m1' == m2'
     end.      
@@ -788,19 +850,22 @@ Section t.
     destruct (Spec.stk m1) as [ | n2 [| n1 s]] eqn: Hs; try discriminate. 
     unfold step. simpl. unfold Sem.Dyn.Bind. unfold Sem.Dyn.OrElse. 
     rewrite (Hcond n1 n2).
+    
     destruct cond; simpl in *;
     match goal with 
         |- context [if ?x then _ else _] => consider x; intros
-    end; 
+    end;
     unfold Spec.dyncheck in *; simpl in *;
-    match goal with 
+    repeat    match goal with 
         H : context[(check ?x ; _ )] |- _ => consider x; intros
     end;
       try discriminate;
-    match goal with 
-        H : Some _ = Some _ |- _ => inject H
-    end; simpl; 
-    constructor; simpl; eauto with *. 
+      try match goal with 
+          H : Some _ = Some _ |- _ => inject H
+      end; simpl; constructor; auto with val; simpl; eauto using Rsp3_pop2; try apply H. 
+    
+    - apply (Rsp3 _ _ H). rewrite Hs; intuition. 
+    - apply (Rsp3 _ _ H). rewrite Hs; intuition. 
     
     - clear Hcond Hm1. 
       destruct H. rewrite (Rstk0 (List.length (Spec.stk m1) - 2)); auto. 
@@ -819,6 +884,44 @@ Section t.
       auto with val. 
   Qed. 
 
+  Lemma Word'eqb_faithful x1 y1:   
+    x1 < n -> y1 < n ->
+    Word.eqb (mk_val x1) (mk_val y1) = NPeano.Nat.eqb x1 y1.
+  Proof. 
+    intros. 
+    consider (NPeano.Nat.eqb x1 y1); intros. 
+    rewrite Word.eqb_correct. 
+    unfold mk_val. subst. reflexivity. 
+    destruct (Word.eqb (mk_val x1) (mk_val y1)) eqn:H'; intros; trivial.
+    exfalso. 
+    rewrite Word.eqb_correct in H'. 
+    unfold mk_val, Word.repr in H'. injection H'. clear H'. intros H'. 
+    rewrite ? Zmod_small in H' by (clear H'; rewrite <- Word.Z'of_nat_power2; zify; omega).
+    zify; omega. 
+  Qed. 
+  
+  Lemma Word'leb_faithful x1 y1:   
+    x1 < n -> y1 < n ->
+    (Word.le (mk_val x1) (mk_val y1))%bool = NPeano.Nat.leb x1 y1.
+  Proof. 
+    intros. 
+    consider (NPeano.Nat.leb x1 y1); intros. 
+    rewrite Word.zify_le. simpl. 
+    rewrite ? Zmod_small by (rewrite <- Word.Z'of_nat_power2; zify; omega). zify; omega. 
+    assert (~ (Word.val (mk_val x1)) <= Word.val (mk_val y1))%Z. simpl. 
+    rewrite ? Zmod_small by (rewrite <- Word.Z'of_nat_power2; zify; omega). zify; omega. 
+    rewrite <- Word.zify_le in H2.
+    destruct (Word.le (mk_val x1) (mk_val y1)); congruence. 
+  Qed. 
+  
+  Lemma Rsp3_push  (y : nat)  s: 
+    y < n ->
+    (forall x, List.In x s -> x < n) -> 
+    (forall x, y = x \/ List.In x s -> x < n). 
+  Proof. 
+    intros. destruct H; intuition. 
+  Qed.
+
                           (****************)
                           (* MAIN THEOREM *)
                           (****************)
@@ -827,7 +930,7 @@ Section t.
            m1 == m2 -> 
     forall m1', 
     Spec.step n m1 = Some m1' -> 
-    match step (Circuit.Code n V) m2 with 
+    match step (Circuit.Code size V) m2 with 
       | None => False
       | Some m2' => m1' == m2'
     end.
@@ -840,7 +943,7 @@ Section t.
 
     2: (destruct H as [H1];
         refine (let H := Hcode (Spec.pc m1) _ in _);
-        [admit |  rewrite Hi in H; tauto]). 
+        [ eauto |  rewrite Hi in H; tauto]). 
     
     
   
@@ -848,107 +951,125 @@ Section t.
     repeat match goal with 
              | |- context [Word.eqb ?x ?y] => replace (Word.eqb x y) with true by reflexivity
              |  |- context [Word.eqb ?x ?y] => replace (Word.eqb x y) with false by reflexivity
-           end.
+           end.    
     - (** Iconst *)
-      unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1.  inject Hm1. 
-      simpl. Transparent DList.get. Transparent Diff.apply.       simpl. 
+      t.
       Hint Resolve push_correct_stk. 
-      constructor; simpl; auto with *; eauto with *.
-       discriminate. 
-    - (** Ivar *)
-      unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1.  inject Hm1.
+      constructor; simpl; auto with *; eauto.  
       
-      {constructor; simpl; auto with *; eauto with *.
-       + apply push_correct_stk. admit. auto. destruct H; simpl in *; auto. 
+      intros. destruct H3. subst.  omega. 
+      apply (Rsp3 _ _ H). auto.
+      apply H. 
+      
+    - (** Ivar *)
+      t. 
+      
+      {constructor; simpl; auto with *. 
+       + apply push_correct_stk; (try apply H; auto).
+       + intros y [H' | H']. apply Rstr2 with (x := x) in H. omega. apply H; auto. 
+       + apply H.  
+       + apply H.  
       }
-      discriminate. 
 
     - (** Isetvar *)                        
-      unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1; destruct (Spec.stk m1) eqn:?; try discriminate. inject Hm1.  
-      simpl.  
-      constructor;simpl; auto with *; eauto with *. 
-      + apply (pop_correct_stk n0 s) . rewrite <- Heqs. destruct H.  simpl in *; eauto. 
-    - unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1;  destruct (Spec.stk m1) as [ | a1 [ |a2 s]] eqn:?; try discriminate. inject Hm1.  
+      t. 
+      constructor;simpl; auto with *.
+      + apply (pop_correct_stk n s) . rewrite <- Heqs. destruct H.  simpl in *; eauto. 
+      + eauto.   
+      + eauto with stack. 
+      + unfold R_str. simpl.
+        intros.
+        unfold Spec.update. 
+        consider (NPeano.Nat.eqb x i); intros; subst. 
+        * rewrite Regfile.gss. 
+          eapply stk_1; eauto.  rewrite Word.eqb_correct. reflexivity. 
+        * rewrite Regfile.gso. apply H; auto. 
+          change (Word.repr size (Z.of_nat x)) with (mk_val x). rewrite (Word'eqb_faithful x i); auto.
+          consider (NPeano.Nat.eqb x i); congruence; auto. 
+      + unfold R_str. simpl.
+        intros i.
+        unfold Spec.update. 
+        consider (NPeano.Nat.eqb x i); intros; subst. 
+        * eapply Rsp3; eauto.  rewrite Heqs. simpl. intuition. 
+        * eapply Rstr2; eauto.  
+
+    - t. 
       {
-        constructor; simpl; auto with *; eauto with *. 
+        constructor; simpl; auto with * ; try (solve [apply H]).         
         + intros. 
           eapply push_correct_stk.
-          pose ( H1 := stk_1 m1 m2 a1 a2 s H Heqs). simpl in H1. rewrite <- H1. clear H1. 
-          pose ( H2 := stk_2 m1 m2 a1 a2 s H Heqs). simpl in H2. rewrite <- H2. clear H2. 
+          pose ( I := stk_1 m1 m2 n (n0::l) H Heqs). simpl in I. rewrite <- I. clear I. 
+          pose ( I := stk_2 m1 m2 n n0 l H Heqs). simpl in I. rewrite <- I. clear I. 
           rewrite plus_comm. apply Rval_add. 
 
           
           eauto.
  
-          replace (List.length s) with (List.length (Spec.stk m1) - 2).
-          simpl. rewrite (Rval_sub _ 2). f_equal. destruct H; simpl in *; eauto. rewrite Heqs. simpl. omega. rewrite Heqs. simpl. omega. 
+          replace (List.length l) with (List.length (Spec.stk m1) - 2).
+          simpl. rewrite (Rval_sub _ 2). f_equal. destruct H; simpl in *; eauto. rewrite Heqs. simpl. omega. rewrite Heqs. simpl. omega. omega. 
+        + eauto. 
+        + apply Rsp3_push; auto.   eauto with stack. 
+  
       }
     - (** Isub *)
-      unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; 
-      simpl in Hm1; destruct (Spec.stk m1) as [ | a1 [ |a2 s]] eqn:?; try discriminate;
-      repeat (match goal with 
-                | H : context [ check ?x; _ ] |- _ => consider x; intros
-              end); try discriminate.       
-      inject H2.
+      t. 
       {
-        constructor; simpl. 
-        + auto with val. 
-        + auto. 
+        constructor; simpl; auto with *. 
         + intros.  eapply push_correct_stk. 
-          pose ( H' := stk_1 m1 m2 a1 a2 s H Heqs). simpl in H'. rewrite <- H'. clear H'. 
-          pose ( H' := stk_2 m1 m2 a1 a2 s H Heqs). simpl in H'. rewrite <- H'. clear H'. 
+          pose ( H' := stk_1 m1 m2 n (n0::l) H Heqs). simpl in H'. rewrite <- H'. clear H'. 
+          pose ( H' := stk_2 m1 m2 n n0 l H Heqs). simpl in H'. rewrite <- H'. clear H'. 
           apply Rval_sub. 
           auto. 
           eauto. 
-          replace (List.length s) with (List.length (Spec.stk m1) - 2). 
-          simpl. rewrite (Rval_sub _ 2). f_equal. destruct H. simpl in *. eauto. rewrite Heqs. simpl. omega. rewrite Heqs. simpl. omega. 
-        + eauto using pop_correct_sp. 
+          replace (List.length l) with (List.length (Spec.stk m1) - 2). 
+          simpl. rewrite (Rval_sub _ 2). f_equal. destruct H. simpl in *. eauto. rewrite Heqs. simpl. omega. rewrite Heqs. simpl. omega.  omega.         
+        + eauto. 
+        + eapply Rsp3_push; auto. assert (n0 < t.n). intuition. apply Rsp6. rewrite Heqs. simpl; intuition. omega.
+          eauto with stack. 
+        + apply H. 
+        + apply H. 
       }
     -  (** Branch_forward *)
-      unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1; match goal with | H : context [NPeano.Nat.ltb ?x ?y] |- _ => destruct (NPeano.Nat.ltb x y) eqn:? end; simpl in Hm1; try discriminate. inject Hm1.
-      {
-        constructor; simpl; auto with *; eauto with *. 
-      }      
-    - 
-      unfold Spec.step in Hm1; rewrite Hi in Hm1;simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1.  
-      consider (NPeano.leb ofs (Spec.pc m1 + 1)); intros Hofs; try discriminate. 
-      consider (NPeano.Nat.ltb (Spec.pc m1 + 1 - ofs) n); intros Hofs'; try discriminate. 
-      intros Hm. inject Hm. 
-      simpl. 
-      {
-        constructor; simpl; auto with *; eauto with *.  
-      } 
+      t. 
+        constructor; simpl; auto with *; eauto with *. apply H. 
+    -                           (* branch backward *)
+      t. constructor; simpl; auto with *; eauto with *. apply H. 
     - destruct c; 
       repeat match goal with 
              | |- context [Word.eqb ?x ?y] => replace (Word.eqb x y) with true by reflexivity
              |  |- context [Word.eqb ?x ?y] => replace (Word.eqb x y) with false by reflexivity
            end;
       apply branch_cond_correct; auto. 
-      + clear. intros. simpl. rewrite <- H, <- H0.
-        admit. 
-      + clear. intros. simpl. rewrite <- H, <- H0.
-        admit. 
-      + clear. intros. simpl. rewrite <- H, <- H0.
-        admit. 
-      + clear. intros. simpl. rewrite <- H, <- H0.
-        admit. 
+      + intros. simpl. 
+        
+        rewrite <- H2, <- H3. apply Word'eqb_faithful; auto. 
+      + intros; simpl. 
+        f_equal. rewrite <- H2, <- H3. apply Word'eqb_faithful; auto. 
+      + intros; simpl. 
+        rewrite <- H2, <- H3. 
+        rewrite <- Word.le_is_lt_or_eq. apply Word'leb_faithful; auto. 
+      + intros; simpl. 
+        rewrite <- H2, <- H3. 
+        replace (Word.lt (mk_val y1) (mk_val x1)) with (negb (Word.le (mk_val x1) (mk_val y1))).
+        f_equal. apply Word'leb_faithful; auto. 
+        consider (Word.le (mk_val x1) (mk_val y1)); intros;simpl;
+        consider (Word.lt (mk_val y1) (mk_val x1)); intros;simpl; try reflexivity. 
+        omega. 
+        omega. 
+        
     - simpl. 
       unfold Spec.step in Hm1; rewrite Hi in Hm1; simpl in Hm1; unfold Spec.dyncheck in Hm1; simpl in Hm1. discriminate. 
   Qed.
+  
+  (** Sanity check: we verify that the only axiom we depend on is
+  functional extensionality (which comes from being used in the
+  definition of Word) *)
 
-  Print Assumptions circuit_correct. 
-Require Compiler. 
-Require Import FirstOrder RTL Core. 
+  Print Assumptions circuit_correct.  
+End t. 
 
-Definition t := (Compiler.fesiopt _ _ (Code 8)). 
+Require Compiler.  
+Require Import FirstOrder RTL Core.
 
-
-(* Definition finish {Phi t} x := List.length (FirstOrder.bindings Phi t(FirstOrder.compile _ _ x)).  *)
-(* Eval vm_compute in finish (Compiler.Compile _ _ (Ex2.Code 4) _).  *)
-(* Definition step {Phi t} x :=  (CSE.Compile Phi t  (CP.Compile _ _ x)).  *)
-(* Eval vm_compute in finish (step (Compiler.Compile _ _ (Ex2.Code 4) ) _).  *)
-(* Eval vm_compute in finish (step (step (Compiler.Compile _ _ (Ex2.Code 4) )) _).  *)
-(* Eval vm_compute in finish (step (step (step (Compiler.Compile _ _ (Ex2.Code 4) ))) _).  *)
-
-
+Definition t := (Compiler.fesiopt _ _ (Circuit.Code 8)). 
 

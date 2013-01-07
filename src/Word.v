@@ -276,6 +276,58 @@ Proof.
   rewrite Bool.eq_iff_eq_true; rewrite Bool.orb_true_iff. 
   rewrite zify_le, zify_lt, zify_eqb. omega. 
 Qed. 
+
+Add Rec LoadPath "./" as Synthesis.
+Require Import Consider. 
+
+Instance reflect_le_Z {n} (x y : T n): Reflect (le x y) (val x <= val y) (val y < val x).
+Proof.
+  destruct (le x y)eqn:H; constructor.
+  rewrite zify_le in H. auto. 
+  rewrite <- zify_lt. unfold lt. unfold zlt. unfold le,zle in *.   
+  replace (y ?= x) with (CompOpp (x ?= y)). destruct (x ?= y); try discriminate; reflexivity.
+  clear. rewrite Zcompare_antisym. reflexivity.
+Qed.
+
+Instance reflect_lt_Z {n} (x y : T n): Reflect (lt x y) (val x < val y) (val y <= val x).
+Proof.
+  destruct (lt x y)eqn:H; constructor.
+  rewrite zify_lt in H. auto. 
+  rewrite <- zify_le. unfold lt, zlt, le, zle in *.  
+  replace (y ?= x) with (CompOpp (x ?= y)). destruct (x ?= y); try discriminate; reflexivity.
+  clear. rewrite Zcompare_antisym. reflexivity.
+Qed.
+
+Instance reflect_eqb_Z {n} (x y : T n): Reflect (eqb x y) (val x = val y) (val y <> val x).
+Proof.
+  destruct (eqb x y)eqn:H; constructor.
+  rewrite zify_eqb in H. auto. 
+  rewrite <- zify_eqb. unfold eqb in *.
+  replace (y ?= x) with (CompOpp (x ?= y)). destruct (x ?= y); try discriminate; reflexivity.
+  clear. rewrite Zcompare_antisym. reflexivity.
+Qed.
+
    
 
-  
+Fixpoint power2 n : nat := 
+  match n with 
+    | 0 => 1
+    | S n => power2 n + power2 n
+  end%nat. 
+
+Lemma Z'of_nat_power2 k : Z.of_nat (power2 k) = two_power_nat k. 
+Proof. 
+  induction k. reflexivity. 
+  simpl. rewrite two_power_nat_S.  rewrite Nat2Z.inj_add. rewrite IHk.  ring. 
+Qed. 
+
+Lemma not_eqb n : forall p q, (p < power2 n)%nat -> (q < p)%nat -> eqb (repr n (Z.of_nat p)) (repr n (Z.of_nat q)) = false. 
+Proof. 
+  intros. 
+  destruct (eqb (repr n (Z.of_nat p)) (repr n (Z.of_nat q))) eqn:H'; intros; trivial. 
+  exfalso. 
+  rewrite eqb_correct in H'. 
+  unfold repr in H'. injection H'. clear H'. intros H'. 
+  rewrite ? Zmod_small in H' by (clear H'; rewrite <- Z'of_nat_power2; zify; omega).
+  zify; omega. 
+Qed. 
