@@ -171,75 +171,8 @@ literate=
     {\\xorb}{{$\oplus$}}1
     {\\andb}{{$\wedge$}}1
 }[keywords,strings]
-\lstdefinestyle{ka}{
-language=Coq,
-literate=
-   {=>}{{$\Rightarrow$}}1
-   {\\tab}{{\quad}}1
-   {@}{{$\cdot$}}1
-   {\\@}{{@}}1
-   {<->}{\,{$\leftrightarrow$\,}}2
-   {>->}{{$\rightarrowtail$}}2
-   {->}{{$\to$}}1 
-   {-->}{{$\to$}}2 
-   {\\in}{{$\in$}}1
-   {++}{{$\cup$}}1
-   {\\times}{{$\times$}}1
-   {\\To}{{$\Rightarrow$}}1
-   {<==}{{$\subseteq$}}1
-   {\#}{{$^\star$}}1 
-   {\/\\}{{$\wedge$}}1
-   {|-}{{$\vdash$}}1
-   {\\\/}{{$\vee$}}1
-   {~}{{\mbox{}}}1
-   {~~}{{$\approx$}}1
-   {forall}{{$\forall$}}1
-   {forall-}{{$\forall$}}1
-   {exists}{{$\exists$}}1
-   {exists-}{{$\exists$}}1
-   {[blank]}{{\mbox{}}}1
-   {==}{{$\equiv$}}1
-   {\\o}{{$\circ$}}1
-}
-\lstdefinestyle{aac}{
-language=Coq,
-literate=
-    {==>}{{$\Rightarrow$}}1 
-    {=>}{{$\Rightarrow$}}1
-    {>->}{{$\rightarrowtail$}}2
-    {->}{{$\rightarrow\,$}}2
-    {<-}{{$\leftarrow\,$}}2
-    {<==}{{$\subseteq$}}1
-    {\/\\}{{$\wedge$}}1
-    {|-}{{$\vdash$}}1
-    {\\\/}{{$\vee$}}1
-    {\\tab}{{$\quad$}}1
-    {\\ttab}{{$\qquad$}}1
-    {~}{{\ }}1    
-    {`}{{\;}}1
-    {\\cup}{{$\cup$}}1
-    {\\cap}{{$\cap$}}1
-    {\\emptyset}{{$\emptyset$}}1
-    {sigma}{{$\sigma$}}1
-    {Gamma}{{$\Gamma$} }1
-    {forall}{{$\forall$}}1
-    {exists}{{$\exists$}}1
-    {^2}{{$^2$}}1
-    {<|}{{$\,\lhd\quad$}}3
-    {[|}{{$\llbracket$}}1
-    {|]}{{$\rrbracket$}}1
-    {\{|}{{$\llparenthesis$\ }}1
-    {|\}}{{\ $\rrparenthesis$}}1
-    % {[|}{{[|}}1
-    % {|]}{{|]}}1
-    {\\fun}{{$\lambda$}}1
-}
 
 \lstnewenvironment{coq}{\lstset{language=Coq}}{}
-\lstnewenvironment{scoq}{\lstset{language=Coq,basicstyle=\scriptsize}}{}
-\lstnewenvironment{coqka}{\lstset{language=Coq,style=ka}}{}
-\lstnewenvironment{coqaac}{\lstset{language=Coq,style=aac}}{}
+\lstnewenvironment{mcoq}{\lstset{language=Coq,xleftmargin=3pt}}{}
 % pour inliner dans le texte
 \def\coqe{\lstinline[language=Coq, basicstyle=\normalsize]}
-\def\coqeka{\lstinline[language=Coq,style=ka, basicstyle=\normalsize]}
-\def\coqeaac{\lstinline[language=Coq,style=aac, basicstyle=\normalsize]}

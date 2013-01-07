@@ -20,7 +20,7 @@
 @string{lfcs="LFCS, Dept. of Comp. Sci.,  Edinburgh Univ."}
 @string{lip="LIP -- ENS Lyon"}
 @string{hal="http://hal.archives-ouvertes.fr/"}
-@string{uccl="Cambridge Univ., Computer Lab"}
+@string{uccl="Cambridge Univ., Comp. Lab"}
 
 @string{acm="ACM"}
 @string{ieee="IEEE"}
@@ -74,7 +74,8 @@
 @string{hml="Handbook of Mathematical Logic"}
 @string{hphl="Handbook of Philosophical Logic"}
 
-@TechReport{UCAM-CL-TR-77,
+
+@misc{UCAM-CL-TR-77,
   author =	 {M. Gordon},
   title =	 {{W}hy {H}igher-{O}rder {L}ogic is a {G}ood
                   {F}ormalism for {S}pecifying and {V}erifying
@@ -235,14 +236,6 @@ well.}
     pages = {257-310}
 }
 
-@TechReport{UCAM-CL-TR-77,
-  author =	 {M. Gordon},
-  title = 	{{W}hy {H}igher-{O}rder {L}ogic is a {G}ood {F}ormalism for {S}pecifying and {V}erifying {H}ardware},
-  institution =  uccl,
-  issn = 	 {1476-2986},
-  number = 	 {UCAM-CL-TR-77},
-  year=1985,
-}
 
 @article{DBLP:journals/fac/SlindOIG07,
   author    = {K. Slind and 
@@ -378,19 +371,6 @@ year=2004}
 }
 
 
-@inproceedings{hanna-veritas,
-  author    = {F. K. Hanna and
-               N. Daeche and
-               M. Longley},
-  title     = {{Veritas$^{\mbox{+}}$: A Specification Language Based on Type
-               Theory}},
-  booktitle = {{Hardware Specification, Verification and Synthesis}},
-  publisher = sv,
-  series    = lncs,
-  year      = {1989},
-  pages     = {358-379},
-  isbn      = {3-540-97226-9},
-}
 
 @INPROCEEDINGS{harrison-euclidean,                                           
 author          = {J. R. Harrison},
@@ -467,13 +447,6 @@ year            = 2005}
   bibsource = {DBLP, http://dblp.uni-trier.de}
 }
 
-@MISC{coquet,
-  author = {T. Braibant},
-  title = {},
-  month = jun,
-  year = {2011},
-  howpublished={\url{http://sardes.inrialpes.fr/~braibant/coquet}}
-}
 
 @MISC{iverilog,
   howpublished={\url{http://iverilog.icarus.com/}}
@@ -586,7 +559,6 @@ year            = 2005}
   author = {Xavier Leroy},
   title = {Mechanized semantics},
   booktitle = {Logics and languages for reliability and security},
-  editors = {J. Esparza and B. Spanfelner and O. Grumberg},
   series = {NATO Science for Peace and Security Series D: Information and Communication Security},
   volume = 25,
   pages = {195--224},
@@ -616,4 +588,33 @@ transformation (dead code elimination) and its proof of correctness.}
   year      = 1988,
   pages     = {199-208},
   publisher = {ACM},
+}
+
+@article{DBLP:journals/isse/RichardsL11,
+  author    = {Dominic Richards and
+               David R. Lester},
+  title     = {{A monadic approach to automated reasoning for Bluespec SystemVerilog}},
+  journal   = {ISSE},
+  volume    = {7},
+  number    = {2},
+  year      = {2011},
+  pages     = {85-95},
+  ee        = {http://dx.doi.org/10.1007/s11334-011-0149-0},
+  bibsource = {DBLP, http://dblp.uni-trier.de}
+}
+
+@MISC{fesi,
+  howpublished={\url{http://gallium.inria.fr/~braibant/fe-si/}}
+}
+
+
+@inproceedings{DBLP:conf/cpp/Braibant11,
+  author    = {T. Braibant},
+  title     = {{Coquet: A Coq Library for Verifying Hardware}},
+  booktitle = {Proc.\ CPP},
+  year      = {2011},
+  pages     = {330-345},
+  publisher = {Springer},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {7086},
 }
