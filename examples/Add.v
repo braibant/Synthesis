@@ -56,6 +56,8 @@ refine
 Defined. 
 Require Import DList. 
 
+(*
+(** Sanity check *)
 Definition t l := Front.Eval ([Treg (Int [2^4]); Treg (Int [2^ 4])]) l  _ (test 4) (Diff.init _).
 Definition l : eval_state ([Treg (Int [2^4]); Treg (Int [2^ 4])]).
   simpl.
@@ -65,3 +67,4 @@ Definition l : eval_state ([Treg (Int [2^4]); Treg (Int [2^ 4])]).
 Defined.
 
 Eval compute in t l .
+*)

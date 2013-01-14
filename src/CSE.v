@@ -1,3 +1,4 @@
+Add Rec LoadPath "./" as Synthesis. 
 Require Import Common DList Core Eqdep RTL. 
 
 
@@ -44,54 +45,14 @@ Section s.
   | Snegb : sval B -> sval B
   | Seq : forall t : type, sval t -> sval t -> sval B
   | Slt : forall n : nat, sval (Int n) -> sval (Int n) -> sval B
+  | Sle : forall n : nat, sval (Int n) -> sval (Int n) -> sval B
   | Sadd : forall n : nat, sval (Int n) -> sval (Int n) -> sval (Int n)
   | Ssub : forall n : nat, sval (Int n) -> sval (Int n) -> sval (Int n)
   | Slow : forall n m : nat, sval (Int (n + m)) -> sval (Int n)
   | Shigh : forall n m : nat, sval (Int (n + m)) -> sval (Int m)
   | ScombineLH : forall n m : nat,
                  sval (Int n) -> sval (Int m) -> sval (Int (n + m)). 
-  (*
-  Section induction. 
-    (** Since the induction principle that is generated is not
-      useful, we have to define our own.  *)
-    
-      Variable P : forall t : type, sval t -> Prop.  
-      Hypothesis Hread : forall t v, P t (SRead t v).
-      Hypothesis Hvar : forall (t : type) (v : nat), P t (SVar t v). 
-      Hypothesis Hconstant : 
-      forall (ty : type) (c : constant ty), P ty (SConstant ty c). 
-      Hypothesis Hmux : forall (t : type) (e : sval B) (l r : sval t),
-                          P B e -> P t l -> P t r ->  P t (SMux t e l r ).  
-      Hypothesis Htuple : forall (l : list type) (exprs : DList.T sval l),
-                            DList.Forall P exprs -> 
-                            P (Ttuple l) (STuple l exprs). 
-      Hypothesis Hbuiltin : 
-      forall (args : list type) (res : type) (f0 : builtin args res)
-        (t : DList.T sval args), 
-        DList.Forall P t ->
-        P res (SBuiltin args res f0 t).     
 
-      Lemma sval_ind_alt (t : type) (sv : sval t) :  P t sv. 
-      refine (let fix fold (t : type) (sv : sval t) :  P t sv  := 
-                  match sv with
-                    | SRead t v =>  Hread t v
-                    | SVar t x => Hvar t x
-                    | SConstant t x => Hconstant t x
-                    | SMux t x x0 x1 => Hmux t _ _ _ (fold _ x) (fold _ x0) (fold _ x1)
-                    | STuple l x => Htuple l x _ 
-                    | SBuiltin arg res f x => Hbuiltin arg res f _ _
-                  end in fold t sv). 
-      {
-        induction x. simpl; apply I.
-        split; [apply fold | apply IHx]; auto.      
-      }
-      { clear f. 
-        induction x. simpl; apply I. 
-        split; [apply fold | apply IHx]; auto. }
-      Qed. 
-  End induction. 
-
-   *)
   Arguments STuple {l}%list _%dlist. 
 
 
@@ -142,6 +103,7 @@ Section s.
           | Slt n a b => do a <- eval_sval a; 
                         do b <- eval_sval b; 
                         Some (@Word.lt n a b)
+          | Sle n a b => do a <- eval_sval a; do b <- eval_sval b; Some (@Word.le n a b)
           | Sadd n a b => do a <- eval_sval a; 
                          do b <- eval_sval b; 
                          Some (@Word.add n a b)
@@ -199,6 +161,8 @@ Section s.
             type_eqb t1 t2 && (a1 == a2 && b1 == b2)          
         | Slt n1 a1 b1, Slt n2 a2 b2 => 
           NPeano.Nat.eqb n1 n2 && (a1 == a2 && b1 == b2)          
+        | Sle n1 a1 b1, Sle n2 a2 b2 => 
+          NPeano.Nat.eqb n1 n2 && (a1 == a2 && b1 == b2)          
         | Sadd n1 a1 b1, Sadd n2 a2 b2 => 
           NPeano.Nat.eqb n1 n2 && (a1 == a2 && b1 == b2)          
         | Ssub n1 a1 b1, Ssub n2 a2 b2 => 
@@ -209,6 +173,10 @@ Section s.
           NPeano.Nat.eqb n1 n2 &&  NPeano.Nat.eqb m1 m2 && (a1 == a2)
         | ScombineLH n1 m1 a1 b1, ScombineLH n2 m2 a2 b2 => 
           NPeano.Nat.eqb n1 n2 &&  NPeano.Nat.eqb m1 m2 && (a1 == a2) && b1 == b2
+                                                                                 
+        (** We may check for more equivalences here, like [Slow 0 n x == x],
+         but we refrain to do so for now, because it complicates the sval_eqb a lot *)
+
         | _, _ => false
       end%bool where "n == m" := (sval_eqb n m). 
   
@@ -235,6 +203,7 @@ Section s.
         | Enegb a  => (Enegb _ _ (fst a),  Some (Snegb (snd a)))
         | Eeq t a b => (Eeq _ _ t (fst a) (fst b), Some (Seq t (snd a) (snd b)))
         | Elt n a b => (Elt _ _ n (fst a) (fst b), Some (Slt n (snd a) (snd b)))
+        | Ele n a b => (Ele _ _ n (fst a) (fst b), Some (Sle n (snd a) (snd b)))
         | Eadd n a b => (Eadd _ _ n (fst a) (fst b), Some (Sadd n (snd a) (snd b)))
         | Esub n a b => (Esub _ _ n (fst a) (fst b), Some (Ssub n (snd a) (snd b)))
         | Elow n m a => (Elow _ _ n m (fst a), Some (Slow n m (snd a)))

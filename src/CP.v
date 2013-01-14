@@ -30,12 +30,6 @@ Section t.
   (* bang := lift Lift *)
   Notation bang x := (do e <- x; (Some (Lift e))). 
   Notation "!!" := (None). 
-  Notation bop op dl:= 
-  (let a := DList.hd dl in 
-   let b := DList.hd (DList.tl dl) in 
-     do a <- (snd a);            (* take the symbolic value of a *)
-     do b <- (snd b);            (* take the symbolic value of b *)
-     Some (op a b)).            (* apply the operation on the symbolic values *)
 
   Require Import RTL. 
   Definition cp_expr t (e : expr Phi V t) : (expr Phi Var t) * (option bexpr) :=
@@ -57,6 +51,7 @@ Section t.
                            do a <- snd a; Some (Not a))
             | Eeq t a b => (Eeq _ _ t (fst a) (fst b), !!)
             | Elt n a b => (Elt _ _ n (fst a) (fst b), !!)
+            | Ele n a b => (Ele _ _ n (fst a) (fst b), !!)
             | Eadd n a b => (Eadd _ _ n (fst a) (fst b), !!)
             | Esub n a b => (Esub _ _ n (fst a) (fst b), !!)
             | Elow n m a => (Elow _ _ n m (fst a), !!)

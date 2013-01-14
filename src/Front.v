@@ -1,3 +1,4 @@
+Add Rec LoadPath "./" as Synthesis. 
 Require Import Common.
 Require Import DList.
 Require Import Core. 
@@ -39,6 +40,7 @@ Section s.
 
     (* integer operations *)                                          
     | Elt   : forall n, expr (Int n) -> expr (Int n) -> expr B
+    | Ele   : forall n, expr (Int n) -> expr (Int n) -> expr B
     | Eadd  : forall n, expr (Int n) -> expr (Int n) -> expr (Int n)
     | Esub  : forall n, expr (Int n) -> expr (Int n) -> expr (Int n)
     | Elow  : forall n m, expr (Int (n + m)) -> expr (Int n)
@@ -87,6 +89,7 @@ Section s.
                             
       (* integer operations *)                                          
       | Elt n a b => @Word.lt n (eval_expr _ a) (eval_expr _ b)
+      | Ele n a b => @Word.le n (eval_expr _ a) (eval_expr _ b)
       | Eadd n a b => @Word.add n (eval_expr _ a) (eval_expr _ b)
       | Esub n a b => @Word.sub n (eval_expr _ a) (eval_expr _ b)
       | Elow n m a => @Word.low n m (eval_expr _ a) 
@@ -131,14 +134,10 @@ Notation "'do' x <~ a ; b " := (Bind' (Return a) (fun x =>  b))
 
 Notation "'ret' x" := (Return x) (at level 0) : action_scope .   
 
-(** old style binding, deprecated  *)
-Notation "'DO' X <- A ; B" := (Bind A (fun X => B)) (at level 200, X ident, A at level 100, B at level 200) : action_scope. 
-
 Arguments Assert {Phi Var} e%expr. 
 
 Definition When {Phi Var t} e a : action Phi Var t := @Bind Phi Var _ _ (Assert e) (fun _ => a). 
 Arguments When {Phi Var t} _%expr _%action. 
-Notation " 'WHEN' e ; B" := (When e B) (at level 200, e at level 100, B at level 200). 
 Notation " 'when' e 'do' B" := (When e B) (at level 200, e at level 100, B at level 200). 
 
 Arguments Primitive {Phi Var} args res _ _%expr. 
@@ -169,7 +168,7 @@ Notation "a - b" := (Esub _ _ a b)%expr : expr_scope.
 Notation "a + b" := (Eadd _ _ a b)%expr : expr_scope. 
 Notation "a = b" := (Eeq _ _ a b)%expr : expr_scope. 
 Notation "a < b" := (Elt _ _ a b)%expr : expr_scope. 
-Notation "x <= y" := ((x < y) || (x = y))%expr : expr_scope. 
+Notation "x <= y" := (Ele _ _ x y)%expr : expr_scope. 
 Notation "x <> y" := (~(x = y))%expr : expr_scope. 
 Notation low x := (Elow _ _ _ x).
 Notation high x := (Ehigh _ _ _ x).  
@@ -201,7 +200,13 @@ Notation "'do' ( x , .. , y ) <~ a ; b" :=
 
 
 Arguments Etuple {Var l} _%dlist. 
-Notation "[ 'tuple' x , .. , y ]" := (Etuple (x :: .. (y :: [ :: ]) .. )%dlist) : expr_scope. 
+Notation "[ 'tuple' x , .. , y ]" := (Etuple (x :: .. (y :: [ :: ]) .. )%dlist) (only parsing): expr_scope. 
+(**
+ Unfortunately, this notation cannot be defined due to a bug... It redefines the notation for the pairs in every scope 
+ Notation "( x , .. , z )" := (Etuple (x :: .. (z :: [ :: ]) .. )%dlist) (at level 0): expr_scope. 
+*)
+
+
 
 (** * Semantics of Fe-Si *)
 Module Diff. 

@@ -64,6 +64,7 @@ type expr =
 | E_negb  of wire
 | E_eq    of wire * wire
 | E_lt    of wire * wire
+| E_le    of wire * wire
 | E_mux   of wire * wire * wire
 | E_plus  of wire * wire
 | E_minus of wire * wire
@@ -98,6 +99,7 @@ let mk_expr (e: Src.expr) : bus_size * expr =
   | Src.E_negb (a) -> 1, E_negb (Wire.mk a)
   | Src.E_eq (n,a,b) -> 1, E_eq (Wire.mk a, Wire.mk b)
   | Src.E_lt (n,a,b) -> 1, E_lt (Wire.mk a, Wire.mk b)
+  | Src.E_le (n,a,b) -> 1, E_le (Wire.mk a, Wire.mk b)
   | Src.E_mux (n,c,l,r) -> !n, E_mux (Wire.mk c, Wire.mk l, Wire.mk r)
   | Src.E_plus  (n,a,b) -> !n, E_plus  (Wire.mk a, Wire.mk b)
   | Src.E_minus (n,a,b) -> !n, E_minus (Wire.mk a, Wire.mk b)
@@ -157,6 +159,7 @@ let pp_expr fmt (e : expr) =
   | E_negb  a ->  Format.fprintf fmt "~ %s" a
   | E_eq    (a,b) -> Format.fprintf fmt "%s == %s" a b 
   | E_lt    (a,b) -> Format.fprintf fmt "%s < %s" a b 
+  | E_le    (a,b) -> Format.fprintf fmt "%s <= %s" a b 
   | E_mux   (c,l,r) -> Format.fprintf fmt "%s ? %s : %s" c l r
   | E_plus  (a,b) -> Format.fprintf fmt "%s + %s" a b 
   | E_minus (a,b) -> Format.fprintf fmt "%s - %s" a b 

@@ -29,8 +29,6 @@ Extract Inductive sumor => option [ Some None ].
 Extract Inlined Constant andb => "(&&)".
 Extract Inlined Constant orb => "(||)".
 
-Extract Constant Common.admit => "Obj.magic ()".
-
 Extract Inductive nat => int [ "0" "Pervasives.succ" ]
  "(fun fO fS n -> if n=0 then fO () else fS (n-1))".
 

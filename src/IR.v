@@ -1,4 +1,4 @@
-Require Import Common. 
+Add Rec LoadPath "./" as Synthesis. Require Import Common. 
 Require Import DList. 
 Require Import Core.   
 Require Import Front. 

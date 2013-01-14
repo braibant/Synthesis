@@ -19,8 +19,8 @@
 % \authorinfo{Adam Chlipala}
 %            {MIT}
 %            {adamc@csail.mit.edu}
-\author{Thomas Braibant \and Adam Chlipala}
-\institute{}
+\author{Thomas Braibant$^1$ \and Adam Chlipala${}^{2}$}
+\institute{${}^1$ Inria \qquad ${}^2$ MIT} %
 \title{Formal Verification of Hardware Synthesis}
 \newcommand{\project}{Fe-Si}
 \newcommand{\action}{action}
@@ -69,11 +69,11 @@ properties.
 
 \medskip
 
-To raise this level of abstraction, industry moved to \emph{hardware
-  synthesis} using higher-level languages, e.g., System-C~\cite{systemc},
-Esterel~\cite{DBLP:conf/birthday/Berry00} or Bluespec~\cite{bluespec},
-in which a high-level source program is compiled to an RTL
-description.
+To raise this level of abstraction, industry moved to \emph{high-level
+  hardware synthesis} using higher-level languages, e.g.,
+System-C~\cite{systemc}, Esterel~\cite{DBLP:conf/birthday/Berry00} or
+Bluespec~\cite{bluespec}, in which a high-level source program is
+compiled to an RTL description.
 %
 High-level synthesis has two benefits. 
 %
@@ -99,7 +99,7 @@ CompCert project~\cite{Leroy-backend} to hardware synthesis.
 
 \project{} can be seen as a stripped-down and simplified version
 of Bluespec: in both languages, hardware designs are described in
-terms of \emph{guarded atomic actions} on storage elements. 
+terms of \emph{guarded atomic actions} on state elements. 
 %
 The one oddity here is that this language and its semantics have a
 flavor of \emph{transactional memory}, where updates to state
@@ -115,10 +115,10 @@ the \project{} programming language in Coq using \emph{parametric
   higher-order abstract syntax (PHOAS)}~\cite{phoas-chlipala}, and
 give it a semantics using an interpreter: the semantics of a program
 is a Coq function that takes as inputs the current state of the
-storage elements and produces a list of updates to be committed to
-storage elements.
+state elements and produces a list of updates to be committed to
+state elements.
 
-\project{} hits a sweet between deep and shallow embeddings: using
+\project{} hits a sweet spot between deep and shallow embeddings: using
 PHOAS to embed a domain-specific language makes it possible to use Coq
 as a meta programming tool to describe circuits, without the pitfalls
 usually associated with a deep-embedding (e.g., the handling of
@@ -144,12 +144,11 @@ Here, we use Coq notations to implement some syntactic sugar: we
 borrow the \texttt{do}-notation to denote the monadic bind and use
 \coqe{ret} as a short-hand for return. 
 % 
-Our explicit use of return may seem odd. It is due to the fact that
-Fe-Si has two classes of syntactic values, expressions and actions,
-and that return takes as argument an expression.
-
-%\footnote{Unfortunately, it is not possible to define return
-%  as an implicit coercion from expressions to actions in our setting.}
+(Our choice of concrete notations is dictated by some limitations in
+Coq's notation mechanism. For instance our explicit use of return may
+seem odd: it is due to the fact that Fe-Si has two classes of
+syntactic values, expressions and actions, and that return takes as
+argument an expression.)
 
 Up to this point, Fe-Si can be seen as an extension of the
 Lava~\cite{Bjesse98lava:hardware} language, implemented in Coq rather
@@ -172,7 +171,7 @@ is true.
 Definition $\Phi$ := [Reg (Int n)].
 Definition count n (tick: Var B) : action $\Phi$ (Int n) :=
 $\quad$do x <- !member_0;
-$\quad$do _ <- if tick then {member_0 ::= x + 1} else {ret tt}; 
+$\quad$do _ <- if tick then {member_0 ::= x + 1} else {ret ()}; 
 $\quad$ret x. 
 \end{mcoq}
 Here, $\Phi$ is an environment that defines the set of memory elements
@@ -189,7 +188,8 @@ current action if its argument is false.
 %
 The latter takes two arguments $a$ and $b$, and first executes $a$; if
 it aborts, then the effects of $a$ are discarded and $b$ is run. If
-$b$ aborts too, the whole action \coqe{$a$ orElse $b$} aborts.
+$b$ aborts too, the whole action \coqe{$a$ orElse $b$} aborts. 
+
 
 \subsubsection{Synchronous semantics.} Recall that Fe-Si programs are
 intended to describe hardware circuits. Hence, we must stress that
@@ -203,6 +203,8 @@ effects are applied all at once between ticks.
 In particular this means that it is not possible to observe, e.g.,
 partial updates to the memory elements, nor transient values in
 memory.
+%
+(In Bluespec terminology, this is ``reads-before-writes''.)
 
 \subsubsection{From programs to circuits.} At this point, the reader
 may wonder how it is possible to generate circuits in a palatable
@@ -224,9 +226,9 @@ definition in a Coq file:
 \begin{mcoq}
 Definition bar := fesic foo.  
 \end{mcoq}
-The extracted OCaml term that corresponds to \coqe{bar} evaluates (in OCaml) to a
-ground RTL circuit. Then, we can use an (unverified) back-end that
-pretty-prints this RTL code as regular Verilog code. 
+The extracted OCaml term that corresponds to \coqe{bar} evaluates (in
+OCaml) to a closed RTL circuit. Then, we can use an (unverified)
+back-end that pretty-prints this RTL code as regular Verilog code.
 %
 (We reckon that this is some devious use of the extraction mechanism,
 which palliates the fact that there is currently no I/O mechanism in
@@ -299,7 +301,7 @@ $ $
 
 \subsection{Fe-Si}
 The definition of Fe-Si programs (\coqe{action} in the following)
-takes the PHOAS approach. 
+takes the PHOAS approach~\cite{phoas-chlipala}. 
 %
 That is, we define an inductive type family parameterized by an
 arbitrary type \coqe{V} of variables, where binders bind variables
@@ -341,7 +343,7 @@ inductives for \coqe{expr} and \coqe{action} in Fig.~\ref{fig:fesi}.
 %
 (For the sake of brevity, we omit the constructors for accesses to
 register files, in the syntax and, later, in the semantics. We refer
-the reader to the supplementary materials~\cite{fesi} for more details.)
+the reader to the supplementary material~\cite{fesi} for more details.)
 %
 Our final definition \coqe{Action} of actions is a polymorphic
 function from a choice of variables to an action (we refer the reader
@@ -350,6 +352,7 @@ encoding strategy).
 
 \begin{figure}
   \centering
+  \begin{twolistings}
 \begin{coq}
 Section t. 
 Variable V: ty -> Type. Variable $\Phi$: list mem. 
@@ -361,7 +364,9 @@ Inductive expr: ty -> Type :=
 | Eadd : forall n, expr (Int n) -> expr (Int n) -> expr (Int n) | ... 
 (* operations on tuples *)
 | Efst : forall l t, expr (Tuple (t::l)) -> expr t | ...
-
+\end{coq}
+&
+\begin{coq}
 Inductive action: ty -> Type:=
 | Return: forall t, expr t -> action t
 | Bind: forall t u,  action  t -> (V t -> action u) -> action u
@@ -376,6 +381,7 @@ Inductive action: ty -> Type:=
 End t. 
 Definition Action $\Phi$ t := forall V, action V $\Phi$ t.  
 \end{coq}
+\end{twolistings}
   \caption{The syntax of expressions and actions}
   \label{fig:fesi}
 \end{figure}
@@ -404,16 +410,24 @@ the state, committing this update.
     \\
     % assert
     \inferrule{\Gamma \vdash e \leadsto \mathtt{true}} {\Gamma, \Delta
-      \vdash \mathtt{Assert}~e \to \mathtt{Some} (\mathtt{tt},\Delta)}
+      \vdash \mathtt{Assert}~e \to \mathtt{Some} (\mathtt{()},\Delta)}
     \and \inferrule{\Gamma \vdash e \leadsto \mathtt{false}} {\Gamma,
       \Delta \vdash \mathtt{Assert}~e \to \mathtt{None}}
+    \\
+    % orElse
+    \inferrule{ \Gamma, \Delta \vdash a \to \mathtt{Some}~(v,\Delta')}
+    {\Gamma, \Delta \vdash a~\mathtt{orElse}~b \to
+      \mathtt{Some}~(v,\Delta')} \and
+    \inferrule{\Gamma, \Delta \vdash a \to \mathtt{None} \and \Gamma,
+      \Delta \vdash b \to r}
+    {\Gamma, \Delta \vdash a~\mathtt{orElse}~b \to r}
     \\
     % register
     \inferrule{\Gamma(r) = v} {\Gamma, \Delta \vdash
       \mathtt{RegRead}~r \to \mathtt{Some} (r,\Delta)} \and
     \inferrule{\Gamma \vdash e \leadsto v} {\Gamma, \Delta \vdash
       \mathtt{RegWrite}~r~e \to \mathtt{Some}
-      (\mathtt{tt},\Delta\oplus(r,v))}
+      (\mathtt{()},\Delta\oplus(r,v))}
         
   \end{mathpar}
 \caption{Dynamic semantics of Fe-Si programs}\label{fig:fesi-sem}
@@ -424,8 +438,8 @@ Fig.~\ref{fig:fesi-sem}. The judgement $\Gamma, \Delta \vdash a \to r$
 reads ``in the state $\Gamma$ and with the partial update $\Delta$,
 evaluating $a$ produces the result $r$'', where $r$ is either
 \coqe{None} (meaning that the action aborted), or %
-\coqe{Some (v, $\Delta$)} (meaning that the action returned the value
-\coqe{v} and the partial update $\Delta$). 
+\coqe{Some (v, $\Delta'$)} (meaning that the action returned the value
+\coqe{v} and the partial update $\Delta'$). 
 %
 Note that the PHOAS approach makes it possible to manipulate closed
 terms: we do not have rules for $\beta$-reduction, as it is
@@ -879,12 +893,12 @@ Fixpoint domain n := match n with
 | S n => (domain n) $\otimes$ (domain n)
 end. 
 
-Notation T n := (tree (Var A) n). 
+Notation T n := (tree (expr Var A) n). 
 Notation C n := action nil Var (domain n). 
 
 Fixpoint reverse n (t : T n) : C n  :=
 match t with 
-| L x => ret (Evar x)
+| L x => ret x
 | N n l r => 
   do r <- reverse n r;
   do l <- reverse n l;
@@ -900,8 +914,8 @@ match n  with
 | 0 => fun l r => 
   cmp (leaf l) (leaf r)
 | S p => fun l r => 
-  do (a,b) <- min_max_swap p (left l) (left r);
-  do (c,d) <- min_max_swap p (right l) (right r); 
+  do a,b <- min_max_swap p (left l) (left r);
+  do c,d <- min_max_swap p (right l) (right r); 
   ret ([tuple mk_N a c, mk_N b d])
 end.
 
@@ -1116,12 +1130,12 @@ in the code memory, and run it while monitoring the content of given
 memory locations. This gives rise to an highly stylized way of
 computing e.g., the Fibonacci sequence.
 
-\section{Comparison with related works}\label{sec:rw}
+\section{Comparison with related work}\label{sec:rw}
 Fe-Si marries functional programming and inductive theorem proving.
 %
 We refer the reader to Sheeran~\cite{DBLP:journals/jucs/Sheeran05} for
 a review of the use of functional programming languages in hardware
-design, and only discuss a few selected related works.
+design, and only discuss the most closely related work.
 
 \medskip
 

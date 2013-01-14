@@ -99,8 +99,6 @@ Ltac intro_do n H :=
       destruct x as [n|] eqn:H; simpl 
   end.
 
-Definition admit {X : Type} : X.  Admitted.
-
 Definition ident := string. 
 
 Definition comp {A B C} (f : B -> C) (g : A -> B) := fun (x : A) => f (g (x)). 

@@ -48,6 +48,7 @@ Section t.
   | E_negb : wire 1 -> expr 1
   | E_eq : forall n, wire n -> wire n -> expr 1
   | E_lt : forall n, wire n -> wire n -> expr 1
+  | E_le : forall n, wire n -> wire n -> expr 1
   | E_mux : forall n, wire 1 -> wire n -> wire n -> expr n
   | E_plus : forall n, wire n -> wire n -> expr n 
   | E_minus : forall n, wire n -> wire n -> expr n 
@@ -89,7 +90,7 @@ Section t.
           eq_rect_r (fun t : type => option (Word.T t)) (Some y)  e
         | right _ => None
       end. 
-
+  (*
   Notation "[ env # x ]" := (get env x). 
   Definition eval_expr (st: DList.T eval_mem Phi) t (e : expr t) (env : Env) : option (Word.T t). 
     refine (match e with
@@ -117,6 +118,9 @@ Section t.
       | E_lt n a b => do a <- [env # a]; 
                      do b <- [env # b]; 
                      Some (Word.of_bool (Word.lt a b))
+      | E_le n a b => do a <- [env # a]; 
+                     do b <- [env # b]; 
+                     Some (Word.of_bool (Word.le a b))
       | E_mux n c l r => 
         do c <- [env # c]; 
         do l <- [env # l]; 
@@ -160,7 +164,7 @@ Section t.
         in 
         fold l x
             end). 
-  Defined. 
+  Defined.  *)
 End t. 
 Implicit Arguments expr [].
 Arguments expr Phi _. 
@@ -224,6 +228,7 @@ Section s.
       | RTL.Enegb  a  => E_negb (!a)
       | RTL.Eeq t a b => E_eq _ (!a) (!b) 
       | RTL.Elt n a b => E_lt _ (!a) (!b) 
+      | RTL.Ele n a b => E_le _ (!a) (!b) 
       | RTL.Eadd n  a b => E_plus _ (!a) (!b)
       | RTL.Esub n  a b => E_minus _ (!a) (!b)
       | RTL.Elow n m a => E_low n m (!a)
@@ -240,115 +245,6 @@ Section s.
                                    (DList.dmap Var wire compile_type
                                                (fun (x : Core.type) (H : Var x) => !H) l dl)
     end. 
-  
-  Inductive value_equiv : forall t,  (Core.eval_type t) -> (Word.T (compile_type t)) -> Prop := 
-  | ve_unit: forall z, z  = Word.repr 0 0 -> 
-               value_equiv (Core.Tunit) tt z 
-  | ve_bool: 
-      forall (x: Word.T 1) b, Word.of_bool b = x -> 
-                         value_equiv Core.Tbool b x
-  | ve_int : forall n (x y : Word.T n), x = y -> 
-                                   value_equiv (Core.Tint n) x y
-  | ve_tuple_cons : forall t q l r, 
-                      value_equiv t (Tuple.fst l) (Word.low _ _ r) -> 
-                      value_equiv (Core.Ttuple q) (Tuple.snd l) (Word.high _ _ r) -> 
-                      value_equiv (Core.Ttuple (t :: q)) l r 
-  | ve_tuple_nil : forall z, 
-      z = Word.repr 0 0 -> 
-      value_equiv (Core.Ttuple nil) tt z.
-
-  Lemma value_equiv_bool_inversion a b : value_equiv Core.Tbool a b -> 
-                                         Word.of_bool a = b. 
-  Proof. 
-    inversion 1; injectT.  reflexivity. 
-  Qed. 
-  
-  Lemma value_equiv_int_inversion n a b : value_equiv (Core.Tint n) a b -> 
-                                          a = b. 
-  Proof. 
-    inversion 1; injectT. congruence.
-  Qed. 
-  
-  (** R is the equivalence relation on the closures. *)
-  Definition R (E : Env) : forall t, Var t -> Core.eval_type t -> Prop :=
-    fun t v1 v2 => 
-      exists x, (get E (! v1) = Some x /\ value_equiv t v2 x). 
-  
-  
-  Inductive value_option_equiv t : 
-    option (Core.eval_type t) -> 
-    option (Word.T (compile_type t)) -> Prop := 
-  | voe_none : value_option_equiv t None None                                
-  | voe_some : forall a b, value_equiv t a b -> 
-                      value_option_equiv t (Some a) (Some b). 
-
-  Notation "x == y" := (value_option_equiv _ x y) (at level 60). 
-
-  (** R_mem is the equivalence relation that must hold on the
-  evaluation of the state elements *)
-  Inductive R_mem : forall s, Core.eval_mem s ->  eval_mem (compile_mem s) -> Prop := 
-  | R_mem_reg : forall t v1 v2, value_equiv t v1 v2 -> 
-                            R_mem (Core.Treg t) v1 v2
-  | R_mem_regfile : forall t n rf1 rf2,                          
-                       (forall adr, 
-                            value_equiv t (Regfile.get rf1 adr) (Regfile.get rf2 adr)) -> 
-                         R_mem (Core.Tregfile n t) rf1 rf2. 
-  (** R_state is the extension of R_mem to the full state environments  *)
-  Inductive R_state : forall Phi, 
-                        DList.T Core.eval_mem Phi ->
-                        DList.T eval_mem (List.map compile_mem Phi) -> 
-                        Type :=
-  | R_state_nil : R_state [] ([::])%dlist ([::])%dlist
-  | R_state_cons : forall t q dt1 dt2 dq1 dq2,
-                     R_mem t dt1 dt2 -> 
-                     R_state q dq1 dq2 -> 
-                     R_state (t::q) (dt1 :: dq1)%dlist (dt2 :: dq2)%dlist.   
-  Section protect. 
-    Import Equality. 
-  Lemma compile_expr_correct Phi t (e1 : RTL.expr Phi Var t) (e2: RTL.expr Phi Core.eval_type t) 
-        st st'
-        (Hst: R_state Phi st st')
-        env:
-    RTL.expr_equiv _ _ _ (R env) t e1 e2 -> 
-    Some (RTL.eval_expr Phi st _ e2) == eval_expr st' _ (compile_expr Phi t e1) env. 
-  Proof. 
-    induction 1; simpl; try constructor.
-    + revert st st' Hst. 
-      
-      dependent induction v; simpl; intros. 
-      repeat DList.inversion. 
-      dependent destruction Hst. 
-      simpl. 
-      dependent destruction r. auto. 
-      simpl.
-      repeat DList.inversion. simpl. 
-      dependent destruction Hst. 
-      apply IHv. auto. 
-    + revert st st' Hst. 
-      dependent induction v; simpl; intros. 
-      repeat DList.inversion. 
-      dependent destruction Hst. 
-      simpl.  
-      Ltac t :=
-      repeat DList.inversion; simpl;
-      try constructor;
-      repeat match goal with 
-        | H : DList.pointwise _ (_ :: _)%list _ _ |- _ =>  
-          destruct (DList.inversion_pointwise _ _ _ _ _ _ _ H) as [? ?]; clear H
-        | H : DList.pointwise _ ([])%list _ _ |- _ =>  
-          clear H
-        | H : R _ _ ?x _ |- context [?x] => unfold R in H;                                           
-                                          destruct H as [? [? ?]]
-                                          
-        | H : ?x = _ |- context [?x] => setoid_rewrite H; simpl
-        | H : value_equiv Core.Tbool ?a ?b |- _ => apply value_equiv_bool_inversion in H
-        | H : value_equiv (Core.Tint ?n) ?a ?b |- _ => apply value_equiv_int_inversion in H
-             end; try constructor. 
-    t. subst. 
-    simpl in *. 
-    
-  Admitted. 
-  End protect. 
   Definition compile_effect s (e : RTL.effect Var s) : effect (compile_mem s) :=  
     match
       e in (RTL.effect _ s)

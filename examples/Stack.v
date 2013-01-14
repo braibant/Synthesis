@@ -321,7 +321,7 @@ Section t.
           do n2 <- read STACK [: sp - #i 1];
           do n1 <- read STACK [: sp - #i 2];
           do _ <- SP ::= sp - #i 2;
-          ((WHEN (cond n1 n2); 
+          ((when (cond n1 n2) do
             PC ::= pc + #i 1 + (val i))
              \oplus (PC ::= pc + #i 1))
       )%action.      
@@ -339,7 +339,7 @@ Section t.
         Ibranch_cond (fun n1 n2 => n2 < n1)%expr. 
       
       Definition Ihalt (pc: expr V VAL) (i : expr V INSTR) : action Phi V B :=
-        WHEN (opcode i = (#i 11)); 
+        when (opcode i = (#i 11)) do
         ret #b true.
       
       Definition code_at {T} f : action Phi V T:=
@@ -351,8 +351,8 @@ Section t.
         match l with 
           | nil => default
           | (c,a) :: q => 
-            (WHEN (x = c); a) 
-              \oplus (WHEN (x <> c); case x q default)
+            (when (x = c) do a) 
+              \oplus (when (x <> c) do case x q default)
         end. 
 
       Require Import ZArith. 
@@ -1047,7 +1047,7 @@ Section t.
         f_equal. rewrite <- H2, <- H3. apply Word'eqb_faithful; auto. 
       + intros; simpl. 
         rewrite <- H2, <- H3. 
-        rewrite <- Word.le_is_lt_or_eq. apply Word'leb_faithful; auto. 
+         apply Word'leb_faithful; auto. 
       + intros; simpl. 
         rewrite <- H2, <- H3. 
         replace (Word.lt (mk_val y1) (mk_val x1)) with (negb (Word.le (mk_val x1) (mk_val y1))).

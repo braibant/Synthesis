@@ -1509,8 +1509,8 @@ Section proof.
     induction n; dependent destruction l1; dependent destruction l2;simpl.
     -  unfold min, max. unfold le, word_order. 
        destruct (Word.le x x0) eqn:H. 
-       rewrite Word.le_is_lt_or_eq in H. rewrite H. repeat constructor. 
-       rewrite Word.le_is_lt_or_eq in H. rewrite H. repeat constructor. 
+       repeat constructor. 
+       repeat constructor. 
     - repeat 
         first 
         [

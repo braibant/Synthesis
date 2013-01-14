@@ -28,6 +28,7 @@ Section t.
 
     (* integer operations *)                                          
     | Elt   : forall n, Var (Int n) -> Var (Int n) -> expr B
+    | Ele   : forall n, Var (Int n) -> Var (Int n) -> expr B
     | Eadd  : forall n, Var (Int n) -> Var (Int n) -> expr (Int n)
     | Esub  : forall n, Var (Int n) -> Var (Int n) -> expr (Int n)
     | Elow  : forall n m, Var (Int (n + m)) -> expr (Int n)
@@ -92,7 +93,10 @@ Section t.
                             & (Eeq _ a b)
         | Front.Elt n a b => a :-- compile_expr _ a; 
                             b :-- compile_expr _ b; 
-                            & (Elt _ a b)
+                            & (Elt _ a b) 
+        | Front.Ele n a b => a :-- compile_expr _ a; 
+                            b :-- compile_expr _ b; 
+                            & (Ele _ a b)
         | Front.Eadd n a b => a :-- compile_expr _ a; 
                              b :-- compile_expr _ b; 
                              & (Eadd _ a b)
@@ -226,6 +230,7 @@ Section t.
         | Enegb a => negb a
         | Eeq t a b => Core.type_eq t a b
         | Elt n a b => Word.lt a b
+        | Ele n a b => Word.le a b
         | Eadd n a b => Word.add a b 
         | Esub n a b => Word.sub a b 
         | Elow n m a =>  Word.low n m a  

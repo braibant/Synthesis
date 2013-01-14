@@ -3,8 +3,11 @@ let compile name x =
   Printf.printf "Compilation of %s\n%!" name;
   match x with 
     Some x ->       
-      Backend.dump (Backend.mk_block name x);
-      Printf.printf "done (%fs)\n%!" (Unix.gettimeofday () -. t)
+      let b =  (Backend.mk_block name x) in 
+      begin 
+	Backend.dump b;
+	Printf.printf "done (%fs,%i)\n%!" (Unix.gettimeofday () -. t) (List.length b.Backend.bindings)
+      end
   | None -> Format.printf "Failed"
 
 (* A low key way to batch compile each one of our examples *)
