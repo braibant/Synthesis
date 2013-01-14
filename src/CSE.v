@@ -43,13 +43,13 @@ Section s.
   | Sxorb : sval B -> sval B -> sval B
   | Snegb : sval B -> sval B
   | Seq : forall t : type, sval t -> sval t -> sval B
-  | Slt : forall n : nat, sval (W n) -> sval (W n) -> sval B
-  | Sadd : forall n : nat, sval (W n) -> sval (W n) -> sval (W n)
-  | Ssub : forall n : nat, sval (W n) -> sval (W n) -> sval (W n)
-  | Slow : forall n m : nat, sval (W (n + m)) -> sval (W n)
-  | Shigh : forall n m : nat, sval (W (n + m)) -> sval (W m)
+  | Slt : forall n : nat, sval (Int n) -> sval (Int n) -> sval B
+  | Sadd : forall n : nat, sval (Int n) -> sval (Int n) -> sval (Int n)
+  | Ssub : forall n : nat, sval (Int n) -> sval (Int n) -> sval (Int n)
+  | Slow : forall n m : nat, sval (Int (n + m)) -> sval (Int n)
+  | Shigh : forall n m : nat, sval (Int (n + m)) -> sval (Int m)
   | ScombineLH : forall n m : nat,
-                 sval (W n) -> sval (W m) -> sval (W (n + m)). 
+                 sval (Int n) -> sval (Int m) -> sval (Int (n + m)). 
   (*
   Section induction. 
     (** Since the induction principle that is generated is not
@@ -325,7 +325,7 @@ Section s.
   Defined. 
 
 
-  Definition cse_effect := (fun (a : sync) (x : (option ∘ effect V) a) =>
+  Definition cse_effect := (fun (a : mem) (x : (option ∘ effect V) a) =>
             match x with
               | Some x0 =>
                   match x0 in (effect _ s) return ((option ∘ effect Var) s) with
@@ -661,11 +661,11 @@ Proof.
   fix IH 3; destruct sv; simpl; try tauto; try (solve [crush]).
   - crush. injectT. auto. 
   - intros. simpl_do. 
-    repeat (erewrite IH by eauto). simpl. reflexivity. Guarded. 
+    repeat (erewrite IH by eauto). simpl. reflexivity. 
   - revert l0 x t. 
     fix IHdl 3; destruct t. 
     tauto. 
-    intros. simpl_do. apply IH in H0. apply IHdl in H. rewrite H0; rewrite H. reflexivity. Guarded. 
+    intros. simpl_do. apply IH in H0. apply IHdl in H. rewrite H0; rewrite H. reflexivity. 
 Qed. 
 
 
@@ -675,12 +675,6 @@ Proof.
   induction l. reflexivity. 
   simpl. auto. 
 Qed.
-
-(* Lemma list_in_snoc {} l (x y : A) : List.In x (l++[y]) -> ((List.In x l) + (x = y))%type.  *)
-(* Proof. *)
-(*   induction l. simpl; intuition. *)
-(* Admitted.    *)
-
 
 Lemma Gamma_inv_cons_var G env (Hg : Gamma_inv  G env) t (e : eval_type t): 
       Gamma_inv (cons eval_type V t e (e, SVar t (Datatypes.length env)) G)
@@ -866,9 +860,9 @@ Qed.
 Definition Compile Phi t (b : Block Phi t) : Block Phi t :=  
   fun V => cse_block Phi V t (b _). 
 
-Theorem Compile_correct Phi t b (Hwf : WF Phi t b): forall st Delta,
-  Eval Phi st t (Compile Phi t b) Delta =  Eval Phi st t b Delta. 
+Theorem Compile_correct Phi t b (Hwf : WF Phi t b) st:
+  RTL.Next Phi st t (Compile Phi t b) =  RTL.Next Phi st t b. 
 Proof. 
-  unfold Eval. intros. unfold Compile. symmetry. apply cse_correct. auto. 
+  unfold Next. intros. unfold Compile. symmetry. rewrite cse_correct; auto. 
 Qed. 
 

@@ -1,7 +1,7 @@
 Require Import Common.
 Require Import DList.
 Require Import Core. 
-Require Word Array. 
+Require Word Vector. 
 
 
 (** * Definition of [expr] and [action] *)
@@ -38,16 +38,16 @@ Section s.
     | Eeq   : forall t, expr t -> expr t -> expr B
 
     (* integer operations *)                                          
-    | Elt   : forall n, expr (W n) -> expr (W n) -> expr B
-    | Eadd  : forall n, expr (W n) -> expr (W n) -> expr (W n)
-    | Esub  : forall n, expr (W n) -> expr (W n) -> expr (W n)
-    | Elow  : forall n m, expr (W (n + m)) -> expr (W n)
-    | Ehigh  : forall n m, expr (W (n + m)) -> expr (W m)
-    | EcombineLH   : forall n m, expr (W n) -> expr (W m) -> expr (W (n + m))
+    | Elt   : forall n, expr (Int n) -> expr (Int n) -> expr B
+    | Eadd  : forall n, expr (Int n) -> expr (Int n) -> expr (Int n)
+    | Esub  : forall n, expr (Int n) -> expr (Int n) -> expr (Int n)
+    | Elow  : forall n m, expr (Int (n + m)) -> expr (Int n)
+    | Ehigh  : forall n m, expr (Int (n + m)) -> expr (Int m)
+    | EcombineLH   : forall n m, expr (Int n) -> expr (Int m) -> expr (Int (n + m))
 
     | Econstant : forall  ty (c : constant ty), expr ( ty)
                           
-    | Emux : forall t, expr Tbool -> expr t -> expr t -> expr t 
+    | Emux : forall t, expr B -> expr t -> expr t -> expr t 
 
     (* Tuple operations *)
     | Efst : forall l t , expr (Ttuple (t::l)) -> expr t
@@ -63,7 +63,7 @@ Section s.
         (a : action  t) 
         (f : Var t -> action u),  
         action u
-    | Assert : forall (e : expr Tbool), action Tunit
+    | Assert : forall (e : expr B), action Tunit
     | Primitive : 
       forall args res (p : primitive Phi args res)
         (exprs : DList.T (expr) args),
@@ -207,7 +207,7 @@ Notation "[ 'tuple' x , .. , y ]" := (Etuple (x :: .. (y :: [ :: ]) .. )%dlist) 
 Module Diff. 
   Section t. 
     Variable Phi : state. 
-    Definition T := DList.T (option ∘ eval_sync) Phi. 
+    Definition T := DList.T (option ∘ eval_mem) Phi. 
     (* first *)
     Definition add (Delta : T) t (v : var Phi t) w :  T :=
       match DList.get v Delta  with 
@@ -219,7 +219,7 @@ Module Diff.
   
   Definition init (Phi : state ): T Phi := DList.init (fun _ => None) Phi. 
   
-  Fixpoint apply (Phi : state) : T Phi -> DList.T eval_sync Phi -> DList.T eval_sync Phi :=
+  Fixpoint apply (Phi : state) : T Phi -> DList.T eval_mem Phi -> DList.T eval_mem Phi :=
     match Phi with
       | nil => fun _ _ => [ :: ]
       | cons t Phi => fun Delta E =>
@@ -330,16 +330,18 @@ End Sem.
 Definition Eval Phi (st: eval_state Phi)  t (A : Action Phi t ) Delta :=  @Sem.eval_action Phi t (A _) st Delta. 
 
 (** The next-step function computes what should be the next state of a
-circuit. TODO: remark that Diff.init initialize even the Inputs with
-None, which seems wrong. Yet, it is possible to reason about circuits
-that read something in their inputs, using "circuit generators" of the
-shape [Var t -> action Phi u].  *)
+circuit. 
 
-Definition Next {t} Phi st (A : Action Phi t) := 
+
+TODO: remark that Diff.init initialize even the Inputs with None,
+which is not wrong, but prevents us from reasonning about circuits
+that depend on their inputs. *)
+
+Definition Next {t} Phi st (A : Action Phi t)  : option (eval_type t * eval_state Phi ):= 
   let Delta := Eval Phi st _ A (Diff.init Phi) in 
     match Delta with 
-      | None => st
-      | Some Delta => Diff.apply Phi (snd Delta) st
+      | None => None 
+      | Some Delta => Some (fst Delta, Diff.apply Phi (snd Delta) st)
     end. 
 
 (** We define two functions that computes the output of a circuit --
@@ -352,8 +354,7 @@ Definition output  (t : type) (A : action nil eval_type t) :
       | None => None
     end. 
 
-Definition Output (t : type) (A : Action nil t) :=
-  output t (A eval_type).
+Definition Output (t : type) (A : Action nil t) := output t (A eval_type).
 
 
 Module Close. 
@@ -378,14 +379,14 @@ Module Close.
       | regfile_write n t v => regfile_write (var_lift v)
     end.
       
-  Definition generalize (l1 : list sync) T (a : action l1 Var T) : forall l2, action (List.app l1 l2) Var T. 
-  refine (let fix aux (l1 : list sync) T (a : action l1 Var T) :
+  Definition generalize (l1 : list mem) T (a : action l1 Var T) : forall l2, action (List.app l1 l2) Var T. 
+  refine (let fix aux (l1 : list mem) T (a : action l1 Var T) :
                   forall l2, action (List.app l1 l2) Var T :=
                 match a  with
                   | Return t exp => fun l2 => Return (exp)
                   | Bind t u a f => fun l2 => let a' := aux _ _ a l2 in Bind a' (fun x => aux _ _ (f x) _)
                   | Assert e => fun l2 => Assert e
-                  | Primitive args res p exprs => fun l2 : list sync =>
+                  | Primitive args res p exprs => fun l2 : list mem =>
                                                    Primitive args res 
                                                              (primitive_generalize args res _ p l2)
                                                              exprs

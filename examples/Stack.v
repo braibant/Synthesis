@@ -356,7 +356,7 @@ Section t.
         end. 
 
       Require Import ZArith. 
-      Definition mk_val {n} v : expr V (W n) := (#i (Z.of_nat v)).
+      Definition mk_val {n} v : expr V (Int n) := (#i (Z.of_nat v)).
                               
       Definition code :=
         code_at (fun pc i =>
@@ -394,7 +394,7 @@ Section t.
       | None => None
     end. 
   Require Import ZArith DList. 
-  Definition mk_val v : eval_type (W size) := Word.repr size (Z.of_nat v).
+  Definition mk_val v : eval_type (Int size) := Word.repr size (Z.of_nat v).
 
   Notation "x =%= y" := (mk_val x = y) (at level 80).
   
@@ -470,7 +470,7 @@ Section t.
   
   Notation "x == y" := (R x y) (at level 80).
 
-  Lemma step_code_at {T} m1 m2 (f : expr V (W size) -> expr V (Circuit.INSTR size) -> 
+  Lemma step_code_at {T} m1 m2 (f : expr V (Int size) -> expr V (Circuit.INSTR size) -> 
                                   action (Circuit.Phi size) V T):          
     R_code m1 m2 ->
     m1 == m2 -> 
@@ -1071,5 +1071,5 @@ End t.
 Require Compiler.  
 Require Import FirstOrder RTL Core.
 
-Definition t := (Compiler.fesiopt _ _ (Circuit.Code 8)). 
+Definition t := (Compiler.Fesic _ _ (Circuit.Code 8)). 
 

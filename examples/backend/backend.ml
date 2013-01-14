@@ -15,12 +15,12 @@ let rec int_of_nat : int -> int = fun x -> x
 
 let mk_bus_size : int -> bus_size = int_of_nat
 
-type sync =
+type mem =
 | Tinput of bus_size 
 | Treg of bus_size
 | Tregfile of bus_size * int
     
-let mk_sync : Src.sync -> sync = function 
+let mk_mem : Src.mem -> mem = function 
   | Src.Tinput bus -> Tinput (mk_bus_size bus)
   | Src.Treg bus -> Treg (mk_bus_size bus)
   | Src.Tregfile (size, bus) -> Tregfile (mk_bus_size bus, int_of_nat size)
@@ -38,7 +38,7 @@ type wire = Wire.t
 module Memory = 
 struct 
   type t = string 
-  let mk_read (s: Src.sync Common.var) : t = 
+  let mk_read (s: Src.mem Common.var) : t = 
     let rec aux = function 
       | Common.Coq_var_0 (_,_) -> 0
       | Common.Coq_var_S (_,_,_,q) -> 1 + aux q
@@ -198,7 +198,7 @@ let pp_effect fmt effect= match effect with
 
 let pp_init fmt x = ()
 
-let pp_effects fmt initials effects =
+let pp_effects fmt guard initials effects =
   Format.fprintf fmt "always@@(posedge clk)\n";
   Format.fprintf fmt "begin\n";
   begin
@@ -211,15 +211,18 @@ let pp_effects fmt initials effects =
     Format.fprintf fmt "\t\tend\n";
     Format.fprintf fmt "\telse\n";
     Format.fprintf fmt "\t\tbegin\n";
+    Format.fprintf fmt "\tif(%s)\n" guard;
+    Format.fprintf fmt "\t\tbegin\n";    
     Format.fprintf fmt "// put  debug code here (display, stop, ...)\n";
-    List.iter (fun e -> pp_effect fmt e) effects;    
+    List.iter (fun e -> pp_effect fmt e) effects;       
+    Format.fprintf fmt "\t\tend\n";
     Format.fprintf fmt "\t\tend\n";
   end;
   Format.fprintf fmt "end\n"
 
 
 
-let pp_sync fmt (name, ty) =
+let pp_mem fmt (name, ty) =
   match ty with 
   | Tinput bus -> 
     Format.fprintf fmt "input %a reg_%i;\n" pp_bus_size bus name;
@@ -234,7 +237,7 @@ type block =
   {
     name : string;
     output_size : int;
-    state : sync list;
+    state : mem list;
     bindings : (bus_size * expr) list;
     effects : (effect option) list;
     initials : unit list;
@@ -252,12 +255,12 @@ let mk_block name (b : Src.block) : block =
       (fun (Specif.Coq_existT (_, expr)) ->  mk_expr expr) 
       (b.Src.bindings) in 
   let l = convert b.Src.effects in 
-  let (sync, effects) = List.split l in 
+  let (mem, effects) = List.split l in 
   let (effects,_) = List.fold_left (fun (acc,i) e -> (mk_effect i e :: acc, i+1)) ([],0) effects  in 
   {
     name = name;
     output_size = b.Src.t;
-    state = List.map mk_sync sync;
+    state = List.map mk_mem mem;
     bindings = bindings;
     effects = effects;
     initials = [];
@@ -281,13 +284,13 @@ let pp fmt c =
   Format.fprintf fmt "output guard;\noutput [%i:0] value;\n" (c.output_size - 1);
   Format.fprintf fmt "// state declarations\n";
   let i = ref 0 in 
-  List.iter (fun s -> pp_sync fmt (!i,s); incr i) c.state;  
+  List.iter (fun s -> pp_mem fmt (!i,s); incr i) c.state;  
   Format.fprintf fmt "// bindings \n";  
   pp_bindings fmt c.bindings;
   Format.fprintf fmt "// effects \n";  
   Format.fprintf fmt "assign guard = %s;\n" c.guard;
   Format.fprintf fmt "assign value = %s;\n" c.value;
-  pp_effects fmt c.initials c.effects;
+  pp_effects fmt c.guard c.initials c.effects;
   Format.fprintf fmt "endmodule\n"
     
 let dump c = 

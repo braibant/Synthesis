@@ -111,7 +111,10 @@ begin
 		end
 	else
 		begin
+	if(wire1)
+		begin
 // put  debug code here (display, stop, ...)
+		end
 		end
 end
 endmodule

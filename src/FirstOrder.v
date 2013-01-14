@@ -3,6 +3,10 @@ Require Core Equality.
 
 Require Import Eqdep. 
 
+(** * This file describes our first order representation of the RTL
+language. For now, the transformation from RTL to this language is not
+proved. *)
+
 (** In this firstorder representation, everything ends up being
 represented as packed bytes: a type is the size of the bus *)
 Notation type := nat (only parsing). 
@@ -11,13 +15,13 @@ Notation type := nat (only parsing).
 Inductive wire (t:type) := box : nat -> wire t. 
 
 (* The type of memory elements depend on the bus size*)
-Inductive sync := 
-| Tinput : type -> sync 
-| Treg : type -> sync
-| Tregfile :  nat -> type -> sync. 
+Inductive mem := 
+| Tinput : type -> mem 
+| Treg : type -> mem
+| Tregfile :  nat -> type -> mem. 
 
 (* The denotation of a memory element is a word *)
-Fixpoint eval_sync s : Type := 
+Fixpoint eval_mem s : Type := 
   match s with
     | Tinput t => Word.T t
     | Treg t => Word.T t
@@ -32,7 +36,7 @@ Fixpoint sum l : nat :=
   end. 
 
 Section t. 
-  Context {Phi : list sync}. 
+  Context {Phi : list mem}. 
   Inductive expr : type -> Type :=
   | E_var : forall t, wire t -> expr t
   | E_input : forall t, var Phi (Tinput t) -> expr t
@@ -55,7 +59,7 @@ Section t.
   | E_concat: forall l, DList.T wire l -> expr (sum l). 
 
   Require RTL. 
-  Inductive effect : sync -> Type :=
+  Inductive effect : mem -> Type :=
     reg_write : forall t,
                   wire t ->
                   wire 1 -> effect (Treg t)
@@ -87,7 +91,7 @@ Section t.
       end. 
 
   Notation "[ env # x ]" := (get env x). 
-  Definition eval_expr (st: DList.T eval_sync Phi) t (e : expr t) (env : Env) : option (Word.T t). 
+  Definition eval_expr (st: DList.T eval_mem Phi) t (e : expr t) (env : Env) : option (Word.T t). 
     refine (match e with
       | E_var t x => [env # x]
       | E_input t x => Some (DList.get x st)
@@ -170,7 +174,7 @@ Fixpoint compile_type (t : Core.type) :  type :=
     | Core.Ttuple l => sum (List.map compile_type l)
   end.
 
-Definition compile_sync s :=
+Definition compile_mem s :=
   match s with 
     | Core.Tinput t => Tinput (compile_type t)
     |  Core.Treg t => Treg (compile_type t)
@@ -208,12 +212,12 @@ Section s.
     end c. 
 
   Definition compile_expr Phi t (e: RTL.expr Phi Var t) :
-    expr (List.map compile_sync Phi) (compile_type t):= 
+    expr (List.map compile_mem Phi) (compile_type t):= 
     match e with 
-      | RTL.Einput t v => E_input (compile_type t) (var_map compile_sync Phi _ v)
+      | RTL.Einput t v => E_input (compile_type t) (var_map compile_mem Phi _ v)
       | RTL.Evar t v => E_var (compile_type t) (! v) 
-      | RTL.Eread t m =>  E_read _ (var_map compile_sync Phi _ m)
-      | RTL.Eread_rf n t m adr => E_read_rf n _ (var_map compile_sync Phi _ m) (! adr)
+      | RTL.Eread t m =>  E_read _ (var_map compile_mem Phi _ m)
+      | RTL.Eread_rf n t m adr => E_read_rf n _ (var_map compile_mem Phi _ m) (! adr)
       | RTL.Eandb a b => E_andb (!a) (!b) 
       | RTL.Eorb  a b  => E_orb (!a) (!b) 
       | RTL.Exorb  a b  => E_xorb (!a) (!b) 
@@ -280,23 +284,23 @@ Section s.
 
   Notation "x == y" := (value_option_equiv _ x y) (at level 60). 
 
-  (** R_sync is the equivalence relation that must hold on the
+  (** R_mem is the equivalence relation that must hold on the
   evaluation of the state elements *)
-  Inductive R_sync : forall s, Core.eval_sync s ->  eval_sync (compile_sync s) -> Prop := 
-  | R_sync_reg : forall t v1 v2, value_equiv t v1 v2 -> 
-                            R_sync (Core.Treg t) v1 v2
-  | R_sync_regfile : forall t n rf1 rf2,                          
+  Inductive R_mem : forall s, Core.eval_mem s ->  eval_mem (compile_mem s) -> Prop := 
+  | R_mem_reg : forall t v1 v2, value_equiv t v1 v2 -> 
+                            R_mem (Core.Treg t) v1 v2
+  | R_mem_regfile : forall t n rf1 rf2,                          
                        (forall adr, 
                             value_equiv t (Regfile.get rf1 adr) (Regfile.get rf2 adr)) -> 
-                         R_sync (Core.Tregfile n t) rf1 rf2. 
-  (** R_state is the extension of R_sync to the full state environments  *)
+                         R_mem (Core.Tregfile n t) rf1 rf2. 
+  (** R_state is the extension of R_mem to the full state environments  *)
   Inductive R_state : forall Phi, 
-                        DList.T Core.eval_sync Phi ->
-                        DList.T eval_sync (List.map compile_sync Phi) -> 
+                        DList.T Core.eval_mem Phi ->
+                        DList.T eval_mem (List.map compile_mem Phi) -> 
                         Type :=
   | R_state_nil : R_state [] ([::])%dlist ([::])%dlist
   | R_state_cons : forall t q dt1 dt2 dq1 dq2,
-                     R_sync t dt1 dt2 -> 
+                     R_mem t dt1 dt2 -> 
                      R_state q dq1 dq2 -> 
                      R_state (t::q) (dt1 :: dq1)%dlist (dt2 :: dq2)%dlist.   
   Section protect. 
@@ -341,12 +345,14 @@ Section s.
         | H : value_equiv (Core.Tint ?n) ?a ?b |- _ => apply value_equiv_int_inversion in H
              end; try constructor. 
     t. subst. 
+    simpl in *. 
+    
   Admitted. 
   End protect. 
-  Definition compile_effect s (e : RTL.effect Var s) : effect (compile_sync s) :=  
+  Definition compile_effect s (e : RTL.effect Var s) : effect (compile_mem s) :=  
     match
       e in (RTL.effect _ s)
-      return (effect (compile_sync s))
+      return (effect (compile_mem s))
     with
       | RTL.effect_reg_write t data we =>
         reg_write (compile_type t) (!data) (!we)
@@ -357,17 +363,17 @@ Section s.
           (!data) (!adr) (!we)
     end. 
   
-  Definition compile_effects Phi (e : RTL.effects Phi Var) : DList.T (option ∘ effect) (List.map compile_sync Phi) :=
-    DList.dmap _ _ compile_sync (fun s o => 
+  Definition compile_effects Phi (e : RTL.effects Phi Var) : DList.T (option ∘ effect) (List.map compile_mem Phi) :=
+    DList.dmap _ _ compile_mem (fun s o => 
                                    match o with 
                                      | Some ef => Some (compile_effect _ ef)
                                      | None => None
                                    end
                                 ) Phi e. 
 
-  Definition compile Phi t (b : RTL.block Phi Var t) : @block (List.map compile_sync Phi) . 
+  Definition compile Phi t (b : RTL.block Phi Var t) : @block (List.map compile_mem Phi) . 
     refine (
-        let Phi' := List.map compile_sync Phi in 
+        let Phi' := List.map compile_mem Phi in 
         let fold := fix fold t (b : RTL.block Phi Var t) (acc : list ({t : type & expr Phi' t})): 
                       @block Phi' :=
                       match b with 
@@ -421,14 +427,14 @@ Fixpoint eval_bindings (l : list {t : type & expr t}) acc : option Env :=
 
 
     Variable st : eval_state Phi.
-    Definition eval_effect  (env : Env) (a : sync)  :
+    Definition eval_effect  (env : Env) (a : mem)  :
         (option ∘ effect) a ->
-        eval_sync a -> (option ∘ eval_sync) a -> option ((option ∘ eval_sync) a).
+        eval_mem a -> (option ∘ eval_mem) a -> option ((option ∘ eval_mem) a).
        refine (fun  eff => 
               match eff with 
                 | Some eff =>  
-                    match eff in RTL.effect _ s return eval_sync s -> (option ∘ eval_sync) s ->
-                                                        option ((option ∘ eval_sync) s)  with 
+                    match eff in RTL.effect _ s return eval_mem s -> (option ∘ eval_mem) s ->
+                                                        option ((option ∘ eval_mem) s)  with 
                       |  RTL.effect_reg_write t val we => 
                            fun _ old => 
                              match old with 

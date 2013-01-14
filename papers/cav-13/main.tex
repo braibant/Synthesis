@@ -21,7 +21,7 @@
 %            {adamc@csail.mit.edu}
 \author{Thomas Braibant \and Adam Chlipala}
 \institute{}
-\title{Formal verification of hardware synthesis}
+\title{Formal Verification of Hardware Synthesis}
 \newcommand{\project}{Fe-Si}
 \newcommand{\action}{action}
 \newcommand{\denote}[1]{\llbracket #1 \rrbracket}
@@ -41,10 +41,10 @@
   dependently typed deep embedding in Coq. The target language of the
   compiler corresponds to a synthesisable subset of Verilog or VHDL.
   %
-  One key of our approach is that input programs to the compiler can
-  be defined and proved correct inside Coq. Then, we use extraction
-  and a Verilog back-end (written in OCaml) to get a certified version
-  of a hardware design.
+  A key aspect of our approach is that input programs to the compiler
+  can be defined and proved correct inside Coq. Then, we use
+  extraction and a Verilog back-end (written in OCaml) to get a
+  certified version of a hardware design.
 \end{abstract}
 
 \section*{Introduction}
@@ -61,7 +61,7 @@ On the other hand, a completely different approach is to design
 hardware via a shallow embedding of circuits in a theorem
 prover~\cite{hanna-veritas,UCAM-CL-TR-77,hunt89,vamp,certifying-circuits-in-type-theory}.
 %
-Yet, both kind of approach suffer from the fact that most hardware
+Yet, both kinds of approach suffer from the fact that most hardware
 designs are expressed in low-level register transfer languages (RTL)
 like Verilog or VHDL, and that the level of abstraction they provide
 may be too low to do short and meaningful proof of high-level
@@ -70,7 +70,7 @@ properties.
 \medskip
 
 To raise this level of abstraction, industry moved to \emph{hardware
-  synthesis} using higher-level languages, e.g., System-C,
+  synthesis} using higher-level languages, e.g., System-C~\cite{systemc},
 Esterel~\cite{DBLP:conf/birthday/Berry00} or Bluespec~\cite{bluespec},
 in which a high-level source program is compiled to an RTL
 description.
@@ -101,14 +101,6 @@ CompCert project~\cite{Leroy-backend} to hardware synthesis.
 of Bluespec: in both languages, hardware designs are described in
 terms of \emph{guarded atomic actions} on storage elements. 
 %
-In our development, we define a (dependently typed) deep embedding of
-the \project{} programming language in Coq using \emph{parametric
-  higher-order abstract syntax (PHOAS)}~\cite{phoas-chlipala}, and
-give it a semantics\thomas{~} using an interpreter: the semantics of a program
-is a Coq function that takes as inputs the current state of the
-storage elements and produces a list of updates to be committed to
-storage elements.
-%
 The one oddity here is that this language and its semantics have a
 flavor of \emph{transactional memory}, where updates to state
 elements are not visible before the end of the transaction (a
@@ -117,45 +109,36 @@ time-step).
 Our target language can be sensibly interpreted as \emph{clocked
   sequential machines}: we generate an RTL description syntactically
 described as combinational definitions and next-state assignments.
-
-\medskip
-
-What is new about \project{} is that we embed a hardware description
-language as a domain-specific language in Coq: circuits correspond to
-a given data structure implemented in Coq.
 %
-In particular, this makes it possible to use Coq as a meta programming
-tool to describe circuits: as an example, we shall see how we can
-build succinct, and provably correct, descriptions of recursive
-circuits.
+In our development, we define a (dependently typed) deep embedding of
+the \project{} programming language in Coq using \emph{parametric
+  higher-order abstract syntax (PHOAS)}~\cite{phoas-chlipala}, and
+give it a semantics using an interpreter: the semantics of a program
+is a Coq function that takes as inputs the current state of the
+storage elements and produces a list of updates to be committed to
+storage elements.
 
-
-
-% \subsubsection{Contributions.}
-% We summarize the contributions of this work as follows:
-% \begin{itemize}
-% \item we demonstrate a novel use of PHOAS as a way to embed
-%   domain-specific languages (DSLs) in the Coq proof assistant;
-% \item we define such a DSL for a (minimal, high-level) hardware
-%   description language;
-% \item we prove the correctness of a compiler for this DSL that
-%   produces RTL code; 
-% \item we implement several circuits in this DSL, and argue about their
-%   correctness. 
-% \end{itemize}
+\project{} hits a sweet between deep and shallow embeddings: using
+PHOAS to embed a domain-specific language makes it possible to use Coq
+as a meta programming tool to describe circuits, without the pitfalls
+usually associated with a deep-embedding (e.g., the handling of
+binders).
+%
+This provides an economical path toward succinct and provably correct
+description of, e.g., recursive circuits.
 
 \section{Overview of Fe-Si}
 Fe-Si is a purely functional language built around a \emph{monad} that
 makes it possible to define circuits. We start with a customary
-example: we show the implementation of a half adder.
+example: a half adder.
 \begin{mcoq}
-Definition hadd (a b: Var Bool) : action [] (Bool $\otimes$ Bool) :=
+Definition hadd (a b: Var B) : action [] (B $\otimes$ B) :=
 $\quad$do carry <- ret (andb a b); 
 $\quad$do sum    <- ret (xorb a b);
 $\quad$ret (carry, sum).  
 \end{mcoq}
-The typing of this circuit shows that it has two inputs, and
-returns a tuple of values. 
+This circuit has two Boolean inputs (\coqe{Var B}) and return a tuple of
+values (\coqe{B $\otimes$ B}). 
 %
 Here, we use Coq notations to implement some syntactic sugar: we
 borrow the \texttt{do}-notation to denote the monadic bind and use
@@ -163,9 +146,10 @@ borrow the \texttt{do}-notation to denote the monadic bind and use
 % 
 Our explicit use of return may seem odd. It is due to the fact that
 Fe-Si has two classes of syntactic values, expressions and actions,
-and that return takes as argument an
-expression\footnote{Unfortunately, it is not possible to define return
-  as an implicit coercion from expressions to actions in our setting.}. 
+and that return takes as argument an expression.
+
+%\footnote{Unfortunately, it is not possible to define return
+%  as an implicit coercion from expressions to actions in our setting.}
 
 Up to this point, Fe-Si can be seen as an extension of the
 Lava~\cite{Bjesse98lava:hardware} language, implemented in Coq rather
@@ -186,7 +170,7 @@ snippet, we build a counter that increments its value when its input
 is true.
 \begin{mcoq}
 Definition $\Phi$ := [Reg (Int n)].
-Definition count n (tick: Var Bool) : action $\Phi$ (Int n) :=
+Definition count n (tick: Var B) : action $\Phi$ (Int n) :=
 $\quad$do x <- !member_0;
 $\quad$do _ <- if tick then {member_0 ::= x + 1} else {ret tt}; 
 $\quad$ret x. 
@@ -213,24 +197,30 @@ they are interpreted in a synchronous setting.
 %
 From a logical point of view the execution of a program (an atomic
 action) is clocked, and at each tick of its clock, the computation of
-its effects (i.e., updates to memory elements) is instantaneous; 
-yet these effects are applied all at once between ticks. 
+its effects (i.e., updates to memory elements) is instantaneous: these
+effects are applied all at once between ticks.
 %
 In particular this means that it is not possible to observe, e.g.,
 partial updates to the memory elements, nor transient values in
 memory.
 
-\subsubsection{From programs to circuits.} At this point, the reader may
-wonder how it is possible to generate circuits in a palatable format
-out of Fe-Si programs. Indeed, using Coq as a meta-language to embed
-Fe-Si yields two kind of issues. First, Coq lacks any kind of I/O; and
-second, a Fe-Si program may have been built using arbitrary Coq code,
-including, e.g., higher-order functions or fixpoints.
+\subsubsection{From programs to circuits.} At this point, the reader
+may wonder how it is possible to generate circuits in a palatable
+format out of Fe-Si programs. Indeed, using Coq as a meta-language to
+embed Fe-Si yields two kind of issues. First, Coq lacks any kind of
+I/O; and second, a Fe-Si program may have been built using arbitrary
+Coq code, including, e.g., higher-order functions or fixpoints.
 
-Fortunately, Coq's extraction mechanism makes it possible to solve
-both problems at once: it generates OCaml code from Coq
-programs. Starting from a closed Fe-Si program \coqe{foo}, we put the
-following definition in a Coq file: 
+Note that every Coq function terminates: therefore, a closed Fe-Si
+program of type \coqe{action} evaluates to a term that is
+syntactically built using the inductive constructors of the type
+\coqe{action} (i.e., all intermediate definitions in Coq have been expanded).
+%
+Then we use Coq's extraction, which generates OCaml code from Coq
+programs.  
+%
+Starting from a closed Fe-Si program \coqe{foo}, we put the following
+definition in a Coq file:
 \begin{mcoq}
 Definition bar := fesic foo.  
 \end{mcoq}
@@ -239,7 +229,7 @@ ground RTL circuit. Then, we can use an (unverified) back-end that
 pretty-prints this RTL code as regular Verilog code. 
 %
 (We reckon that this is some devious use of the extraction mechanism,
-that palliates the fact that there is currently no I/O mechanism in
+which palliates the fact that there is currently no I/O mechanism in
 Coq.)
 
 \section{From Fe-Si to RTL}
@@ -354,8 +344,9 @@ register files, in the syntax and, later, in the semantics. We refer
 the reader to the supplementary materials~\cite{fesi} for more details.)
 %
 Our final definition \coqe{Action} of actions is a polymorphic
-function from a choice of variables to an action \adam{Add a note
-  saying that past PHOAS papers explain why this is a good idea}.
+function from a choice of variables to an action (we refer the reader
+to \cite{phoas-chlipala} for a more in-depth explanation of this
+encoding strategy).
 
 \begin{figure}
   \centering
@@ -375,7 +366,7 @@ Inductive action: ty -> Type:=
 | Return: forall t, expr t -> action t
 | Bind: forall t u,  action  t -> (V t -> action u) -> action u
 (* control-flow *)
-| OrElse: forall t, action t -> action t -> action t.
+| OrElse: forall t, action t -> action t -> action t
 | Assert: expr B -> action Unit    
 (* memory operations on registers *)
 | RegRead : forall t, member $\Phi$ (Reg t) -> action t
@@ -391,7 +382,7 @@ Definition Action $\Phi$ t := forall V, action V $\Phi$ t.
 
 \subsubsection{Semantics.}
 We endow Fe-Si programs with a simple synchronous semantics:  starting
-from an initial state, the execution of a Fe-Si programs corresponds
+from an initial state, the execution of a Fe-Si program corresponds
 to a sequence of atomic updates to the memory elements. 
 %
 Each step goes as follows: reading the state, computing an update to
@@ -436,39 +427,38 @@ evaluating $a$ produces the result $r$'', where $r$ is either
 \coqe{Some (v, $\Delta$)} (meaning that the action returned the value
 \coqe{v} and the partial update $\Delta$). 
 %
-The rules for the reduction of \coqe{Bind} may seem odd, in that they
-do not modify the state $\Gamma$. Indeed $\Gamma$ only stores the
-mutable state, and not the variable values. 
+Note that the PHOAS approach makes it possible to manipulate closed
+terms: we do not have rules for $\beta$-reduction, as it is
+implemented by the host language.
 %
-This is because the PHOAS approach makes it possible to manipulate
-closed terms: we hijack Coq's $\beta$-reduction when dealing with
-$f~v$, and we do not need to have an explicit treatment of the binders
-nor the reduction environments.
-
+That is, $\Gamma$ only stores the mutable state, and not the variable
+values.
+%
 There are two peculiarities here: first, following the definition of
 $\oplus$, if two values are written to a memory element, only the
 first one (in program order) is commited; second, reading a register
 yields the value that was held at the beginning of the time step. 
-%
-(While it may seem an odd choice for a general purpose programming
-language, it is meaningful when it comes to hardware. We come back to
-this point in \S\ref{sec:concl}.)
+
+(The reduction rules of Fe-Si can be described in terms of layered
+monads: we have a Reader monad of the old state and Writer monad of
+the state update to implement the synchronous aspect of state update;
+and we stack the Option monad on top of the state-change monads to
+implement the transactional aspect of the semantics.)
 
 Finally, we define a wrapper function that computes the next state of
 the memory elements, using the aforementioned evaluation relation
 (starting with an empty partial update). 
 \begin{mcoq}
-Definition Eval {t} {$\Phi$} (st: $\denote{\Phi}$) (A : Action Phi t) : option ($\denotety{t}$ * $\denote{\Phi}$) := ...
+Definition Eval {t} {$\Phi$} (st: $\denote{\Phi}$) (A : Action $\Phi$ t) : option ($\denotety{t}$ * $\denote{\Phi}$) := ...
 \end{mcoq}
 
 \subsection{RTL} 
-We now turn to the presentation of our target language, which sits at
-the register-transfer level. At this level, synchronous circuit can be
-faithfully described as a set of state-holding element, and a
-next-state function, implemented using combinational
-logic~\cite{DBLP:journals/cj/Gordon02}.
+Our target language sits at the register-transfer level. At this
+level, a synchronous circuit can be faithfully described as a set of
+state-holding element, and a next-state function, implemented using
+combinational logic~\cite{DBLP:journals/cj/Gordon02}.
 %
-Therefore, The definition of RTL programs (\coqe{block} in the
+Therefore, the definition of RTL programs (\coqe{block} in the
 following) is quite simple: a program is simply a telescope\footnote{A
   well-formed sequence of binders.} of expressions (combinational
 operations, or reads from state-holding elements), with a list of
@@ -478,14 +468,14 @@ We show the definition of expressions, telescopes, and blocks in
 Fig.~\ref{fig:rtl}. 
 %
 The definition of expressions is similar to the one we used for Fe-Si,
-except that we have constructors for reads from memory element, and
+except that we have constructors for reads from memory elements, and
 that we moved to ``three-adress code''.
 %
 (That is, operands are variables, rather than arbitrary expressions.)
 %
 A telescope (type \coqe{scope A}) can be thought of as a sequence of
 bindings of expressions, with an element of type \coqe{A} at the
-end (\coqe{A} is instantiated later with a list of effects.)
+end (\coqe{A} is instantiated later with a list of effects).
 %
 Intuitively, the first binding of a telescope can only read from
 memory elements; the second binding may use the first value, or read
@@ -500,7 +490,7 @@ commited to memory); and false otherwise.
 %
 The return value denotes the outputs of the circuits. 
 %
-The data type \coqe{effects} encode, for each memory element of the
+The data type \coqe{effects} encodes, for each memory element of the
 list $\Phi$, either an effect (a write of the right type), or None
 (meaning that this memory element is never written to). (For the sake
 of brevity, we omit the particular definition of dependently typed
@@ -531,7 +521,7 @@ Inductive scope (A : Type): Type :=
 | Sbind : forall (t: ty), expr t -> (V t -> scope A) -> scope A. 
 
 Inductive write : mem -> Type :=
-| WR : forall t, V t -> V Tbool -> write (Reg t)
+| WR : forall t, V t -> V B -> write (Reg t)
 | WRF : forall n t, V t -> V (Int n) -> V B ->  write (Regfile n t). 
      
 Definition effects := DList.T (option $\circ$ write) $\Phi$. 
@@ -586,8 +576,7 @@ the initial state of this memory location  and either returns a new
 state for this memory location, or returns \coqe{None}, meaning that
 location is left in its previous state.
 \begin{mcoq}
-Definition eval_effect (m : mem) : 
-$\qquad$option (write $\denotety{.}$ m) -> $\denotemem{m}$ -> option $\denotemem{m}$ := ... 
+Definition eval_effect (m : mem) : option (write $\denotety{.}$ m) -> $\denotemem{m}$ -> option $\denotemem{m}$ := ... 
 \end{mcoq}
 %
 Using all these pieces, it is quite easy to define what is the final
@@ -598,7 +587,7 @@ Definition Eval {t} {$\Phi$} ($\Gamma$: $\denote{\Phi}$) (B : Block $\Phi$ t) : 
 
 \subsection{Compiling Fe-Si to RTL} 
 Our syntactic translation from Fe-Si to RTL is driven by the fact that
-our RTL language does not allow clashing assignements: syntactically,
+our RTL language does not allow clashing assignments: syntactically,
 each register and register file is updated by at most one \coqe{write}
 expression.
 %
@@ -638,9 +627,9 @@ value returned by \coqe{B} is valid.
 
 More generally, our compilation function takes as argument an
 arbitrary function, and returns a telescope that binds three values:
-(1) a \emph{guard}, that denotes the validity of the following
+(1) a \emph{guard}, which denotes the validity of the following
 components of the tuple; %
-(2) a \emph{value}, that is bound by the telescope to denote the value
+(2) a \emph{value}, which is bound by the telescope to denote the value
 that was returned by the action; %
 (3) a list of \emph{nested effects}, which are a lax version of the
 effects that exist at the \coqe{RTL} level.
@@ -664,7 +653,7 @@ address, and a write-enable. The data is stored to the field of the
 register file selected by the address if the write-enable is true.  
 
 The heart of this translation is a \coqe{merge} function that takes
-two \coqe{write} of the same type, and returns a telescope that
+two writes of the same type, and returns a telescope that
 encapsulates a single \coqe{write}: 
 \begin{mcoq}
 Definition merge s (a b : write s): scope (option (write s)) := ...   
@@ -677,11 +666,11 @@ Despite requiring a bit of dependent types hackery\footnote{The
   \mbox{\coqe{write (Input t)}} is not inhabited.}, the definition of
 \mbox{\coqe{merge}} is the expected one.
 %
-For instance, in the register case, given $(v_a,we_a)$ (resp. $(v_b,
-we_b)$) the data value and the write-enable that correspond to
+For instance, in the register case, given $(v_a,e_a)$ (resp. $(v_b,
+e_b)$) the data value and the write-enable that correspond to
 \coqe{a}, the write-enable that corresponds to the merge of \coqe{a}
-and \coqe{b} is $we_a || we_b$, and the associated data value is
-\mbox{$we_a~?~v_a : v_b$}.
+and \coqe{b} is $e_a || e_b$, and the associated data value is
+\mbox{$e_a~?~v_a : v_b$}.
 
 \subsubsection{Moving to RTL.} The third pass of our compiler translates
 the previous intermediate language to RTL, which amounts to a simple
@@ -737,7 +726,7 @@ operations that were introduced by our compilation passes. In order to
 simplify only the Boolean computations that we introduced, we could
 use two different kinds of Booleans (the ones that were present at the
 source level and the others); and use our simplification pass only on
-the later.
+the latter.
 
 \subsection{Putting it all together}
 In the end, we prove that our whole compiler that goes from Fe-Si to
@@ -756,7 +745,7 @@ Definition fesic  (A : Fesi.Action $\Phi$ t) : RTL.Block $\Phi$ t :=
 \end{coq}
 &
 \begin{coq}
-Lemma fesic_correct A :
+Theorem fesic_correct A :
 forall ($\Gamma$ : $\denote{\Phi}$), 
 Front.Eval $\Gamma$ A = 
 RTL.Eval $\Gamma$ (fesic A).
@@ -769,7 +758,7 @@ $ $
 \section{Design and verification of a sorter core}
 We now turn to the description of a first hardware circuit implemented
 and proved correct in Fe-Si. 
-
+%
 A \emph{sorting network}~\cite{DBLP:books/mg/CormenLRS01} is a
 parallel sorting algorithm that sorts a sequence of values using only
 compare-and-swap operations, in a data-independent way. This makes it
@@ -790,7 +779,7 @@ Second, machine-checked formal proofs of bitonic sort were performed
 e.g., in Agda~\cite{DBLP:conf/types/BoveC04}, but without a
 connection with an actual hardware implementation. 
 %
-Our main contribution here is to implement such generator and to
+Our main contribution here is to implement such generators and to
 propose a formal proof of their correctness.
 
 More precisely, we implemented a version of bitonic sort as a regular
@@ -798,10 +787,11 @@ Coq program and proved that it sorts its inputs. This proof follows
 closely the one described by Bove and
 Coquand~\cite{DBLP:conf/types/BoveC04} -- in Agda -- and amounts to
 roughly 1000 lines of Coq, including a proof of the so-called
-\mbox{0-1~principle}.
+\mbox{0-1~principle}\footnote{That is, a (parametric) sorting network
+  is valid if it sorts all sequences of 0s and 1s.}.
 
 Then, we implemented a version of bitonic sort as a Fe-Si program,
-that mimicked the structure of the previous one. We present
+which mimicked the structure of the previous one. We present
 side-by-side the Coq implementation of \coqe{reverse} in
 Fig.~\ref{fig:reverse}.
 %
@@ -818,8 +808,8 @@ sequence in reverse order.
 Next, we turn to the function that is at the heart of the bitonic
 sorting network.
 %
-A bitonic sequence is a sequence $(x_i)_{0 \le i < n}$ is a sequence
-whose monotonicity changes less than two times, i.e., 
+A bitonic sequence is a sequence $(x_i)_{0 \le i < n}$ whose
+monotonicity changes fewer than two times, i.e.,
 $$ x_0 \le \cdots \le x_k \ge \cdots x_n, \text{with } 0 \le k < n $$
 or a circular shift of such a sequence.
 %
@@ -841,7 +831,7 @@ forall (U: ty) n,  Var (domain n) -> (T n -> action [] Var U) -> action [] Var U
 that makes it possible to recover the tree structure out of the
 result type of a circuit (\coqe{domain n}).
 
-\begin{figure}
+\begin{figure}[t]
   \centering
 \begin{twolistings}
 \begin{coq}
@@ -924,7 +914,6 @@ Fixpoint sort n : T n -> C n := ...
   \caption{Comparing the specification and the Fe-Si implementation}
   \label{fig:reverse}
 \end{figure}
-
 We are now ready to state (and prove) the correctness of our sorter
 core. We chose to settle in a context where the type of data that we
 sort are integers of a given size, but we could generalize this proof
@@ -933,10 +922,13 @@ We side-step the presentation of some of our Coq, to present the final
 theorem in a stylized fashion.
 \begin{theorem}
 Let $I$ be a sequence of length $2^n$ of integers of size $m$. The
-circuit always produces an output sequence that contains the same
-elements as $I$, and that is sorted.
+circuit always produces an output sequence that is a sorted permutation of $I$.
 \end{theorem}
-
+(Note that this theorem states the correctness of the Fe-Si
+implementation against a specification of sorted sequences that is
+independent of the implementation of the sorting algorithm in the
+left-hand side of Fig.~\ref{fig:reverse}; the latter only serves as a
+convenient intermediate step in the proof.)
 % \begin{tabular}{|l|}
 %   \hline
 %   \begin{minipage}{1.0\linewidth}
@@ -978,7 +970,7 @@ combinational sorter: we could have gone one step further in this
 verification effort and pipelined our design by registering the output
 of each compare-and-swap operator. However, we chose here to describe
 a more interesting design: a hardware implementation of a simple stack
-machine, inspired from the IMP virtual
+machine, inspired by the IMP virtual
 machine~\cite{Leroy-Marktoberdorf-09}, i.e., a small subset of the
 Java virtual machine.
 
@@ -995,11 +987,13 @@ instruction), a program counter (an integer), a variable stack (a list
 of values), and a store (a mapping from variables to values). The
 semantics of the machine is given by a one-step transition relation in Fig.~\ref{fig:stack}.
 %
-Remark that this specification uses natural numbers and lists in a
+Note that this specification uses natural numbers and lists in a
 pervasive manner: this cannot be faithfully encoded using finite-size
-machine words and register files. For simplicity reasons, we resolve
-this tension by adding some dynamic checks to the transition relations
-to rule out such ill-defined behaviors.
+machine words and register files. 
+%
+For simplicity reasons, we resolve this tension by adding some dynamic
+checks (that do not appear explicitly on Fig.~\ref{fig:stack}) to the
+transition relation to rule out such ill-defined behaviors.
 
 \begin{figure}
   \centering
@@ -1013,19 +1007,22 @@ i & ::=   & \texttt{const $n$                     }\\
   & $|$   & \texttt{bfwd $\delta$             }\\
   & $|$   & \texttt{bbwd $\delta$              }\\
   & $|$   & \texttt{bcond $c$ $\delta$ }\\
+ \\
   & $|$   & \texttt{halt                                       }\\
       \end{tabular}
 & \qquad 
       \begin{tabular}{ll}
-$C \vdash pc,\sigma,s \to pc+1, n :: \sigma,s$ & \text{if $C(pc)$ = \texttt{add $n$}} \\
+$C \vdash pc,\sigma,s \to pc+1, n :: \sigma,s$ & \text{if $C(pc)$ = \texttt{const $n$}} \\
 $C \vdash pc,\sigma,s \to pc+1, s(x) :: \sigma,s$ & \text{if $C(pc)$ = \texttt{var $x$}} \\
 $C \vdash pc,v::\sigma,s \to pc+1, \sigma,s[x \leftarrow v]$ & \text{if $C(pc)$ = \texttt{setvar $x$}} \\
 $C \vdash pc,n_2::n_1::\sigma,s \to pc+1, (n_1+n_2)::\sigma,s$ & \text{if $C(pc)$ = \texttt{add}} \\
 $C \vdash pc,n_2::n_1::\sigma,s \to pc+1, (n_1-n_2)::\sigma,s$ & \text{if $C(pc)$ = \texttt{sub}} \\
 $C \vdash pc,\sigma,s \to pc+1+\delta, \sigma,s$ & \text{if $C(pc)$ = \texttt{bfwd $\delta$}} \\
 $C \vdash pc,\sigma,s \to pc+1-\delta, \sigma,s$ & \text{if $C(pc)$ = \texttt{bbwd $\delta$}} \\
-$C \vdash pc,n_2:::n_1::\sigma,s \to pc+1+\delta, \sigma,s$ & \text{if $C(pc)$ = \texttt{bcond c $\delta$} and $c~n_1~n_2$} \\
-$C \vdash pc,n_2:::n_1::\sigma,s \to pc+1, \sigma,s$ & \text{if $C(pc)$ = \texttt{bcond c $\delta$} and $\neg (c~n_1~n_2)$} \\
+$C \vdash pc,n_2::n_1::\sigma,s \to pc+1+\delta, \sigma,s$ & \text{if $C(pc)$ = \texttt{bcond c $\delta$} and $c~n_1~n_2$} \\
+$C \vdash pc,n_2::n_1::\sigma,s \to pc+1, \sigma,s$ & \text{if $C(pc)$
+  = \texttt{bcond c $\delta$} and $\neg (c~n_1~n_2)$} \\
+\texttt{no reduction}
       \end{tabular}
 \end{twolistings}
   \caption{Instruction set and transition relation of our stack machine}
@@ -1067,12 +1064,13 @@ elements of the machine state accordingly.
 For the sake of space, we only present the code for the \texttt{setvar
   $x$} instruction below.
 
+% elided the #i notation in front of 1
 \begin{twolistings}
 \begin{coq}
 Definition pop :=
 do sp <- ! SP;       
-do x <- read STACK [: sp - #i 1];
-do _ <- SP ::= sp - #i 1;
+do x <- read STACK [: sp - 1];
+do _ <- SP ::= sp - 1;
 ret x.    
 \end{coq}
 &
@@ -1088,15 +1086,15 @@ $ $
 \subsubsection{Correctness.} We are now ready to prove that our
 hardware design is a sound implementation of its specification. 
 %
-First, we define a logical relation between that relates the two
+First, we define a logical relation that relates the two
 encodings of machine state (in the specification and in the
 implementation), written $\equiv$. 
 %
 Then, we prove a simulation property between related states.
 \begin{theorem}
-  Let $s_1$ be a machine state as implemented in the specification, and
-  be $c_1$ the machine state as implemented in the circuit, such that
-  $s_1 \equiv c_1$.
+  Let $s_1$ be a machine state as implemented in the specification and
+  $m_1$ the machine state as implemented in the circuit, such that
+  $s_1 \equiv m_1$.
 %
   If $s_1$ makes a transition to $s_2$, then $m_1$ makes a transition
   to $m_2$ such that $s_2 \equiv m_2$.
@@ -1119,7 +1117,7 @@ memory locations. This gives rise to an highly stylized way of
 computing e.g., the Fibonacci sequence.
 
 \section{Comparison with related works}\label{sec:rw}
-Fe-Si marry functional programming and inductive theorem proving.
+Fe-Si marries functional programming and inductive theorem proving.
 %
 We refer the reader to Sheeran~\cite{DBLP:journals/jucs/Sheeran05} for
 a review of the use of functional programming languages in hardware
@@ -1143,7 +1141,7 @@ Second, while Lava features ``non-standard'' interpretations of
 circuits that make it possible to prove the correctness of fixed-size
 tangible representation of circuits, our embedding of Fe-Si in Coq
 goes further: it makes it possible to prove the correctness of
-parametric circuits generators.
+parametric circuit generators.
 
 \medskip
 
@@ -1164,19 +1162,19 @@ implementation language and as a specification language.
 Fe-Si can be described as a deterministic subset of Bluespec. 
 %
 We argue that deterministic semantics are easier to reason with, and
-that we can use the full-power of Coq as a specification language to
-palliate our lack of non-determinism.
+that we can use the full power of Coq as a specification language to
+palliate our lack of non-determinism in the Fe-Si language.
 %
 Moreover, more complex scheduling can be implemented using a few
 program combinators~\cite{DBLP:conf/memocode/DaveAP07}: we look
-forward to implement these in Fe-Si. 
+forward to implementing these in Fe-Si. 
 
 Richards and Lester~\cite{DBLP:journals/isse/RichardsL11} developed a
 shallow-embedding of a subset of Bluespec in PVS. While they do not
 address circuit generators nor the generation of RTL code, they proved
 the correctness of a three-input fair arbiter and a two-process
 implementation of Peterson's algorithm that complements our case
-studies (we have not attempted to translate these examples in Fe-Si).
+studies (we have not attempted to translate these examples into Fe-Si).
 
 \medskip 
 
@@ -1192,11 +1190,11 @@ our examples as supplementary material~\cite{fesi}.
 The technical contributions of this paper are
 \begin{itemize}
 \item a novel use of PHOAS as a way to embed domain-specific languages
-  in the Coq proof assistant; 
+  in Coq;
 \item a toy compiler from a simple hardware description language to
   RTL code;
-\item machine checked proofs of correctness for hardware designs of
-  light complexity. 
+\item machine checked proofs of correctness for some simple hardware
+  designs. 
 \end{itemize}
 
 This work is intended to be a proof of concept: much remains to be

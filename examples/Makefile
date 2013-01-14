@@ -1,12 +1,12 @@
 ROOT    := ..
-MODULES := Stack Isa Mult MOD Add Driver Extraction
+MODULES := Stack Sorter Add Driver Extraction
 
 VS      := $(MODULES:%=%.v)
 
 .PHONY: coq clean backend
 
 backend: coq
-	ocamlbuild -lib unix -Is extracted,backend main.byte
+	ocamlbuild -lib unix -Is extracted,backend main.native
 
 all: coq backend
 

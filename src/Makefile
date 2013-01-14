@@ -1,6 +1,6 @@
 #SymEvalTests
 
-MODULES := Structures Consider Seq Compare Word Array DList Common Vector Core Front IR RTL CSE BDD CP FirstOrder Compiler
+MODULES := Structures Consider Seq Compare Word Vector DList Common  Core Front IR RTL CSE BDD CP FirstOrder Compiler
 TESTS := 
 VS         := $(MODULES:%=%.v)
 TVS        := $(TESTS:%=%.v)

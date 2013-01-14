@@ -1,6 +1,6 @@
 Require Import Common. 
 Require Import DList. 
-Require Word Array. 
+Require Word Vector. 
 
 
 Unset Elimination Schemes. 
@@ -11,6 +11,11 @@ Inductive type : Type :=
 | Tbool: type 
 | Tint: forall (n : nat), type
 | Ttuple : forall l : list type,  type. 
+
+Notation Unit := Tunit.
+Notation B  := Tbool. 
+Notation Int n := (Tint n).
+Notation Tuple l := (Ttuple l). 
 
 Section type_ind. 
   Variable P : type -> Prop. 
@@ -159,23 +164,24 @@ Notation constant := (@Generics.constant type eval_type).
 Definition Cbool b : constant Tbool := b. 
 Definition Cword {n} x : constant (Tint n) := (Word.repr _ x). 
 
-Notation B := Tbool. 
-Notation W n := (Tint n).
+(** The definition of state elements. *)
+Inductive mem : Type :=
+  | Tinput: forall (t: type), mem
+  | Treg : forall (t : type), mem
+  | Tregfile : forall (n : nat) (t : type), mem. 
 
-Inductive sync : Type :=
-  | Tinput: forall (t: type), sync
-  | Treg : forall (t : type), sync
-  | Tregfile : forall (n : nat) (t : type), sync. 
+Notation Input := Tinput.
+Notation Reg   := Treg.
+Notation Regfile   := Tregfile.
 
-Definition state := list sync. 
 
-Definition eval_sync (s : sync) := 
+Definition state := list mem. 
+
+Definition eval_mem (s : mem) := 
   match s with
     | Tinput t => eval_type t
     | Treg t => eval_type t 
     | Tregfile n t => Regfile.T n (eval_type t) 
   end. 
 
-Notation eval_state := (DList.T eval_sync). 
-
-(* Notation updates := (Common.Tuple.of_list (Common.comp option  Core.eval_sync) _).  *)
+Notation eval_state := (DList.T eval_mem). 

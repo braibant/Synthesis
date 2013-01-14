@@ -1,7 +1,12 @@
 Require Import Common DList Core ZArith. 
 Require BDD Seq.
 
-(* In this compilation pass, we implement boolean simplification using BDDs. *)
+(** In this compilation pass, we implement boolean simplification
+    using BDDs.  Every boolean value is tagged with an abstraction of
+    its runtime value, and when two declared variables have equivalent
+    values, we do not introduce a binder for the second one. This
+    transformation is similar to CSE, except that we use semantic
+    common sub-expression elimination. *)
 
 Section t. 
 
@@ -175,7 +180,7 @@ Section t.
 
   Definition cp_effects (eff: effects Phi V) : effects Phi Var :=
     DList.map
-         (fun (a : sync) (x : (option ∘ effect V) a) =>
+         (fun (a : mem) (x : (option ∘ effect V) a) =>
             match x with
               | Some x0 =>
                   match x0 in (effect _ s) return ((option ∘ effect Var) s) with
@@ -359,237 +364,7 @@ Proof.
     + crush; eauto. 
 
 Qed. 
-
-
-
-(* Lemma bdd_value_path bdd l e v:  *)
-(*   BDD.value (lift l) bdd e v ->  *)
-(*   BDD.path bdd (List.length l) e -> *)
-(*   (forall l' v', BDD.value (lift (l ++ l')) bdd e v' -> v' = v).  *)
-(* Proof.  *)
-(*   induction 1; intros. *)
-
-(*   inversion H0; t. tauto.   *)
-(*   inversion H0; t. tauto.   *)
-  
-(*   inversion H1; subst.  *)
-(*   assert ((l1,v0,h0) = (l0,v,h)) by congruence. *)
-(*   inject H3. clear H4.  *)
-(*   assert (IH1 := IHvalue1 H5).  *)
-(*   assert (IH2 := IHvalue2 H6). clear IHvalue1 IHvalue2 H5 H6.  *)
-(*   assert (H' := BDD.value_N_inversion _ _ _ _ H2 _ _ _ e).  *)
-(*   destruct H' as [vl2 [vh2 [[Hl'  Hv'  ] Hp' ]]].  *)
-(*   pose proof (BDD.value_inj _ _ _ _ H2 _ Hp' ).  *)
-(*   specialize (IH1 _ _ Hl'). specialize (IH2 _ _ Hv'). subst. *)
-(*   assert (lift (l++l') v = lift l v).  *)
-(*   clear - H7.  *)
-(*   apply lift_lt_length; auto.   *)
-(*   rewrite H3; congruence.  *)
-(* Qed.  *)
-
-(* Lemma bdd_value_lift_snoc bdd l ptr e x vx :  *)
-(*   BDD.value (lift l) bdd x vx ->  *)
-(*   BDD.path bdd (List.length l) x ->  *)
-(*   BDD.value (lift (l ++ [(ptr,e)])) bdd x vx.  *)
-(* Proof.  *)
-(*   intros.   *)
-(*   destruct (BDD.value_change_env _ (lift (l++ [(ptr,e)])) bdd _ _ H) as [vx' H'].  *)
-(*   assert (vx' = vx) by apply (bdd_value_path _ _ _ _ H H0 _ _ H').  *)
-(*   subst; auto.  *)
-(* Qed.  *)
-
-(* Arguments Eknown {Var} e.   *)
-(* Arguments Ebdd {Var} e.   *)
-(* Arguments Enext {Var} e.   *)
 Hint Resolve inv_bdd_wf.
-
-(* Lemma bdd_incr_path env bdd1 bdd2 n e (Hincr : BDD.incr env bdd1 bdd2):  *)
-(*   BDD.path bdd1 n e ->  *)
-(*   BDD.path bdd2 n e. *)
-(* Proof.  *)
-(* Admitted.  *)
-
-(* Lemma bdd_path_lt bdd n m e: n <= m ->  BDD.path bdd n e -> BDD.path bdd m e.  *)
-(* Proof.                *)
-(*   induction 2; try constructor.  *)
-(*   econstructor. eapply e. eauto. eauto.  *)
-(*   omega.  *)
-(* Qed.  *)
-   (* 
-Lemma inv_cons_incr G E (INV : inv G E) e ptr E2: 
-  incr eval_type E = (ptr, E2) -> 
-  inv (cons eval_type V B e (e, Some ptr) G) (add_env eval_type E2 e ptr).
-Proof. 
-  intros H. 
-  unfold incr in H. 
-  destruct (BDD.mk_var (Ebdd E) (Enext E)) as [r bdd] eqn:Heq. 
-  inject H. unfold add_env.  simpl. 
-  refine((fun Hwf => Build_inv _ _ _ _ _ Hwf (_) _ ) _). 
-  - intros ty x y; inversion 1; t.  reflexivity. 
-    apply INV; auto. 
-  - intros x y; inversion 1; t; simpl. 
-    {clear X. 
-     refine (let H := BDD.mk_var_correct (lift (Eknown E ++ [(ptr,e)])) _ _ _ _ _ Heq in _). 
-     eauto using BDD.wf_change_env.   
-     destruct H as [Hv Hincr]. 
-     assert (e = lift (Eknown E ++ [(ptr,e)]) (Enext E)) by 
-         (unfold lift; rewrite inv_next_2; rewrite list_nth_error_length; reflexivity). 
-     rewrite <- H in Hv. auto. }
-    {
-      destruct y as [y [?|]]. 
-      + pose proof (inv_2 _ _ X0). 
-        eapply BDD.mk_var_correct in Heq.
-        simpl in *. apply bdd_value_lift_snoc. 
-        eapply BDD.incr_value; [| apply H]. intuition eauto. 
-        eapply bdd_incr_path. 2: eapply inv_path. 2: eauto.  intuition eauto. 
-        eauto.      
-      + simpl. trivial. 
-    }
-  - intros x y z; inversion 1; t; simpl. 
-    inject H0. 
-    clear X. 
-    {    
-      unfold BDD.mk_var in Heq. unfold BDD.mk_node in Heq. simpl in Heq. 
-      destruct ( BDD.NMap.find (elt:=positive) (BDD.F, Enext E, BDD.T)
-                               (BDD.hmap (Ebdd E))) eqn:Heq'. 
-      
-      inject Heq.
-      econstructor. 
-      rewrite BDD.wf_bijection in Heq'. 
-      apply Heq'.
-      2: constructor. 
-      2: constructor. 
-      apply INV. 
-      rewrite inv_next_2.  rewrite List.app_length. simpl. omega. 
-      inject Heq.
-      econstructor. simpl. rewrite BDD.PMap.gss. reflexivity. 
-      constructor. 
-      constructor. 
-      rewrite inv_next_2.  rewrite List.app_length. simpl. omega. 
-      
-    }
-    {
-      
-    eapply bdd_path_lt. 
-    2: eapply bdd_incr_path. 3: eapply inv_path; eauto.  
-    rewrite List.app_length. simpl. omega. 
-    eapply BDD.mk_var_correct in Heq. 
-    destruct Heq; eauto. eauto. 
-    }
-  - simpl. simpl in *. 
-    unfold BDD.mk_var in Heq. unfold BDD.mk_node in Heq. 
-    simpl in Heq. 
-    destruct ( BDD.NMap.find (elt:=positive) (BDD.F, Enext E, BDD.T)
-            (BDD.hmap (Ebdd E))); inject Heq.  simpl. 
-    eapply BDD.mk_var_correct in Heq; eauto.  
-    destruct Heq as [Hv Hincr]. 
-    simpl in *. 
-  assert (BDD.wf (lift (Eknown eval_type E)) (Ebdd eval_type E))
-  econstructor. 
-  + intros ty x y; inversion 1; t.  reflexivity. 
-    apply INV; auto. 
-  + intros x y; inversion 1; t. 
-    {simpl. unfold incr in H. 
-     clear X. 
-     destruct (BDD.mk_var (Ebdd _ E) (Enext _ E)) as [r bdd] eqn:Heq. 
-     inject H. simpl. 
-     refine (let H :=
-                 BDD.mk_var_correct (lift (Eknown eval_type E ++ [(ptr,e)])) _ _ _ _ _ Heq
-             in _ ).   
-     eapply BDD.wf_change_env; apply INV.  
-     destruct H as [Hv Hi]. 
-     assert (e = lift (Eknown eval_type E ++ [(ptr,e)]) (Enext eval_type E)).
-     unfold lift. 
-     rewrite inv_next_2.
-     rewrite list_nth_error_length. reflexivity. 
-     rewrite <- H in Hv. auto. 
-    }
-    
-    {
-      destruct y as [y [?|]];
-      pose proof  (inv_2 _ _ X0);
-      trivial. 
-      pose proof (inv_path _ _ _ X0).             
-      unfold value in *; simpl in *.     
-      unfold incr in H. destruct (BDD.mk_var (Ebdd eval_type E) (Enext eval_type E)) eqn: Heq. 
-      inject H. simpl.
-      eapply BDD.mk_var_correct in Heq. 2: apply INV. 
-      
-      destruct Heq. 
-
-      apply bdd_value_lift_snoc; auto. 
-      apply i. auto. 
-      eapply bdd_incr_path. eauto. eauto. 
-    }
-  + intros x y z. inversion 1; t. inject H1. 
-    
-    {  
-      simpl. unfold incr in H. 
-      unfold incr in H. destruct (BDD.mk_var (Ebdd eval_type E) (Enext eval_type E)) eqn: Heq. 
-      inject H. simpl.
-      
-      
-      unfold BDD.mk_var in Heq. unfold BDD.mk_node in Heq. simpl in Heq. 
-      destruct ( BDD.NMap.find (elt:=positive) (BDD.F, Enext eval_type E, BDD.T)
-                               (BDD.hmap (Ebdd eval_type E))) eqn:Heq'. 
-      
-      inject Heq.  
-      econstructor. 
-      rewrite BDD.wf_bijection in Heq'. 
-      apply Heq'.
-      2: constructor. 
-      2: constructor. 
-      apply INV. 
-      rewrite inv_next_2.  rewrite List.app_length. simpl. omega. 
-      injection Heq. intros; subst. clear Heq.
-      econstructor. simpl. rewrite BDD.PMap.gss. reflexivity. 
-      constructor. 
-      constructor. 
-      rewrite inv_next_2.  rewrite List.app_length. simpl. omega. 
-    }
-    {
-      simpl. apply  inv_path in X0. 
-      Lemma incr_bdd_incr G E (INV : inv G E) ptr E2: 
-        incr eval_type E = (ptr, E2) -> 
-        BDD.incr (lift (Eknown _ E)) (Ebdd _ E) (Ebdd _ E2).   
-      Proof. 
-      Admitted. 
-      Hint Resolve incr_bdd_incr. 
-      Lemma incr_bdd_length_env G E (INV : inv G E) ptr E2: 
-        incr eval_type E = (ptr, E2) -> 
-        Datatypes.length (Eknown eval_type E) = Datatypes.length (Eknown  eval_type E2). 
-      Proof. 
-        unfold incr. destruct  (BDD.mk_var (Ebdd eval_type E) (Enext eval_type E)) eqn: Heq.
-        intros. injection H; clear H; intros; subst. simpl.  reflexivity. 
-      Qed. 
-      
-     
-      Hint Resolve bdd_path_lt.  Hint Resolve bdd_incr_path.
-      eauto. 
-      rewrite List.app_length. simpl. 
-      pose proof  (incr_bdd_length_env _ _ INV _ _ H). rewrite H0 in X0.  clear H0.
-      eapply bdd_path_lt.  
-      2: 
-        eapply bdd_incr_path. 3: apply X0. 2: eauto. simpl. 
-      generalize (Eknown eval_type E2). clear; intros; omega. 
-    }
-  + simpl.           
-    
-unfold incr in H. 
-          destruct  (BDD.mk_var (Ebdd eval_type E) (Enext eval_type E)) eqn: Heq.
-          injection H. intros; subst. clear H. simpl. 
-          simpl. 
-            2: eauto. 
-            econstructor. destruct INV.  
-            eapply BDD.mk_var_correct in Heq. 2: apply INV. 
-            
-          }
-          
-          {
-          }
-          }           simpl. 
-
-*)
 
 Lemma  incr_inv G E (INV : inv G E) ptr E' e : 
   forall (H : incr eval_type E e = (ptr, E')), 
@@ -866,10 +641,8 @@ Qed.
 Definition Compile Phi t (b : Block Phi t) : Block Phi t :=  
   fun V => cp_block Phi V t (b _). 
 
-Theorem Compile_correct Phi t b (Hwf : WF Phi t b): forall st Delta,
-  Eval Phi st t (Compile Phi t b) Delta =  Eval Phi st t b Delta. 
+Theorem Compile_correct Phi t b (Hwf : WF Phi t b) st : 
+  Next Phi st t (Compile Phi t b) =  Next Phi st t b. 
 Proof. 
-  unfold Eval. intros. unfold Compile. symmetry. apply cp_correct. auto. 
+  unfold Next. intros. unfold Compile. symmetry. rewrite cp_correct; auto. 
 Qed. 
-
-Print Assumptions Compile_correct. 

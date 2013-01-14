@@ -5,7 +5,7 @@ Require Import Front.
   
 Section t. 
   Variable Phi : state. 
-  Notation updates := (DList.T (option ∘ eval_sync) Phi). 
+  Notation updates := (DList.T (option ∘ eval_mem) Phi). 
   
   Section defs. 
   Variable R : type -> Type. 
@@ -137,14 +137,14 @@ Section t.
      compile_inner unit t a). 
   
   
-  Inductive effect  : sync -> Type :=
+  Inductive effect  : mem -> Type :=
   | effect_reg_write : forall t,  R t -> R Tbool -> effect (Treg t)
   | effect_regfile_write : forall n t,  R t -> R ( (Tint n)) -> R Tbool -> 
                                                 effect (Tregfile n t). 
   
   Definition effects := DList.T (option ∘ effect) Phi. 
   
-  Definition init_effects : effects := @DList.init sync (option ∘ effect) (fun t : sync => None) Phi. 
+  Definition init_effects : effects := @DList.init mem (option ∘ effect) (fun t : mem => None) Phi. 
 
   Definition block t := telescope (R t * expr R Tbool *  effects). 
     
@@ -320,14 +320,14 @@ Section t.
     (* refine (Tuple.fold Phi _ e Delta).  *)
     refine (DList.map3 _ Phi e st Delta). 
 
-    Definition eval_effect (a : sync) :   
+    Definition eval_effect (a : mem) :   
       (option ∘ effect eval_type) a ->
-      eval_sync a -> (option ∘ eval_sync) a -> (option ∘ eval_sync) a. 
+      eval_mem a -> (option ∘ eval_mem) a -> (option ∘ eval_mem) a. 
     
     refine (fun  eff => 
               match eff with 
                   | Some eff =>  
-                      match eff in effect _ s return eval_sync s -> (option ∘ eval_sync) s -> (option ∘ eval_sync) s  with 
+                      match eff in effect _ s return eval_mem s -> (option ∘ eval_mem) s -> (option ∘ eval_mem) s  with 
                         |  effect_reg_write t val we =>  fun _ old => 
                              match old with 
                                | Some _ => old
@@ -859,14 +859,18 @@ Definition Block Phi t := forall V,  block Phi V t.
 Definition Compile Phi t (A : forall V, action Phi V t) : Block Phi t := 
   fun V =>
     nblock_to_block Phi V (compile Phi V t (A V)):block Phi V t. 
-Definition Eval Phi st t (B : Block Phi t) Delta :=
-  eval_block Phi st t (B _) Delta. 
+
+Definition Next Phi st t (B : Block Phi t) :=
+  match eval_block Phi st t (B _) (Diff.init Phi) with 
+    | None => None
+    | Some Delta => Some (fst Delta, Diff.apply Phi (snd Delta) st)
+  end. 
 
 
-Theorem Compile_correct Phi t A : forall st Delta,
-  Eval Phi st t (Compile Phi t A) Delta =  Front.Eval Phi st t A Delta. 
+Theorem Compile_correct Phi t A : forall st,
+  Next Phi st t (Compile Phi t A) =  Front.Next Phi st  A. 
 Proof. 
-  unfold Compile, Eval, Front.Eval. intros. 
+  unfold Compile, Next, Front.Next. intros. 
   rewrite nblock_compile_correct. 
   simpl.  rewrite compile_correct. reflexivity.   
 Qed. 

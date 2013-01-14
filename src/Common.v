@@ -298,8 +298,8 @@ End Tuple.
 Arguments Tuple.get {T F} l t _ _. 
 Arguments Tuple.app {T F} l1 l2 _ _. 
 Arguments Tuple.of_list {T} _ _ .  
-Require Array. 
-Module Regfile := Array. 
+Require Vector. 
+Module Regfile := Vector. 
 
 (*
 

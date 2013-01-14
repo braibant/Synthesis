@@ -107,6 +107,108 @@ Module Spec.
       end. 
   End t.
   
+  Module SameElements. 
+    Section t. 
+      Variable A : Type.
+      Variable O : order A. 
+    Require Import Permutation. 
+    Require Import Setoid.   
+    
+    Definition equiv {n} (t1 : tree A n) (t2: tree A n) := Permutation (list_of_tree _ t1) (list_of_tree _ t2).
+    
+    Notation "t1 ~~ t2" := (equiv t1 t2) (at level 67). 
+    Notation sort t := (sort A O _ t).
+    
+    Instance equiv_refl {n}: Reflexive (@equiv n).  Proof. repeat intro. apply Permutation_refl. Qed.
+    Instance equiv_sym {n} : Symmetric (@equiv n). Proof. repeat intro. apply Permutation_sym;auto. Qed.
+    Instance equiv_trans {n} : Transitive (@equiv n). Proof. repeat intro;eapply Permutation_trans;eauto. Qed.
+
+    Lemma N_morphism n t1 t2 t1' t2' : t1 ~~ t1' -> t2 ~~ t2' -> N n t1 t2 ~~ N n t1' t2'.
+    Proof. 
+      unfold equiv. simpl. apply Permutation_app. 
+    Qed. 
+
+    Lemma N_morphism_swap n t1 t2 t1' t2' : t1 ~~ t2' -> t2 ~~ t1' -> N n t1 t2 ~~ N n t1' t2'.
+    Proof. 
+      unfold equiv. simpl. intros. rewrite Permutation_app_comm.  apply Permutation_app; auto. 
+    Qed. 
+    Require Import Equality. 
+    Notation "x == y" := (Permutation x y) (at level 70).
+    Require Import Morphisms. 
+
+    Instance app_proper A : Proper (@Permutation A ==> @Permutation A ==> @Permutation A)(@List.app  A).
+    Proof. 
+      repeat intro. apply Permutation_app. auto. auto. 
+    Qed. 
+
+    Instance N_proper n : Proper (@equiv n ==> @equiv n ==> @equiv (S n))(N n).
+    Proof. 
+      repeat intro. apply N_morphism; auto. 
+    Qed. 
+
+    Lemma min_max_swap_equiv n: forall t1 t2  a b,          min_max_swap A O n t1 t2 = (a,b) -> 
+                                                       N n a b ~~ N n t1 t2. 
+    Proof. 
+      induction n; dependent destruction t1; dependent destruction t2; 
+      dependent destruction a; dependent destruction b; simpl. 
+      + intros H; inject H. unfold equiv. simpl. 
+        unfold min, max. destruct (x <= x0) eqn:H. auto.
+        apply perm_swap; auto. 
+      + intros.
+        destruct (min_max_swap A O n t1_1 t2_1) eqn:H1.             
+        destruct (min_max_swap A O n t1_2 t2_2) eqn:H2.             
+        apply IHn in H1. apply IHn in H2. 
+        inject H; injectT. clear IHn. 
+        unfold equiv in *. simpl in *.          revert H1 H2. 
+        repeat match goal with |- context [list_of_tree A ?x] => generalize (list_of_tree A x); intro end. 
+        intros. 
+        assert (H := Permutation_app H1 H2). clear H1 H2. 
+        repeat rewrite  List.app_assoc in *.             
+        clear - H. 
+
+        rewrite <- (List.app_assoc l l3 l0). 
+        rewrite (Permutation_app_comm l3 l0). 
+        rewrite  (List.app_assoc l l0 l3).  rewrite H.
+        apply Permutation_app; auto. 
+        rewrite <- (List.app_assoc l1 l2 l5). 
+        rewrite (Permutation_app_comm l2 l5). 
+        rewrite  (List.app_assoc l1 l5 l2).  
+        auto. 
+    Qed.
+        
+    Lemma reverse_equiv {n} t: reverse A n  t ~~ t. 
+    Proof. 
+      induction n; simpl; dependent destruction t; simpl. 
+      + reflexivity.   
+      + apply N_morphism_swap. auto. auto.
+    Qed. 
+
+    Lemma merge_equiv : forall n t, merge A O n t ~~ t.  
+    Proof. 
+      induction n; simpl; dependent destruction t.
+      + reflexivity. 
+      + simpl. destruct (min_max_swap A O n t1 t2) as [a b] eqn:Hab.  apply min_max_swap_equiv in Hab. 
+        rewrite IHn. rewrite IHn. auto. 
+    Qed.
+
+    Hint Resolve merge_equiv reverse_equiv min_max_swap_equiv. 
+    
+    Theorem sort_equiv : forall n (t: tree A n), sort t ~~ t.   
+    Proof. 
+      induction n; simpl; dependent destruction t; simpl.
+      + reflexivity. 
+      + destruct (min_max_swap A O n (sort t1) (reverse A n (sort t2))) as [a b] eqn:H. 
+        transitivity (N n a b). 
+        apply N_morphism; auto.  
+        apply min_max_swap_equiv in H. 
+        rewrite H.  apply N_morphism. auto.     
+        rewrite reverse_equiv. auto. 
+    Qed.
+  End t.
+  End SameElements. 
+    
+
+      
   
   Notation "t /<= a" := (Forall  t (fun x => x <= a)) (at level 79, left associativity).
   
@@ -720,7 +822,7 @@ Module Spec.
       induction n. 
       - intros. simpl. dependent destruction t.  apply tsorted_L. 
       - dependent destruction t. simpl. 
-        set (l :=  (sort bool _ n t1)). 
+        set (l :=  (sort bool _  n t1)). 
         set (r :=  (sort bool _  n t2)). 
         destruct (min_max_swap n l (reverse bool n r)) as [a b] eqn: Hab. 
         assert (bitonic (N n l (reverse bool n r))= true). 
@@ -1553,7 +1655,7 @@ Section proof.
       t IHn. 
       simpl. 
       
-destruct (       Spec.min_max_swap (Word.T size) word_order n 
+      destruct (       Spec.min_max_swap (Word.T size) word_order n 
              (sort n (left I))
              (Spec.reverse (Word.T size) n (sort n (right I)))) as [ a b] eqn : Hab.
       
@@ -1570,12 +1672,7 @@ destruct (       Spec.min_max_swap (Word.T size) word_order n
       simpl in *. rewrite Hab in H5. eapply R_N_fst. R_resolve. 
   Qed. 
 
-  (** The final theorem states that:
-      - the output of the circuit is never None (no failure);
-      - the output of the circuit is equivalent to the output of the specification algorithm;
-      - the output of the specification algorithm is sorted with respect to the particular order we chose
-   *)
-  Theorem circuit_sort_correct n (I : tree (Var A) n) : 
+  Theorem circuit_sort_correct' n (I : tree (Var A) n) : 
     match Circuit.output _ (csort n I) with 
       | None => False
       | Some out => out == (sort n I) /\ Spec.tsorted n (sort n I)
@@ -1586,17 +1683,39 @@ destruct (       Spec.min_max_swap (Word.T size) word_order n
     split; auto. apply Spec.sort_correct. apply word_order. 
     trivial. 
   Qed. 
-    
-    
+
+  (** The final theorem states that:
+      - the output of the circuit is never None (no failure);
+      - the output of the circuit is equivalent to the output of the specification algorithm;
+      - the output of the specification algorithm is sorted with respect to the particular order we chose
+   *)
+  
+  Notation same_elements x y := (Spec.SameElements.equiv _ x y). 
+  Theorem circuit_sort_correct n (I : tree (Var A) n) :
+    match Circuit.output _ (csort n I) with 
+      | None => False
+      | Some out => exists out', (out == out' /\ Spec.tsorted n out' /\ same_elements out' I)
+    end.
+  Proof. 
+    pose proof (circuit_sort_correct' n I).
+    destruct (Circuit.output (Circuit.domain A n) (csort n I)) eqn:? . 
+    + exists (sort n I). intuition.  apply Spec.SameElements.sort_equiv. 
+    + auto. 
+  Qed.
+             
   Print Assumptions circuit_sort_correct. 
 End proof.
     
-                                                   
+(** The final circuit generator *)
 Definition test size n := 
   (fun V =>
      Close V _ _ _
            (fun x =>  Circuit.rebind _ V _ (Evar x) (fun x => Circuit.sort (Tint size) V (int_cmp_swap size) n x))).
 
+    
+(** Running the circuit inside Coq, for testing purposes *)
+
+(*  
 Module sanity_check. 
   Definition c V := Circuit.sort (Tint 8) V (int_cmp_swap 8).
   Fixpoint build n i : (tree (Word.T 8) n * Z):=
@@ -1610,6 +1729,9 @@ Module sanity_check.
   Definition t k := c eval_type k (map (@Evar eval_type (Tint 8)) (fst (build k 0))). 
   Eval compute in Sem.eval_action (t 4) _ (Diff.init nil).
 End sanity_check.
+*)
 Require Compiler. 
-Definition t := (Compiler.fesiopt _ _ (test 4 4)). 
+
+(** Exporting the circuit, for extraction *)
+Definition t := (Compiler.Fesic _ _ (test 4 4)). 
   

@@ -4,6 +4,7 @@ Fixpoint pow2 k := (match k with O => 1 | S p => pow2 p + pow2 p end)%nat.
 
 Notation "[2^ n ]" := (pow2 n). 
 
+(** A divide and conquer adder (Von Neumann)  *)
 Section s. 
   
   Variable V : type -> Type. 
@@ -45,7 +46,7 @@ End s.
 
 Definition test n : 
   Action ([Treg (Tint [2^ n]); Treg (Tint [2^ n])])%list
-         (Ttuple [ B; B; W [2^n]; W [2^n]])%list. 
+         (Ttuple [ B; B; Int [2^n]; Int [2^n]])%list. 
 intros V. 
 refine
     (do x <- ! var_0 ;
@@ -55,8 +56,8 @@ refine
 Defined. 
 Require Import DList. 
 
-Definition t l := Front.Eval ([Treg (W [2^4]); Treg (W [2^ 4])]) l  _ (test 4) (Diff.init _).
-Definition l : eval_state ([Treg (W [2^4]); Treg (W [2^ 4])]).
+Definition t l := Front.Eval ([Treg (Int [2^4]); Treg (Int [2^ 4])]) l  _ (test 4) (Diff.init _).
+Definition l : eval_state ([Treg (Int [2^4]); Treg (Int [2^ 4])]).
   simpl.
   constructor. simpl. exact (Word.repr 16 1).
   constructor. simpl. exact (Word.repr 16 1).
@@ -64,9 +65,3 @@ Definition l : eval_state ([Treg (W [2^4]); Treg (W [2^ 4])]).
 Defined.
 
 Eval compute in t l .
-(* Require Compiler.  *)
-(* Require Import FirstOrder.  *)
-(* Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 5)); Some (List.length (bindings  _ r)).  *)
-(* Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 6)); Some (List.length (bindings  _ r)).  *)
-(* Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 7)); Some (List.length (bindings  _ r)).  *)
-(* Time Eval vm_compute in do r <- (Compiler.copt _ _  (test 8)); Some (List.length (bindings  _ r)).  *)

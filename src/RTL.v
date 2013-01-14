@@ -6,7 +6,7 @@ Require  Core Front IR Equality.
 Section t. 
   Variable Phi : Core.state. 
   
-  Notation updates := (DList.T (Common.comp option  Core.eval_sync) Phi). 
+  Notation updates := (DList.T (Common.comp option  Core.eval_mem) Phi). 
   
   Section defs. 
     Import Core. 
@@ -27,12 +27,12 @@ Section t.
     | Eeq   : forall t, Var t -> Var t -> expr B
 
     (* integer operations *)                                          
-    | Elt   : forall n, Var (W n) -> Var (W n) -> expr B
-    | Eadd  : forall n, Var (W n) -> Var (W n) -> expr (W n)
-    | Esub  : forall n, Var (W n) -> Var (W n) -> expr (W n)
-    | Elow  : forall n m, Var (W (n + m)) -> expr (W n)
-    | Ehigh  : forall n m, Var (W (n + m)) -> expr (W m)
-    | EcombineLH   : forall n m, Var (W n) -> Var (W m) -> expr (W (n + m))
+    | Elt   : forall n, Var (Int n) -> Var (Int n) -> expr B
+    | Eadd  : forall n, Var (Int n) -> Var (Int n) -> expr (Int n)
+    | Esub  : forall n, Var (Int n) -> Var (Int n) -> expr (Int n)
+    | Elow  : forall n m, Var (Int (n + m)) -> expr (Int n)
+    | Ehigh  : forall n m, Var (Int (n + m)) -> expr (Int m)
+    | EcombineLH   : forall n m, Var (Int n) -> Var (Int m) -> expr (Int (n + m))
 
     | Econstant : forall ty : type, constant ty -> expr ty
     | Emux : forall t : type,
@@ -60,7 +60,7 @@ Section t.
       end.
     Notation "e :-- t1 ; t2 " := (compose t1 (fun e => t2)) (right associativity, at level 80, e1 at next level).
       
-    Inductive effect  : sync -> Type :=
+    Inductive effect  : mem -> Type :=
     | effect_reg_write : forall t,  Var t -> Var Tbool -> effect (Treg t)
     | effect_regfile_write : forall n t,  Var t -> Var (Tint n) -> Var Tbool -> 
                                      effect (Tregfile n t). 
@@ -249,14 +249,14 @@ Section t.
     (* refine (DList.fold Phi _ e Delta).  *)
     refine (DList.map3 _ Phi e st Delta). 
     Import Common Core.
-    Definition eval_effect (a : Core.sync) :   
+    Definition eval_effect (a : Core.mem) :   
       (Common.comp option (effect Core.eval_type)) a ->
-      Core.eval_sync a -> (Common.comp option Core.eval_sync) a -> (Common.comp option Core.eval_sync) a. 
+      Core.eval_mem a -> (Common.comp option Core.eval_mem) a -> (Common.comp option Core.eval_mem) a. 
     
     refine (fun  eff => 
               match eff with 
                 | Some eff =>  
-                    match eff in effect _ s return eval_sync s -> (option ∘ eval_sync) s -> (option ∘ eval_sync) s  with 
+                    match eff in effect _ s return eval_mem s -> (option ∘ eval_mem) s -> (option ∘ eval_mem) s  with 
                       |  effect_reg_write t val we => 
                            fun _ old => 
                              match old with 
@@ -510,74 +510,19 @@ Definition Block Phi t := forall V, block Phi V t.
 Definition WF Phi t (b : Block Phi t) := forall U V, block_equiv U V Phi t (nil _ _) (b _) (b _). 
 Definition Compile Phi t (B : IR.Block Phi t) : Block Phi t :=
   fun V => compile _ _ _ (B _).  
-Definition Eval Phi st t (B : Block Phi t) Delta :=
-  eval_block Phi st t (B _) Delta. 
 
-Theorem Compile_correct Phi t b : forall st Delta,
-  Eval Phi st t (Compile Phi t b) Delta =  IR.Eval Phi st t b Delta. 
+Definition Next Phi st t (B : Block Phi t) :=
+  match eval_block Phi st t (B _) (Front.Diff.init Phi) with 
+    | None => None
+    | Some Delta => Some (fst Delta, Front.Diff.apply Phi (snd Delta) st)
+  end.
+
+
+Theorem Compile_correct Phi t b st:
+  Next Phi st t (Compile Phi t b) =  IR.Next Phi st t b. 
 Proof. 
-  unfold Eval, Compile. intros. apply compile_correct.
+  unfold Next, Compile, IR.Next. intros. rewrite compile_correct. reflexivity.
 Qed. 
-(*
-Require Import Eqdep. 
-Ltac t :=  subst; repeat match goal with 
-                       H : existT _ _ _ = existT _ _ _ |- _ => 
-                         apply Eqdep.EqdepTheory.inj_pair2 in H
-                   |   H : context [eq_rect ?t _ ?x ?t ?eq_refl] |- _ => 
-                         rewrite <- eq_rect_eq in H
-                   |   H : context [eq_rect ?t _ ?x ?t ?H'] |- _ => 
-                         rewrite (UIP_refl _ _ H') in H;
-                         rewrite <- eq_rect_eq in H
-                   |   H : existT _ ?t1 ?x1 = existT _ ?t2 ?x2 |- _ => 
-                         let H' := fresh "H'" in 
-                           apply eq_sigT_sig_eq in H; destruct H as [H H']; subst
-                         end; subst.
-
-Theorem Compile_wf Phi t b : IR.WF Phi t b -> WF Phi t (Compile Phi t b). 
-Proof. 
-  unfold IR.WF, WF. 
-  intros. specialize (H U V).
-  unfold Compile.
-  Record rel U V G G' :=
-    {
-      rel_1 :  (forall t v1 v2, IR.In U V t v1 v2 G -> In U V t v1 v2 G')
-    }. 
-  Hint Resolve rel_1. 
-  Lemma compile_effects_wf Phi U V G  : 
-    forall e1 e2,
-      IR.effects_equiv U V Phi (fun t x y => IR.In U V t x y G) e1 e2 ->
-      forall G', 
-        rel U V G G' ->
-        effects_equiv U V Phi (fun t x y => In U V t x y G') 
-                      (compile_effects Phi U e1) (compile_effects Phi V e2). 
-  Proof. 
-  Admitted.
-  Hint Resolve compile_effects_wf.
-  Hint Unfold R. 
-  Lemma compile_wf Phi U V G : forall  t b1 b2, 
-                                 IR.block_equiv U V Phi t G b1 b2 ->
-                                 forall G',
-                                   rel U V G G' ->                                  
-                                 block_equiv U V Phi t G' (compile Phi U t b1) (compile Phi V t b2). 
-  Proof. 
-    induction 1; simpl;  unfold IR.R, R in *. 
-    
-    - intros. inversion H0; t; simpl.
-      constructor; eauto. eapply compile_effects_wf; eauto. 
-      repeat rewrite foo. 
-      unfold R. 
-  
-    simpl. 
-    simpl. 
-    
-  inversion H. simpl. inversion H4;t; simpl.
-  
-  constructor; auto. 
-
-  revert H. Import Equality. dependent induction b. induction H.
-  
-  simpl. 
- *)
 
 Arguments Evar {Phi Var t} v. 
 Arguments Eread {Phi Var t} v. 
