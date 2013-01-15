@@ -1,20 +1,20 @@
 // tag associated with this file
 //adder4_0.1
-module Adder (clk, rst_n, guard, value);
+module Adder (clk, rst_n, guard, value, reg_0, reg_1);
 integer index; // Used for initialisations
 input clk;
 input rst_n;
 output guard;
 output [33:0] value;
 // state declarations
-reg [15:0] reg_0;
-reg [15:0] reg_1;
+input [15:0] reg_0;
+input [15:0] reg_1;
 // bindings 
 wire  wire0 = 0'b0;
 wire  wire1 = 1'b1;
 wire  wire2 = 1'b0;
-wire [15:0] wire3 = reg_0;
-wire [15:0] wire4 = reg_1;
+wire [15:0] wire3 = reg_1;
+wire [15:0] wire4 = reg_0;
 wire [7:0] wire5 = wire3[7:0];
 wire [7:0] wire6 = wire3[15:8];
 wire [7:0] wire7 = wire4[7:0];

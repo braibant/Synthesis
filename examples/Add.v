@@ -45,27 +45,14 @@ Section s.
           end%expr%action x y.  
 End s. 
 
-Definition test n : 
-  Action ([Treg (Tint [2^ n]); Treg (Tint [2^ n])])%list
-         (Ttuple [ B; B; Int [2^n]; Int [2^n]])%list. 
-intros V. 
-refine
-    (do x <- ! var_0 ;
-     do y <- ! (var_S (var_0));
-     add V n x y 
-    )%action. 
-Defined. 
-Require Import DList. 
+Arguments Front.Close {Var} Phi {T U} c.
 
-(*
-(** Sanity check *)
-Definition t l := Front.Eval ([Treg (Int [2^4]); Treg (Int [2^ 4])]) l  _ (test 4) (Diff.init _).
-Definition l : eval_state ([Treg (Int [2^4]); Treg (Int [2^ 4])]).
-  simpl.
-  constructor. simpl. exact (Word.repr 16 1).
-  constructor. simpl. exact (Word.repr 16 1).
-  constructor.
+Definition generator n : Action ([Tinput (Tint [2^n]); Tinput (Tint [2^n])]%list) (Ttuple [ B; B; Int [2^n]; Int [2^n]])%list. 
+  intros V. 
+  apply (Front.Close ([Tinput (Tint [2^n])]%list)). 
+  intros x.
+  apply (Front.Close ([]%list)).
+  intros y. 
+  apply (add _ _ (Evar x) (Evar y)) . 
 Defined.
-
-Eval compute in t l .
-*)
+  

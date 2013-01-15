@@ -201,6 +201,7 @@ let mk_env nb_reg nb_stack code =
   }
 ;;
 
+
 let fib_env = 
   let code = compile_com (fib (Imp.const 15)) in 
   let env = mk_env 16 64 (code @ [Ihalt]) in 
@@ -259,13 +260,14 @@ let init name env =
     Printf.printf "%s[%i] = %s;\n" name i (pp_instr env.code.(i))
   done
 
+(** use the following code to generate a bitmap for the stack machine  *)
 let _ = 
   let env = 
     let code = compile_com (fib (Imp.const 10)) in 
     let env = mk_env 16 64 (code @ [Ihalt]) in 
     env
   in 
-  init "reg_3" env
+  init "reg_0" env
 
 
 let pp_env env = 
@@ -275,9 +277,12 @@ let pp_env env =
     Printf.printf "stack[%i]: %8i\n%!" i env.stack.(i);
   done;
   for i = 0 to 7 do 
-    Printf.printf "regs [%i]: %8i\n%!" i env.reg.(i);
+    Printf.printf "store [%i]: %8i\n%!" i env.reg.(i);
   done;
 ;;
+
+(* use this piece of code to execute the ocaml version of the stack
+   machine till it reaches the end *)
 
 let test interactive = 
   let code = compile_com (fib (Imp.const 10)) in 
@@ -295,7 +300,7 @@ let test interactive =
 	  pp_env env;
 	  eval env	
 	end
-	
+	  
     done;
     env
   with Halt -> env

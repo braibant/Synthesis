@@ -233,7 +233,7 @@ let pp_mem fmt (name, ty) =
     Format.fprintf fmt "reg %a reg_%i;\n" pp_bus_size bus name;
   | Tregfile (bus,length) -> 
     assert (length < 32);
-    Format.fprintf fmt "reg %a reg_%i [%i:0];\n" pp_bus_size bus name ((1 lsl length) - 1)
+    Format.fprintf fmt "reg %a reg_%i [%i:0];\n" pp_bus_size bus name (max 0 (1 lsl length) - 1)
 
 
 type block =
@@ -287,7 +287,7 @@ let pp fmt c =
   Format.fprintf fmt "module %s (clk, rst_n, guard, value%a);\n" c.name pp_params c.state ;
   Format.fprintf fmt "integer index; // Used for initialisations\n";
   Format.fprintf fmt "input clk;\ninput rst_n;\n";
-  Format.fprintf fmt "output guard;\noutput [%i:0] value;\n" (c.output_size - 1);
+  Format.fprintf fmt "output guard;\noutput [%i:0] value;\n" (max 0 (c.output_size - 1));
   Format.fprintf fmt "// state declarations\n";
   let i = ref 0 in 
   List.iter (fun s -> pp_mem fmt (!i,s); incr i) c.state;  

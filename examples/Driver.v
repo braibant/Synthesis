@@ -1,7 +1,7 @@
 Require Add Stack Sorter.
 
 (** Produces an adder for numbers of size [2^n]  *)
-Definition adder n := (Compiler.Fesic _ _  (Add.test n)).
+Definition adder n := (Compiler.Fesic _ _  (Add.generator n)).
 
 (** Produces a sorter core for [2^n] numbers. *)
 Definition sorter n := (Compiler.Fesic _ _  (Sorter.generator 4 n)).

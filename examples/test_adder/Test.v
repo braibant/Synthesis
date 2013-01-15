@@ -1,11 +1,11 @@
 module Test(clk, rst_n);
    input clk, rst_n;
-   reg [3:0] a, b ;
+   reg [15:0] a, b ; // inputs
 
-   reg [3:0] s, t ;
-   reg 		 p, g;
+   reg [15:0] s, t ; //results with and without carry in
+   reg 		 p, g; // propagate and generate bits
    
-   wire [9:0] res;
+   wire [33:0] res; 
    wire 	guard;
    
    always@(posedge clk)
@@ -26,7 +26,7 @@ module Test(clk, rst_n);
 	     $display("guard: %b", guard);
 	     $display("end");	     
 	     a <= a + 1;
-             if (a == 4'b1111)
+             if (a == 15'b111111111111111)
 		   b <= b << 1;	     
 	     $stop;
 	  end	    

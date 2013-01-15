@@ -5,7 +5,7 @@ integer index; // Used for initialisations
 input clk;
 input rst_n;
 output guard;
-output [-1:0] value;
+output [0:0] value;
 // state declarations
 reg [11:0] reg_0 [255:0];
 reg [7:0] reg_1;
