@@ -11,7 +11,8 @@ Require Word Vector.
 the same definition as the one in the paper, where each primitive is
 inlined in the following action data-type. Instead, with have a
 dependently typed notion of primitive, that encapsulates interaction
-with the external state.  *)
+with the external state. The paper corresponds to a version of the
+[action] definiton where [primitive] is inlined. *)
 
 Inductive primitive (Phi : state) : list type -> type -> Type:=
 | input_read : forall t, var Phi (Tinput t) -> primitive Phi nil t

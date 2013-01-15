@@ -2,6 +2,8 @@ Add Rec LoadPath "./" as Synthesis. Require Import Common.
 Require Import DList. 
 Require Import Core.   
 Require Import Front. 
+
+(** Intermediate representations and compilation from the source language to them. *)
   
 Section t. 
   Variable Phi : state. 

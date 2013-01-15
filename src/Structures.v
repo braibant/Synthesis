@@ -1,3 +1,4 @@
+(** Definitions and results about ordered structures.  *)
 
 (** Total order relation  *)
 Class order (A : Type) := 

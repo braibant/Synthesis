@@ -1,5 +1,6 @@
 Require Export String. 
-(* Require Vector.  *)
+
+(** Pot-pourri of definitions that are useful in other parts of the development. *)
 
 Definition bind {A B: Type} (f: option A) (g: A -> option B) : option B :=
   match f with
@@ -299,52 +300,6 @@ Arguments Tuple.of_list {T} _ _ .
 Require Vector. 
 Module Regfile := Vector. 
 
-(*
-
-(* Notation "<: val 'as' 'int' n :>" := (Word.mk n val _).  *)
-
-Fixpoint lt_nat_bool n m : bool :=
-  match n,m with 
-    | 0, S _ => true
-    | S n, S m => lt_nat_bool n m 
-    | _, _ => false
-  end. 
-
-
-Module FIFO. 
-  Section t. 
-    Definition T (n : nat) X:= list X. 
-
-    Context {X : Type}. 
-    Definition push {n} x (q : T n X) : T n X:=           
-      List.app q (cons x nil). 
-        
-    Definition first {n} (q : T n X) : option X := 
-      match  q with 
-        | nil => None
-        | cons t q => Some t
-      end. 
-    
-    Definition pop {n} (q : T n X) := 
-      match q with 
-          | nil => None
-          | cons t q => Some q
-      end.
-
-    Definition isempty {n} (q : T n X) :=
-      match q with 
-          | nil => true
-          | _ => false
-      end. 
-
-    Definition isfull {n} (q : T n X) := 
-      negb (lt_nat_bool (List.length q) n). 
-    
-    Definition clear {n} (q : T n X) : T n X:= nil. 
-  End t. 
-End FIFO. 
-
-*)
  
 
 Definition relation A := A -> A -> Prop. 

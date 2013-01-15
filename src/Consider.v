@@ -1,12 +1,12 @@
 (** The [consider] tactic recovers some of the ease of reasoning about
- ** decision procedures when they are implemented as functions into bool.
- **
- ** Implementation by Thomas Braibant (thomas.braibant@gmail.com)
- **)
+ decision procedures when they are implemented as functions into bool.
+
+ Implementation by Thomas Braibant (thomas.braibant@gmail.com)
+*)
 Require Setoid.
 
 (** This file defines some inductives, type-classes and tactics to
-perform reflection on a small scale *)
+perform reflection on a small scale. Tribute given to ssreflect. *)
 
 (** Two inductives to perform case-based reasonning *)
 Inductive reflect (P Q : Prop) : bool -> Type :=

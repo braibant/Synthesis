@@ -1,4 +1,7 @@
 Require Import Setoid. 
+
+(** Results about lexicographic order *)
+
 Notation lex x y := 
   (match x with 
     | Eq => y

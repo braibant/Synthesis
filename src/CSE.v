@@ -137,6 +137,15 @@ Section s.
   
   Notation "!!" := (None). 
   Reserved Notation "x == y" (at level 30). 
+  
+  (** The crux of this optimisation pass is the definition of the
+  equivalence relation on symbolic values. Here we took a conservative
+  approach, and perform CSE based on the head constructor. 
+
+  Yet, we could go one step further and, for instance, identify x and
+  x[|x|;0] (that is, accessing to a subrange of x that is equal to x
+  itself.) *)
+
   Fixpoint sval_eqb {a b} (va: sval a) (vb : sval b) : bool :=
     let fix pointwise  {la lb} (dla : DList.T sval la) (dlb : DList.T sval lb) : bool :=
         match dla, dlb with 

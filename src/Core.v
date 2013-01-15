@@ -6,13 +6,15 @@ Require Word Vector.
 Unset Elimination Schemes. 
 
 (** This file describes the underlying "memory model" of our compiler *)
+
 Inductive type : Type :=
 | Tunit : type 
 | Tbool: type 
 | Tint: forall (n : nat), type
 | Ttuple : forall l : list type,  type. 
 
-Notation Unit := Tunit.
+(** Notations used in the paper  *)
+Notation Unit := Tunit.         
 Notation B  := Tbool. 
 Notation Int n := (Tint n).
 Notation Tuple l := (Ttuple l). 

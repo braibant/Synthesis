@@ -4,7 +4,8 @@ Require Import FunctionalExtensionality.
 
 Notation "[2^ n ]" := (two_power_nat n). 
 
-(** Implementation of parametric size machine words.  *)
+(** Implementation of parametric size machine words, inspired by
+Xavier Leroy's library of machine words. *)
 
 Record T n := mk { val :> Z ; 
                    range : (0 <= val < two_power_nat n)%Z}.

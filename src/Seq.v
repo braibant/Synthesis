@@ -1,3 +1,4 @@
+(** A few results on lists.   *)
 
 Section t. 
 Require List.

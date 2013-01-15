@@ -1,5 +1,10 @@
 Require Import Common ZArith. 
 
+(** This file defines a library of BDDs implemented in Coq. This
+implementation is proved correct, but not complete: that is, we do not
+prove that two expressions that are equal are injected to the same
+node in the BDD. *)
+
 Inductive expr := | F | T | N : positive -> expr. 
 
 Notation var := nat. 

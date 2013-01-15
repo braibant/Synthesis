@@ -5,6 +5,7 @@ Require Import ZArith.
 Add Rec LoadPath "." as Synthesis. 
 Require Word. 
 
+(** Vectors (that is, arrays)  *)
 Section t. 
   Variable length : nat.
   Variable X  : Type. 

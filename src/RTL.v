@@ -2,6 +2,7 @@ Require Import Common.
 Require Import DList. 
 Require  Core Front IR Equality.
 
+(** RTL language, with three address code.   *)
 
 Section t. 
   Variable Phi : Core.state. 

@@ -5,6 +5,7 @@ Import Common.
 
 Open Scope list_scope. 
 
+(** Heterogeneous lists, aka tuples, aka type-indexed lists. *)
 Notation "[ ]" := nil : list_scope.
 Notation "t :: q" := (cons t q) : list_scope. 
 Notation "[ a ; .. ; b ]" := (a :: .. (b :: []) ..)%list : list_scope.
@@ -282,7 +283,7 @@ Ltac inv :=
         destruct H as [? ?]                                                              
     end. 
 
-(** * [existb f dl] tests whether an element of [dl] satisfies the predicate [f] *)
+(** [existb f dl] tests whether an element of [dl] satisfies the predicate [f] *)
 Section existb. 
   Variable (X: Type) (F: X -> Type).
   Variable (f: forall (x: X) (dx: F x), bool). 
@@ -329,7 +330,6 @@ Section fold.
 End fold. 
 
 Arguments fold {X A F} f {l} dl%dlist acc. 
-
     
 End DList. 
 

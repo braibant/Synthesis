@@ -6,7 +6,11 @@ Require BDD Seq.
     its runtime value, and when two declared variables have equivalent
     values, we do not introduce a binder for the second one. This
     transformation is similar to CSE, except that we use semantic
-    common sub-expression elimination. *)
+    common sub-expression elimination. 
+
+    Note that we simply get rid of equivalent definitions. We could go
+one step further: given a program, compute the BDD of the Boolean
+expressions that appear, and use this BDD to construct the RTL code. *)
 
 Section t. 
 
