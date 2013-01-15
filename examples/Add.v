@@ -1,3 +1,4 @@
+(** Examples.Add : A Von Neumann adder.  *)
 Require Import Common Core Front ZArith. 
 
 Fixpoint pow2 k := (match k with O => 1 | S p => pow2 p + pow2 p end)%nat.

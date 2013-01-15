@@ -12,7 +12,7 @@ src/FirstOrder.v src/Compiler.v examples/Add.v examples/Driver.v	\
 examples/Extraction.v examples/Sorter.v examples/Stack.v
 
 doc:
-	coqdoc -toc -interpolate -utf8 -html -g -R src Synthesis -R examples Examples -d html $(FILES) 	
+	coqdoc -toc -interpolate -utf8 -html -g -R src Synthesis -R examples Examples --lib-subtitles --no-lib-name -d html $(FILES) 	
 
 
 clean:
@@ -20,7 +20,7 @@ clean:
 	$(MAKE) -C examples clean
 
 dist:
-	git archive --format=tar --prefix=synthesis/ master src examples | gzip > synthesis.tar.gz
+	git archive --format=tar --prefix=synthesis/ master src examples LICENSE README.txt | gzip > synthesis.tar.gz
 
 admit:
 	$(MAKE) -C src admit

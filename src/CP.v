@@ -1,3 +1,4 @@
+(** * Synthesis.CP : Simplification of Boolean expressions.  *)
 Require Import Common DList Core ZArith. 
 Require BDD Seq.
 

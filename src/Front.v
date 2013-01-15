@@ -1,3 +1,5 @@
+(** * Synthesis.Front : Definition of the source language of our compiler  *)
+
 Add Rec LoadPath "./" as Synthesis. 
 Require Import Common.
 Require Import DList.
@@ -5,7 +7,6 @@ Require Import Core.
 Require Word Vector. 
 
 
-(** * Definition of [expr] and [action] *)
 
 (** In order to factorise a bit development, we do not have exactly
 the same definition as the one in the paper, where each primitive is
@@ -26,6 +27,7 @@ Inductive primitive (Phi : state) : list type -> type -> Type:=
 Section s.
   
   Variable Phi : state.
+  (** * Definition of [expr] *)
 
   Section t. 
     Variable Var : type -> Type. 
@@ -58,7 +60,8 @@ Section s.
     | Enth : forall l t (m : var l t), expr (Ttuple l) -> expr t
     | Etuple : forall l (exprs : DList.T (expr) l), expr (Ttuple l). 
 
-    
+
+    (** * Definition of [action] *)    
     Inductive action : type -> Type :=
     | Return : forall t (exp : expr t), action t
     | Bind :
@@ -76,6 +79,8 @@ Section s.
 
   Definition Action t := forall Var, action Var t.
   Definition Expr t := forall Var, expr Var t. 
+
+  (** * Semantics of [expr] *)
 
   Fixpoint eval_expr (t : type) (e : expr eval_type t) : eval_type t :=
     match e with
@@ -143,7 +148,7 @@ Notation " 'when' e 'do' B" := (When e B) (at level 200, e at level 100, B at le
 
 Arguments Primitive {Phi Var} args res _ _%expr. 
 
-(** ** Primitives *)
+(** Primitives *)
 Arguments register_read {Phi t} _. 
 Notation "'read' [: v ]" := (Primitive nil _ (register_read v) DList.nil) (no associativity).
 Notation "! v" := (Primitive nil _ (register_read v) DList.nil ) (no associativity, at level 71). 
@@ -158,7 +163,7 @@ Notation "'read' M [: v ]" := (Primitive ([ (_)])%list _ (regfile_read M ) (DLis
 Arguments regfile_write {Phi n t} _ . 
 Notation "'write' M [: x <- v ]" := (Primitive ([ (_); _])%list _ (regfile_write M ) (DList.cons (x)%expr (DList.cons (v)%expr (DList.nil)))) (no associativity). 
 
-(** ** Expressions  *)
+(** Expressions  *)
 Arguments Enth  {Var l t} m _%expr. 
 Arguments Evar  {Var t} _. 
 
@@ -202,14 +207,15 @@ Notation "'do' ( x , .. , y ) <~ a ; b" :=
 
 Arguments Etuple {Var l} _%dlist. 
 Notation "[ 'tuple' x , .. , y ]" := (Etuple (x :: .. (y :: [ :: ]) .. )%dlist) (only parsing): expr_scope. 
-(**
+
+(*
  Unfortunately, this notation cannot be defined due to a bug... It redefines the notation for the pairs in every scope 
- Notation "( x , .. , z )" := (Etuple (x :: .. (z :: [ :: ]) .. )%dlist) (at level 0): expr_scope. 
+  Notation "( x , .. , z )" := (Etuple (x :: .. (z :: [ :: ]) .. )%dlist) (at level 0): expr_scope. 
 *)
 
 
 
-(** * Semantics of Fe-Si *)
+
 Module Diff. 
   Section t. 
     Variable Phi : state. 
@@ -240,6 +246,7 @@ End Diff.
 
 Module Sem. 
 
+  (** * Definition of of the semantics of [action] *)
   
   
   Module Dyn. 
@@ -335,9 +342,10 @@ End Sem.
 
 Definition Eval Phi (st: eval_state Phi)  t (A : Action Phi t ) Delta :=  @Sem.eval_action Phi t (A _) st Delta. 
 
-(** The next-step function computes what should be the next state of a
-circuit. 
+(** * Next-step function
 
+  The next-step function computes what should be the next state of a
+circuit. 
 
 TODO: remark that Diff.init initialize even the Inputs with None,
 which is not wrong, but prevents us from reasonning about circuits

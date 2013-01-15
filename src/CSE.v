@@ -1,3 +1,4 @@
+(** * Synthesis.CSE: Common sub-expression elimination  *)
 Add Rec LoadPath "./" as Synthesis. 
 Require Import Common DList Core Eqdep RTL. 
 

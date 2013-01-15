@@ -1,20 +1,23 @@
-Add Rec LoadPath "." as Synthesis. Require Import Common DList. 
+(** * Synthesis.FirstOrder : First-order representation of RTL *)
+
+Add Rec LoadPath "." as Synthesis. 
+Require Import Common DList. 
 Require Core Equality. 
 
 Require Import Eqdep. 
 
-(** * This file describes our first order representation of the RTL
+(** This file describes our first order representation of the RTL
 language. For now, the transformation from RTL to this language is not
-proved. *)
+proved. 
 
-(** In this firstorder representation, everything ends up being
+ In this firstorder representation, everything ends up being
 represented as packed bytes: a type is the size of the bus *)
 Notation type := nat (only parsing). 
 
-(* A wire is a singleton inductive *)
+(** A wire is a singleton inductive *)
 Inductive wire (t:type) := box : nat -> wire t. 
 
-(* The type of memory elements depend on the bus size*)
+(** The type of memory elements depend on the bus size*)
 Inductive mem := 
 | Tinput : type -> mem 
 | Treg : type -> mem
@@ -188,6 +191,7 @@ Definition compile_mem s :=
 Inductive Var (t: Core.type) :  Type := Box : nat -> Var t. 
 
 Section s. 
+  (** From [Synthesis.RTL] to the first-order representation. *)
   Definition wire_of_Var {t} (v: Var t) : wire (compile_type t) := 
     let (n) := v in box (compile_type t) n. 
   
@@ -195,6 +199,8 @@ Section s.
   Notation "[ l @1]" := (! (DList.hd l)). 
   Notation "[ l @2]" := (! (DList.hd (DList.tl l))). 
   Notation "[ l @3]" := (! (DList.hd (DList.tl (DList.tl l)))). 
+
+  
   Definition compile_constant :=
     fix compile_constant (ty : Core.type) (c : @Core.Generics.constant _ Core.eval_type ty) : Word.T (compile_type ty) := 
     match ty return Core.Generics.constant ty -> Word.T (compile_type ty) with 

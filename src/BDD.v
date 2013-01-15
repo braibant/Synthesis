@@ -1,3 +1,4 @@
+(** * Synthesis.BDD : a library of BDDs implemented in Coq *)
 Require Import Common ZArith. 
 
 (** This file defines a library of BDDs implemented in Coq. This

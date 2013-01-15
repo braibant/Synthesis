@@ -1,3 +1,4 @@
+(** * Synthesis.Core : Defining the memory model underlying the compiler*)
 Require Import Common. 
 Require Import DList. 
 Require Word Vector. 
@@ -5,7 +6,7 @@ Require Word Vector.
 
 Unset Elimination Schemes. 
 
-(** This file describes the underlying "memory model" of our compiler *)
+(** Definition of types *)
 
 Inductive type : Type :=
 | Tunit : type 
