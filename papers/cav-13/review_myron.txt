@@ -1,0 +1,135 @@
+> With the exception of section 4, I read the entire paper.  I did not grok
+> the importance of all the discussions, but I have little experience with CAV
+> papers so I will give my feedback as a "Bluespec specialist":
+
+Cool, that is exactly the kind of feedback I was looking for.
+
+> Introduction:  In the penultimate paragraph, you refer to storage elements.
+> hardware designers usually refer to these as state elements.
+
+Ok, I will do it.
+
+> Section 1:  why is hadd defined as an action; I do not see any state being
+> updated?   I think it might be clearer if you distinguish between the pure
+> function which performs the half add, and a subsequent action which updates
+> the program state...
+
+Well, there is no difference between pure functions and actions: the
+former is a sub-type of the latter in this formalization.
+
+> In the subsection "stateful programs", you first say that Fe-Si is built
+> around a monad.  You don't define that monad, but my assumption would be
+> that it is some kind of a state Monad.   In the definition of 'count', the
+> state is explicit which implies that Fe-Si Monad is doing something else.
+> Could you clarify this point?
+
+Well, the reduction rules of Fe-Si can be described in terms of
+layered monads: we have a Reader monad of the old state and Writer
+monad of the state update to implement the synchronous aspect of state
+update; and we stack the Option  monad on top of the state-change
+monads to implement the transactional aspect of the semantics. Yet, we
+take a declarative approach and the "memory footprints" must be made
+explicit in the type of action. This is what you see in the 'count'
+example.
+
+
+> In the subsection "Synchronous semantics",  you should consider using the
+> terminology "reads-before-writes", which is common when describing the
+> semantics of HW languages.  I believe this might be what you are trying to
+> say?
+
+Exactly. I find this terminology a bit confusing, but I will add it as
+a footnote for the reader fluent in Bluespec.
+
+> In addition, you might want to say something about sequentially
+> composed actions here (they are not directly implementable in HW)??
+
+I am correct reading that "sequentially composed actions are not
+directly implementable in hardware without further transformation"? I
+would agree with that statement (and I would love to find a reference
+to support it), with the proviso that a scheduler may fire two rules
+in the same cycle and make them appear as if executed sequentially,
+but only in restricted cases. Do you agree with that ?
+
+> In the subsection "From programs to circuits", I wasn't exactly sure what a
+> "ground RTL circuit" is..
+
+Sorry, I will rephrase. It means that it is closed.
+
+
+> Section 2: In the subsection "Semantics", your introduction of the tuple
+> (v,Delta) seems like it will be very useful for the enforcement of legal
+> action composition.  In fact, it does come up later, but to the uninitiated,
+> it might be useful to say something here otherwise it might seem like
+> overkill.
+
+Ok, I hope my previous comment about monads (that made its way in the
+paper) will help the reader grasp the importance of this. Yet, I will
+try to add a sentence saying that it enforces the legality of the
+action composition.
+
+> In Figures 3 (and also back in "stateful programs"), you use the
+> literal "tt".  What is its value??
+
+This is the Coq name for the inhabitant of the unit type. I will add a
+note about that.
+
+> The penultimate paragraph is very  important and I think you should talk a bit more about the implications of
+> write-once, etc. in HW.
+
+Well, I am not sure what are these implications of write-once in HW;
+besides the fact that this is a pain to program with, and that it is
+very different from what usual programmers are used to. (BTW, I tried
+adding support for "updatable references", that are an hardware
+implementation of the real state monad -- such that you can do, eg, x
+<- 0; x <- x + 1; x <- x +1 and get 2 at the end but I add to skip it
+in the end). I assumed that hardware designers were accustomed to
+that, right?
+
+
+> In section 2.3, I was trying to envision how this would interact with a rule
+> scheduler...unsuccessfully.
+
+Well, the scheduling would be done at the source level
+
+> In the third paragraph of this section, the
+> terminology gets confused when you talk about committing the effects to
+> memory.    YOu probably want to say "committing the state updates".
+
+Ok.
+
+> In section 2.4, I would be interested to know a bit more about the
+> efficiency of the RTL.   The transformations seem relatively mundane, but
+> the optimizations are where the interesting stuff happens.   Compilers
+> always produce stylized code;  do your patterns map well to FPGA? ASIC?
+
+Well, this is a problem: I have proxies that say that this reduces the
+size of the Verilog code that is generated, but I am not sure of the
+impact of this on FPGA (not saying anything about ASIC), simply
+because I took your advice to stay away from FPGAs, and stick to
+simulators at heart. It is a bit too late to come back on this, and
+will probably add a not saying that it is under evaluation.
+
+> Section 3:  Now it is a bit unclear exactly what is going on.  In my mind
+> you write a program in Fe-Si, and compile it using fesic. Now it seems like
+> you are writing a coq specification of the algorithm, verifying that the coq
+> spec is in fact correct, and then re-writing the coq program in Fe-Si.
+> Because you are using fesic, you can prove that the RTL implements the Fe-Si
+> program, but where do you show that the Fe-Si program implements the Coq
+> spec?
+
+You are completely right. There is an (administrative) proof that the
+Coq implementation and the Fe-Si implementation behave similarly. This
+is fairly straightforward, and I do not delve on these details. I
+reformulated the final theorem to say that the correctness of the
+Fe-Si implementation is proved with respect to a definition of "being
+sorted" that is independent of the Coq implementation; and that the
+Coq implementation is merely a step-stone to prove the correctness of
+the Fe-Si implementation.
+
+> Conclusion:  you should be a bit more brash here :)
+Well, I think that there are some improvements that are possible ;).
+And, I will be impetuous when this paper gets accepted (or cited, or
+when I get a job proposal related to it, or anything else ;))
+
+Thanks a lot for your feedback.
