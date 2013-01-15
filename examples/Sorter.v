@@ -1171,7 +1171,8 @@ Module Spec.
     Qed. 
   End commutation_lemmas. 
   
-  (** * Our sort function is correct
+  (** * Proof that the specification function is correct
+
    We gather all the previous intermediate lemmas to prove that our
    parametric sorting function is correct *)
 
@@ -1684,10 +1685,11 @@ Section proof.
     trivial. 
   Qed. 
 
-  (** The final theorem states that:
+  (** * Final theorem : correction of the sorter core 
+
+    The final theorem states that:
       - the output of the circuit is never None (no failure);
-      - the output of the circuit is equivalent to the output of the specification algorithm;
-      - the output of the specification algorithm is sorted with respect to the particular order we chose
+      - the output of the circuit is equivalent to a sequence that contains the same elements and is sorted contains the same elements as the inputs.
    *)
   
   Notation same_elements x y := (Spec.SameElements.equiv _ x y). 

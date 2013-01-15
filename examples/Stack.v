@@ -24,8 +24,9 @@ Definition Next {A} (f : A -> option A) (m : A ):=
   end. 
 
 Module Spec. 
-  
-  (** This module corresponds to our specification of the stack
+  (** * Specification of the stack machine 
+ 
+  This module corresponds to our specification of the stack
   machine: it uses natural numbers everywhere, and uses dynamic check
   to map undefined behaviors to the halting state *)
 
@@ -83,6 +84,7 @@ Module Spec.
       check (Nat.ltb (List.length (stk s)) bound);
       Some s.
 
+    (** * Next step relation for the stack machine *)
     Definition step (s : machine) : option machine :=
       do op <- code_at (c s) (pc s);
       match op with 
@@ -142,6 +144,7 @@ Module Spec.
         | _ => None
       end.
   End t.
+
 (** We were heavily inspired by the following definition that comes from a course by X. Leroy
 
   Inductive transition (C: code): machine_state -> machine_state -> Prop :=
@@ -196,6 +199,8 @@ End Spec.
 Module Circuit. 
 Section t. 
   Variable size : nat.
+  (** Fe-Si implementation of the Stack machine *)
+
   (** We use the following ocaml type as a reference, and give assign
   opcodes to instructions accordingly
 
@@ -926,6 +931,7 @@ Section t.
                           (* MAIN THEOREM *)
                           (****************)
   
+  (** * Final theorem: simulation relation for the stack machine *)
   Theorem circuit_correct m1 m2 (Hcode : R_code m1 m2) : 
            m1 == m2 -> 
     forall m1', 
