@@ -1,3 +1,5 @@
+// tag associated with this file
+//stack_0.1
 module Stack (clk, rst_n, guard, value);
 integer index; // Used for initialisations
 input clk;

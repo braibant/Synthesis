@@ -1,3 +1,5 @@
+// tag associated with this file
+//sorter4_0.1
 module Sorter (clk, rst_n, guard, value, reg_0);
 integer index; // Used for initialisations
 input clk;

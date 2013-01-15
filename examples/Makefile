@@ -6,10 +6,16 @@ VS      := $(MODULES:%=%.v)
 .PHONY: coq clean backend
 
 backend: coq
-	ocamlbuild -lib unix -Is extracted,backend main.native
+	ocamlbuild -lib unix -Is extracted,backend generators.native
 
 all: coq backend
 
+demo: backend
+	# generate demo cores in the directory verilog/
+	mkdir -p verilog/
+	./generators.native -adder 4
+	./generators.native -sorter 4
+	./generators.native -stack
 
 coq: Makefile.coq
 	$(MAKE) -f Makefile.coq

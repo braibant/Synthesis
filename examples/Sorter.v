@@ -843,7 +843,7 @@ Module Spec.
         apply merge_le_left. apply merge_le_right. intuition. 
     Qed.
   End mms.
-  Print Assumptions sort_tsorted. 
+  (* Print Assumptions sort_tsorted.  *)
 
   (** * Proof of the 0-1 principle
 
@@ -1705,11 +1705,15 @@ Section proof.
     + auto. 
   Qed.
              
-  Print Assumptions circuit_sort_correct. 
+  (* Print Assumptions circuit_sort_correct.  *)
 End proof.
     
-(** The final circuit generator *)
-Definition test size n := 
+(** The final circuit generator. 
+    - size is the size of the integers that are sorted;
+    - the sorter operates on 2^n arguments
+*)
+
+Definition generator size n := 
   (fun V =>
      Close V _ _ _
            (fun x =>  Circuit.rebind _ V _ (Evar x) (fun x => Circuit.sort (Tint size) V (int_cmp_swap size) n x))).
@@ -1732,8 +1736,5 @@ Module sanity_check.
   Eval compute in Sem.eval_action (t 4) _ (Diff.init nil).
 End sanity_check.
 *)
-Require Compiler. 
 
-(** Exporting the circuit, for extraction *)
-Definition t := (Compiler.Fesic _ _ (test 4 4)). 
   

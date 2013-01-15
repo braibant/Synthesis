@@ -701,9 +701,8 @@ previous translation passes.
 
 \subsubsection{Syntactic common-subexpression elimination.}
 We implement CSE with a simple recursive traversal of RTL
-programs. Indeed, since there is no iteration involved, there is no
-need to perform any kind of data-flow analysis. (Here we follow the
-overall approach used by Chlipala~\cite{DBLP:conf/popl/Chlipala10}.)
+programs. (Here we follow the overall approach used by
+Chlipala~\cite{DBLP:conf/popl/Chlipala10}.)
 
 Contrary to our previous transformations that were just ``pushing
 variables around'' for each possible choice of variable representation

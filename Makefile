@@ -19,8 +19,10 @@ clean:
 	$(MAKE) -C src clean
 	$(MAKE) -C examples clean
 
+
+VERSION := 0.1
 dist:
-	git archive --format=tar --prefix=synthesis/ master src examples LICENSE README.txt | gzip > synthesis.tar.gz
+	git archive --format=tar --prefix=synthesis/ master src examples LICENSE README.txt | gzip > fe-si-$(VERSION).tar.gz
 
 admit:
 	$(MAKE) -C src admit

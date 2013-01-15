@@ -246,9 +246,10 @@ type block =
     initials : unit list;
     value : wire;
     guard : wire;
+    tag : string;
   }
 
-let mk_block name (b : Src.block) : block =
+let mk_block tag name (b : Src.block) : block =
   let rec convert = function 
     | DList.DList.Coq_nil -> []
     | DList.DList.Coq_cons (t,_,dt,q) -> (t,dt) :: convert q
@@ -268,7 +269,8 @@ let mk_block name (b : Src.block) : block =
     effects = effects;
     initials = [];
     value = Wire.mk b.Src.value; 
-    guard = Wire.mk b.Src.guard
+    guard = Wire.mk b.Src.guard;
+    tag = tag
   }
   
 let pp_params fmt l =
@@ -281,6 +283,7 @@ let pp_params fmt l =
     end;incr i) l
 
 let pp fmt c =
+  Format.fprintf fmt "// tag associated with this file\n//%s\n" c.tag;
   Format.fprintf fmt "module %s (clk, rst_n, guard, value%a);\n" c.name pp_params c.state ;
   Format.fprintf fmt "integer index; // Used for initialisations\n";
   Format.fprintf fmt "input clk;\ninput rst_n;\n";
