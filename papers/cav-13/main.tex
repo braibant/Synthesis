@@ -459,7 +459,7 @@ Finally, we define a wrapper function that computes the next state of
 the memory elements, using the aforementioned evaluation relation
 (starting with an empty partial update). 
 \begin{mcoq}
-Definition Eval {t} {$\Phi$} (st: $\denote{\Phi}$) (A : Action $\Phi$ t) : option ($\denotety{t}$ * $\denote{\Phi}$) := ...
+Definition Next {t} {$\Phi$} (st: $\denote{\Phi}$) (A : Action $\Phi$ t) : option ($\denotety{t}$ * $\denote{\Phi}$) := ...
 \end{mcoq}
 
 \subsection{RTL} 
@@ -591,7 +591,7 @@ Definition eval_effect (m : mem) : option (write $\denotety{.}$ m) -> $\denoteme
 Using all these pieces, it is quite easy to define what is the final
 next-state function. 
 \begin{mcoq}
-Definition Eval {t} {$\Phi$} ($\Gamma$: $\denote{\Phi}$) (B : Block $\Phi$ t) : option ($\denotety{t}$ * $\denote{\Phi}$) := ...
+Definition Next {t} {$\Phi$} ($\Gamma$: $\denote{\Phi}$) (B : Block $\Phi$ t) : option ($\denotety{t}$ * $\denote{\Phi}$) := ...
 \end{mcoq}
 
 \subsection{Compiling Fe-Si to RTL} 
@@ -756,8 +756,8 @@ Definition fesic  (A : Fesi.Action $\Phi$ t) : RTL.Block $\Phi$ t :=
 \begin{coq}
 Theorem fesic_correct A :
 forall ($\Gamma$ : $\denote{\Phi}$), 
-Front.Eval $\Gamma$ A = 
-RTL.Eval $\Gamma$ (fesic A).
+Front.Next $\Gamma$ A = 
+RTL.Next $\Gamma$ (fesic A).
 
 $ $
 \end{coq}
