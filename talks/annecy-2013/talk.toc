@@ -1,0 +1,5 @@
+\beamer@endinputifotherversion {3.10pt}
+\select@language {english}
+\beamer@sectionintoc {1}{A glimpse of the languages and the compiler}{15}{0}{1}
+\beamer@sectionintoc {2}{Examples}{20}{0}{2}
+\beamer@sectionintoc {3}{Conclusion}{25}{0}{3}

@@ -1,0 +1,33 @@
+\frametitle {Some remarks}
+  \begin{itemize}
+
+  \item Stepping back
+    \begin{itemize}
+    \item Bluespec started as an HDL deeply embedded in Haskell
+    \item Lava [1998] is another HDL deeply embedded in Haskell
+    \item \fesi{} is ``just'' another HDL,  deeply embedded in \alert{Coq}
+      \pause
+      \begin{itemize}
+      \item semantics (i.e., interpreter), compiler and programs are \alert{integrated seamlessly}
+      \item use of computation \alert{inside} Coq to dump compiled programs
+      \item dependent types capture some interesting properties in
+        hardware
+      \end{itemize}
+    \end{itemize}
+
+    \pause
+
+  \item Future work
+    \begin{itemize}
+    \item Improve on the language (FIFOs, references).
+    \item Make the compiler more realistic (automatic scheduling).
+    \end{itemize}
+
+    \pause
+
+  \item Take-away message
+    \begin{itemize}
+    \item Coq can be used as an embedding language for DSLs!
+    \end{itemize}
+
+  \end{itemize}

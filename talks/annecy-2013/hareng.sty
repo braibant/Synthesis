@@ -1,0 +1,274 @@
+
+% Bronisław...
+\let\lbar=\l
+
+% citations
+\newenvironment{quotage}{\begin{quote}\em\og{}}{\fg{}.\end{quote}}
+
+% reliaisons
+\renewcommand \tilde \widetilde
+\renewcommand \phi \varphi
+
+% espacement des relations
+\newcommand \s[1]  {\mathord{#1}}
+\newcommand \rel[1]{\mathrel{#1}}
+
+% pour que le bang ne chie pas dans ccs
+\renewcommand \![1]{\s{!{#1}}}
+%\shorthandoff{!}
+\newcommand \emark {{!}}
+\newcommand \qmark {{?}}
+\newcommand \cmark {{:}}
+
+
+% mots dans les maths
+\newcommand \si{\text{ si }}
+\newcommand \Si{\text{Si }}
+\newcommand \alors{\text{ alors }}
+\newcommand \sinon{\text{ sinon }}
+\newcommand \implique{\text{ implique }}
+\newcommand \impliquent{\text{ impliquent }}
+\newcommand \ssi{\text{ ssi }}
+\newcommand \et{\text{ et }}
+\newcommand \ou{\text{ ou }}
+\newcommand \mssi \Leftrightarrow
+\newcommand \mimplique \Rightarrow
+\newcommand \mlpmi \Leftarrow
+\newcommand \qmssi {\quad\mssi\quad}
+\newcommand \qmimpl {\quad\mimplique\quad}
+\newcommand \qmlpmi {\quad\mlpmi\quad}
+
+% hypothèses dans les diagrammes
+\newcommand \xyH[1]{\text{(#1)}}
+
+
+\newcommand \by[1]{\tag{#1}}
+\newcommand \bydef[1][]{\by{par définition #1}}
+\newcommand \byeqref[1]{\by{par~\eqref{#1}}}
+
+% divers
+\newcommand \etc {etc\dots}
+\newcommand \eqdef \triangleq
+\newcommand \NN {\mathbb N}
+\newcommand \OR {\mathrel{~\big|~}}
+%\newcommand \tuple[1]{\left\langle{#1}\right\rangle}
+\newcommand \tuple[1]{\langle{#1}\rangle}
+\newcommand \paren[1]{\left({#1}\right)}
+\newcommand \tq \mid
+\newcommand \set[2][]{\left\{#2\ifthenelse{\equal{#1}{}}{}{\tq #1}\right\}}
+\newcommand \pset[1]{\mathscr P\paren{#1}}
+\newcommand \lex[1]{\tuple{#1}_\text{lex}}
+%\newcommand \multi[2][n]{#2_1,\dots,#2_{#1}}
+\newcommand \multi \bm
+\newcommand\low[1]{#1^l}
+
+
+% fonctions
+%\newcommand \mto \hookrightarrow
+\newcommand \id[1][X] {\mathrm{id}_{#1}}
+\newcommand \const[1]{\widehat{#1}}
+\newcommand \rev[1]{\overline{#1}}
+\newcommand \birev[1]{\overleftrightarrow{#1}}
+
+% prog par taspect
+\newcommand \incl z
+\newcommand \lcni o
+\newcommand \supb b
+\newcommand \infb i
+\newcommand \berelornot {}
+
+% treillis abstrait
+\newenvironment{specs}{ %
+  \renewcommand \incl \sqsubseteq
+  \renewcommand \lcni \sqsupseteq
+  \renewcommand \sup \bigvee
+  \renewcommand \inf \bigwedge
+  \renewcommand \supb \vee
+  \renewcommand \infb \wedge
+  \renewcommand \berelornot {}
+}{}
+
+% treillis des relations
+\newenvironment{relations}{ %
+  \renewcommand \incl \subseteq
+  \renewcommand \lcni \supseteq
+  \renewcommand \sup \bigcup
+  \renewcommand \inf \bigcap
+  \renewcommand \supb \cup
+  \renewcommand \infb \cap
+  \renewcommand \berelornot \mathrel
+%  \renewcommand \prod ;
+}{}
+
+\newcommand \rond \circ 
+\newcommand \frond {\rel{\hat\rond}}
+\renewcommand \prod \cdot
+\newcommand \fprod {\rel{\hat\prod}}
+\newcommand \sincl[2]{\s{#1}\incl\s{#2}}
+\newcommand \aincl[2]{\s{#1}&\incl\s{#2}}
+
+% diagrammes
+\newcommand \diag[5][\l]{\s{\l{#2}}¤{#3}\incl{#4}¤\s{#1{#5}}}
+\newcommand \tdiag[5][]{\s{\lh{#2}}¤{#3}\incl{#4}¤\s{\lh{#5}}}
+\newcommand \revdiag[5][\r]{{#3}¤\s{\r{#2}}\incl\s{#1{#5}}¤{#4}}
+
+\newcommand \xydiag[5][->]{ %
+  \slipoff
+  \xymatrix @C=.8em @R=1.8em { %  @R=1.5em @C=-.5em
+    ¤ \ar[d]_{#2} & {#3} \ar@{}[d]|\incl & \ar@{#1}[d]^{#5}\\
+    & {#4} & ¤ 
+  }}
+\newcommand \revxydiag[5][->]{ %
+  \slipoff
+  \xymatrix @C=.8em @R=1.8em { %  @R=1.5em @C=-.5em
+    \ar@{#1}[d]_{#5} & {#3} \ar@{}[d]|\lcni & ¤ \ar[d]^{#2}\\
+    ¤ & {#4} & }}
+\newcommand \xytdiag[5][->]{ %
+  \slipoff
+  \xymatrix @C=.8em @R=1.8em { %  @R=1.5em @C=-.5em
+    ¤ \ar@{=>}[d]_{#2} & {#3} \ar@{}[d]|\incl & \ar@{=>}[d]^{#5}\\
+    & {#4} & ¤ }}
+\newcommand \revxytdiag[5][->]{ %
+  \slipoff
+  \xymatrix @C=.8em @R=1.8em { %  @R=1.5em @C=-.5em
+    \ar@{=>}[d]_{#5} & {#3} \ar@{}[d]|\lcni & ¤ \ar@{=>}[d]^{#2}\\
+    ¤ & {#4} & }}
+\newcommand \vincl {\rotatebox[origin=c]{270}{$\incl$}}
+\newcommand \penta[4]{ %
+  \slipoff
+  \xymatrix @C=0.5em { %
+    &&\cdot \ar[dll]_{#1} \ar[drr]^{#2} \ar@{}[dd]|\vincl \\
+    \ar@{=>}[dr]_{#3} &&&& \ar@{=>}[dl]^{#4}\\
+    &\cdot&\approx&\cdot } }
+
+
+% points fixes
+\newcommand \gfp {\boldsymbol\nu}
+\newcommand \lfp {\boldsymbol\mu}
+\newcommand \gfpof[1]{\gfp\paren{#1}}
+
+% génératrices
+\newcommand \fs {{\mathbf s}}
+\newcommand \ws {{\mathbf w}}
+\newcommand \wst{{\ws_\text{t}}}
+\newcommand \wsb{{\ws_\text{b}}}
+\newcommand \es {{\mathbf e}}
+\newcommand \ps {{\mathbf p}}
+\newcommand \fb {{\birev\fs}}
+\newcommand \eb {{\birev\es}}
+\newcommand \pb {{\birev\ps}}
+\newcommand \wb {{\birev\ws}}
+\newcommand \wbt{{\birev\wst}}
+\newcommand \wso {\ws_{\o}}
+\newcommand \wslo {\ws_{\lo}}
+\newcommand \wbo {\wb_{\o}}
+\newcommand \wblo {\wb_{\lo}}
+% \newcommand \wsu {\ws_{\u}}
+% \newcommand \wstu {\wst_{\u}}
+% \newcommand \wbu {\wb_{\u}}
+% \newcommand \wbtu {\wbt_{\u}}
+
+% progressions
+\newcommand \prog \rightsquigarrow
+\newcommand \ante[1]{\left\lfloor #1 \right\rfloor}
+\newcommand \sprog {{s_{\s\prog}}}
+\newcommand \progs {\mathrel{\prog_s}}
+\newcommand \gfpp {\gfp_{\s\prog}}
+\newcommand \cprog[1]{\stackrel{#1}\rightarrowtail}
+\newcommand \cprogs{\cprog s}
+
+
+% relations 
+\newcommand \R {\rel R}
+\renewcommand \S {\rel S}
+\newcommand \nR[1] {\R^{#1}}
+\newcommand \nS[1] {\S^{#1}}
+\newcommand \sR {\nR\star}
+\newcommand \sS {\nS\star}
+\newcommand \iR {\rev{\R}}
+\newcommand \iS {\rev{\S}}
+
+% contextes
+\newcommand \C {\mathcal C}
+\newcommand \D {\mathcal D}
+
+\newcommand \ctx[1]{{\lfloor{#1}\rfloor}}
+\newcommand \Ccsi  {C_i}
+\newcommand \cCCS  {\C}
+
+
+% Ensembles distingués
+\newcommand \Rel {\mathcal R}
+\newcommand \Proc{\mathcal P}
+\newcommand \Dom {\mathcal P}
+\newcommand \Don {\mathcal Q}
+\newcommand \Lbl {\mathcal L}
+\newcommand \eLbl {\Lbl^\epsilon}
+\newcommand \vLbl {\Lbl^\mathrm{v}}
+\newcommand \ts[2]{\tuple{#1,#2}}
+\newcommand \fun[2][]{\ifthenelse{\equal{#1}{}}{#2}{#1}^{#2}}
+\newcommand \funn[2][]{\ifthenelse{\equal{#1}{}}{#2}{#1}\to{#2}}
+\newcommand \func[2][]{\ifthenelse{\equal{#1}{}}{#2}{#1}^{\tuple{#2}}}
+\newcommand \funct[2][]{\ifthenelse{\equal{#1}{}}{#2}{#1}^{[{#2}]}}
+\newcommand \funk[2][]{\tuple{\funn[#1]{#2}}}
+\newcommand \funkt[2][]{[\funn[#1]{#2}]}
+
+% transitions 
+\renewcommand \r \xrightarrow
+\renewcommand \l \xleftarrow
+\newcommand \rs \xRightarrow
+\newcommand \ls[2][]{\xLeftarrow[#1]{\;#2}}
+\newcommand \rh[2][]{\rs[#1]{\widehat{{#2}}}}
+\newcommand \lh[2][]{\ls[#1]{\widehat{{#2}}}}
+\newcommand \pr[1]{\lhook\joinrel\xrightarrow{#1}}
+\newcommand \hau {\widehat\tau}
+\newcommand \halpha {\widehat\alpha}
+\newcommand \helta {\widehat\delta}
+\newcommand \hepsilon {\widehat\epsilon}
+
+% préordres / équivalences
+\newcommand \expand \succsim
+\newcommand \dnapxe \precsim
+\newcommand \biexp \asymp
+\newcommand \biela \simeq
+\newcommand \compress \succcurlyeq
+\newcommand \sserpmoc \preccurlyeq
+\newcommand \elabo \succapprox
+\newcommand \obale \precapprox
+\newcommand \sexpand {\s{\expand}}
+\newcommand \ssim {\s{\sim}}
+\newcommand \sapprox {\s{\approx}}
+\newcommand \sdnapxe {\s{\dnapxe}}
+\newcommand \crel \triangleright
+\newcommand \lerc \triangleleft
+\newcommand \crell \blacktriangleright
+\newcommand \llerc \blacktriangleleft
+
+% CCS
+\newcommand \qccs[1]{\textsc{{[#1]}}}
+\newcommand \inferruleccs[4][]{\inferrule*[left=\qccs{#1},right={\small$#4$}]{#2}{#3}}
+
+
+\newcommand \CCS{{CCS}}
+\newcommand \PAN{\textsc{Pan}}
+\newcommand \GCPAN{\textsc{GcPan}}
+%\newcommand \BCCSP{{BCCSP}}
+%\newcommand \BPA{{BPA}}
+% \newcommand \fCCS{{{\CCS\ensuremath{_f}}}}
+% \newcommand \Pb{\Proc_{\mathrm B}}
+% \newcommand \Pc{\Proc_{\mathrm C}}
+% \newcommand \Pfc{\Proc_{\mathrm C\ensuremath{_f}}}
+\renewcommand \| {\mathrel|}
+\newcommand \nil {\mathbf{0}}
+\newcommand \oa {\overline a}
+
+% commentaires
+\newcommand \daniel[1]{\marginpar{{\small\textbf{dh:}~{#1}}}}
+\newcommand \damien[1]{\marginpar{{\small\textbf{dp:}~{#1}}}}
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "talk.tex"
+%%% End: 
+
