@@ -447,12 +447,12 @@ $\oplus$, if two values are written to a memory element, only the
 first one (in program order) is committed; second, reading a register
 yields the value that was held at the beginning of the time step. 
 
-(For the interested reader, the reduction rules of Fe-Si can be
-described in terms of layered monads: we have a Reader monad of the
-old state and Writer monad of the state update to implement the
-synchronous aspect of state update; and we stack the Option monad on
-top of the state-change monads to implement the transactional aspect
-of the semantics.)
+% (For the interested reader, the reduction rules of Fe-Si can be
+% described in terms of layered monads: we have a Reader monad of the
+% old state and Writer monad of the state update to implement the
+% synchronous aspect of state update; and we stack the Option monad on
+% top of the state-change monads to implement the transactional aspect
+% of the semantics.)
 
 Finally, we define a wrapper function that computes the next state of
 the memory elements, using the aforementioned evaluation relation
@@ -552,28 +552,14 @@ denotations.
 
 \begin{mcoq}
 Variable $\Gamma$: $\denote{\Phi}$. 
-Definition eval_expr (t : ty) (e : expr $\denotety{.}$ t) : $\denotety{.}$:=
-  match e with
-  | Evar t v => v
-  | Einput t v => DList.get v $\Gamma$
-  | Eread  t v =>  DList.get v $\Gamma$
-  | Eread_rf n t v adr => Regfile.get (DList.get v $\Gamma$) adr
-  | Emux t b x y => if b then x else y 
-  | Eandb a b => andb a b | ...
-  | Eadd n a b => Word.add a b  | ...
-  | Efst l t e => Tuple.fst e | ...
-  end. 
+Definition eval_expr (t : ty) (e : expr $\denotety{.}$ t) : $\denotety{.}$:= ...
 \end{mcoq}
 
 \noindent The denotation of telescopes is a simple recursive function that
 evaluates bindings in order and applies an arbitrary function on the
 final (closed) object.
 \begin{mcoq}
-Fixpoint eval_scope {A B} (F : A -> B) (T : scope $\denotety{.}$ A) : B :=
-match T with 
-| Send X => F X
-| Sbind t e cont => eval_scope F (cont (eval_expr t e))
-end.   
+Fixpoint eval_scope {A B} (F : A -> B) (T : scope $\denotety{.}$ A) : B := ...
 \end{mcoq}
 %
 The final piece that we need is the denotation that corresponds to the
@@ -596,9 +582,6 @@ Our syntactic translation from Fe-Si to RTL is driven by the fact that
 our RTL language does not allow clashing assignments: syntactically,
 each register and register file is updated by at most one \coqe{write}
 expression.
-%
-With one wrinkle, we could say that we move to a language with
-\emph{static single assignment}. 
 
 \subsubsection{From control flow to data flow.}To do so, we have to
 transform the control flow (the \coqe{Assert} and \coqe{OrElse}) of
@@ -727,12 +710,12 @@ its runtime value, i.e, a pointer to a node in a BDD.
 Our use of BDDs boils down to hash-consing: it enforces that Boolean
 expressions that are deemed equivalent are shared.
 
-The purpose of this pass is to simplify the extraneous boolean
-operations that were introduced by our compilation passes. In order to
-simplify only the Boolean computations that we introduced, we could
-use two different kinds of Booleans (the ones that were present at the
-source level and the others); and use our simplification pass only on
-the latter. 
+% The purpose of this pass is to simplify the extraneous boolean
+% operations that were introduced by our compilation passes. In order to
+% simplify only the Boolean computations that we introduced, we could
+% use two different kinds of Booleans (the ones that were present at the
+% source level and the others); and use our simplification pass only on
+% the latter. 
 \subsection{Putting it all together}
 In the end, we prove that our whole compiler is semantics preserving.
 
@@ -965,9 +948,8 @@ combinational sorter: we could have gone one step further in this
 verification effort and pipelined our design by registering the output
 of each compare-and-swap operator. However, we chose here to describe
 a more interesting design: a hardware implementation of a simple stack
-machine, inspired by the IMP virtual
-machine~\cite{Leroy-Marktoberdorf-09}, i.e., a small subset of the
-Java virtual machine.
+machine for the IMP language, i.e., a tiny subset of the Java virtual
+machine.
 
 Again, we proceed in two steps: first, we define a specification of
 the behavior of our stack machine; second, we build a Fe-Si
@@ -1010,7 +992,6 @@ i & ::=   & \texttt{const $n$                     }\\
       \end{tabular}
 & \qquad 
       \begin{tabular}{ll}
-& \text{if $C(pc)$ =}\\
 $C \vdash pc,\sigma,s \to pc+1, n :: \sigma,s$ & \text{if $C(pc)$ = \texttt{const $n$}} \\
 $C \vdash pc,\sigma,s \to pc+1, s(x) :: \sigma,s$ & \text{if $C(pc)$ = \texttt{var $x$}} \\
 $C \vdash pc,v::\sigma,s \to pc+1, \sigma,s[x \leftarrow v]$ & \text{if $C(pc)$ = \texttt{setvar $x$}} \\
@@ -1127,8 +1108,8 @@ design, and only discuss the most closely related work.
 Lava~\cite{Bjesse98lava:hardware} embeds parametric circuit generators
 in Haskell. 
 %
-Omitting the underlying implementation language, Lava can be
-faithfully described as a subset of Fe-Si, with two key differences.
+Omitting the underlying implementation language, Lava can be described
+as a subset of Fe-Si, with two key differences.
 %
 First, Lava features a number of layout primitives, which makes it
 possible to describe more precisely what should be the hardware
@@ -1144,10 +1125,16 @@ parametric circuit generators.
 
 \medskip
 
-Bluespec~\cite{bluespec} is an industrial strength hardware
-description language based on non-deterministic guarded atomic
-actions. A program is a set of rewrite rules in a Term Rewriting
-System that are non-deterministically executed one at a time. 
+Bluespec SystemVerilog~\cite{bsv-by-example} (BSV) is an industrial
+strength hardware description language based on non-deterministic
+guarded atomic actions. BSV features a module system, support for
+polymorphic function and modules, support for scheduling directives
+and support for static elaboration of programs (e.g., loops to express
+repetitive code).
+%
+After static elaboration, a program is a set of rewrite rules in a
+Term Rewriting System that are non-deterministically executed one at a
+time.
 %
 To implement a Bluespec program in hardware, the Bluespec compiler
 needs to generate a deterministic schedule where one or more rules
@@ -1156,9 +1143,8 @@ happen each clock-cycle.
 Non-determinism makes it possible to use Bluespec both as an
 implementation language and as a specification language.
 %
-%
-%
-Fe-Si can be described as a deterministic subset of Bluespec. 
+Fe-Si can be described as a deterministic idealized version of
+Bluespec.
 %
 We argue that deterministic semantics are easier to reason with, and
 that we can use the full power of Coq as a specification language to
@@ -1166,9 +1152,40 @@ palliate our lack of non-determinism in the Fe-Si language.
 %
 Moreover, more complex scheduling can be implemented using a few
 program combinators~\cite{DBLP:conf/memocode/DaveAP07}: we look
-forward to implementing these in Fe-Si. 
+forward to implementing these in Fe-Si.
+%
+Finally, note that using Coq as a meta language makes it possible to
+express (and verify) static elaboration of Fe-Si programs, similarly
+to what BSV provides for the core of Bluespec. 
+%
+We still have to determine to what extent some parts of BSV module and
+type systems could be either added in Fe-Si or either encoded in
+Coq-as-a-meta-language.
 
-\medskip 
+\medskip
+
+The synchronous programming language Quartz~\cite{quartz} is part of
+the Averest project that aims at developing tools for the development
+and verification of reactive systems.
+%
+Quartz is a variant of Esterel that can be compiled to
+``guarded commands''~\cite{DBLP:conf/acsd/Schneider01}. The algorithms
+underlying this compiler have been verified in the HOL theorem prover,
+which is similar to our approach of verified high-level synthesis.
+%
+However, in the Averest tool-chain, the verification (automated or
+interactive using HOL) takes place at the level of the guarded
+commands; yet, despite the naming similarity, guarded commands are
+closer to our RTL effects than to our guarded atomic actions.
+%
+The main difference between our approaches is the place at which
+verification occurs: in Fe-Si, verification occurs at the level of
+circuit generators, written in the source language and where
+high-level constructs are still present; in Averest, verification
+occurs at the level of the intermediate representation, in which
+high-level constructs have already been transformed.
+
+\medskip
 
 Richards and Lester~\cite{DBLP:journals/isse/RichardsL11} developed a
 shallow-embedding of a subset of Bluespec in PVS. While they do not
@@ -1195,15 +1212,14 @@ synthesis, with an emphasis on the verification of parametric designs.
 Our compiler is available on-line along with our examples as
 supplementary material~\cite{fesi}.
 %
-The technical contributions of this paper are
-\begin{itemize}
-\item a novel use of PHOAS as a way to embed domain-specific languages
-  in Coq;
-\item a toy compiler from a simple hardware description language to
-  RTL code;
-\item machine checked proofs of correctness for some simple hardware
-  designs. 
-\end{itemize}
+The technical contributions of this paper are: 
+%
+a certified compiler from Fe-Si, a simple hardware description
+language, to RTL code;
+%
+and machine checked proofs of correctness for some infinite families
+of hardware designs expressed in Fe-Si (parameterized by sizes), that
+are compiled to correct hardware designs thanks the above compiler.
 
 This work is intended to be a proof of concept: much remains to be
 done to scale our examples to more realistic designs and to make our
@@ -1214,12 +1230,12 @@ certification of parameterized hardware designs.
 \subsubsection{Acknowledgements.} We thank MIT's CSG group for
 invaluable discussions and comments. This material is based on
 research sponsored by DARPA under agreement number FA8750-12-2-0110. 
-The U.S. Government is authorized to reproduce and distribute reprints
-for Governmental purposes notwithstanding any copyright notation
-thereon.  The views and conclusions contained herein are those of the
-authors and should not be interpreted as necessarily representing the
-official policies or endorsements, either expressed or implied, of
-DARPA or the U.S. Government.
+% The U.S. Government is authorized to reproduce and distribute reprints
+% for Governmental purposes notwithstanding any copyright notation
+% thereon.  The views and conclusions contained herein are those of the
+% authors and should not be interpreted as necessarily representing the
+% official policies or endorsements, either expressed or implied, of
+% DARPA or the U.S. Government.
 
 \bibliography{synthesis}
 \end{document}
