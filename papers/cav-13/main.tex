@@ -1084,9 +1084,9 @@ ret x.
 \end{coq}
 &
 \begin{coq}
-Definition Isetvar pc i := 
+Definition Isetvar pc x := 
 do v <- pop; 
-do _ <- write REGS [: snd i <- v];
+do _ <- write REGS [: x <- v];
 PC ::= pc + 1.
 $ $
 \end{coq}

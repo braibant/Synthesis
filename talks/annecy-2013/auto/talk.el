@@ -12,6 +12,7 @@
      '("redemph" 1)
      '("bluemph" 1)
      "fesi"
+     "rebind"
      "arrow")
     (TeX-run-style-hooks
      "lstocaml"

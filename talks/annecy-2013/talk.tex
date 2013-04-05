@@ -23,6 +23,8 @@
 % \setbeamertemplate{items}[square]
 
 
+% \setbeamertemplate{footline}[page number]{}
+
 
 \newcommand{\bluemph}[1]{\structure{\emph{#1}}}
 \newcommand{\redemph}[1]{\alert{\emph{#1}}}
@@ -36,8 +38,8 @@
 \newenvironment{remark}{\footnotesize \begin{description}\item[\emph{Remark}:]}{\end{description}}
 
 \title{Formal verification of hardware synthesis}%
-\author{Thomas Braibant \and Adam Chlipala}
-\institute[Inria]{Inria  \and MIT CSAIL}
+\author[T. Braibant]{Thomas Braibant$^1$ \and Adam Chlipala$^2$}
+\institute[Inria]{Inria$^1$ (Gallium) \qquad MIT CSAIL$^2$}
 \date[04/2013]{Journées compilation}
 
 \setbeamercovered{transparent}
@@ -95,23 +97,23 @@
   \frametitle{Context: formal verification of hardware}
   
   \begin{itemize}
-  \item  Formally verified everything:
-    \begin{itemize}
-    \item Compilers (CompCert [2006])
-    \item Operating Systems (Gypsy [1989]; seL4 [2009])
-    \item Static analysers
-    \item \alert<2->{Hardware}
-    \end{itemize}
+  % \item  Formally verified everything:
+  %   \begin{itemize}
+  %   \item Compilers (CompCert [2006])
+  %   \item Operating Systems (Gypsy [1989]; seL4 [2009])
+  %   \item Static analysers
+  %   \item \alert<2->{Hardware}
+  %   \end{itemize}
     
-    \pause
+  %   \pause
     
   \item Verifying hardware with theorem provers:
     \begin{itemize}
-    \item many \emph{shallow-embeddings} of hardware description languages (ACL2 , HOL, PVS)
+    \item many formalizations of hardware description languages (ACL2 , HOL, PVS)
       % ACL2 :DE2
       % Hol : Experience with embedding hardware description languages in HOL (1992)
       % PVS : Bluespec
-    \item many \emph{shallow-embeddings} of hardware designs (ACL2, HOL, PVS, Coq) 
+    \item many models of hardware designs (ACL2, HOL, PVS, Coq) 
       \begin{itemize}
       \item[-] Floating-point operations verified at AMD using ACL2 
       \item[-] VAMP [2003]  (a pipelined micro-processor verified in PVS)
@@ -123,12 +125,12 @@
     \pause
     
     % This verification does not match what is really done
-  \item Industry shifts toward \alert{hardware synthesis}: 
+  \item Shift toward \alert{hardware synthesis}: 
     \begin{itemize}
     \item generates low-level code (RTL) from high-level HDLs
     \item argue (in)formally that this synthesis is correct
     \end{itemize}
-    \parenthesis{Bluespec, Esterel, Lustre, \dots}
+    \parenthesis{Esterel, Lustre, System-C, Bluespec, \dots}
   \end{itemize}
 \end{frame}
 
@@ -168,7 +170,13 @@
     \item Define data-structures to represent programs (a prerequisite to write a compiler)
     \item Define what is a program's semantics 
     \end{itemize}
+    
+    \pause
+    
   \item Implement the compiler
+
+    \pause
+
   \item Pick a phrasing for semantic preservation:
     \begin{displaymath}
       \behaviors{P_1} \mathbin{\square} \behaviors{P_2} 
@@ -178,6 +186,9 @@
         \text{safe}~P_1 ? \\
       \end{cases}
     \end{displaymath}
+
+    \pause
+
   \item Prove semantic preservation for your compiler. 
     \pause \parenthesis{easier said than done}
   \end{itemize}  
@@ -221,35 +232,6 @@ let g #2 #1 in
 \end{itemize}
 \end{frame}
 
-
-\defverbatim[colored]\phoasprimer{
-}
-\begin{frame}[fragile]
-  \frametitle{A PHOAS primer}
-  \begin{itemize}
-  \item Use Coq bindings to represent the bindings of the object language.
-    \newcommand\arrow{\ulcorner \to \urcorner}
-\begin{coq}
-Section t. 
-  Variable var: T -> Type.
-  
-  Inductive term : T -> Type :=
-  | Var: forall t, var t -> term t
-  | Abs: forall $\alpha$ $\beta$, (var $\alpha$ -> term $\beta$) -> term ($\alpha$ $\arrow$ $\beta$)
-  | App: ...
-End t. 
-
-Definition Term := forall (var: T -> Type), term var. 
-
-Example K $\alpha$ $\beta$ : Term ($\alpha~\arrow{}~\beta{}~\arrow{}~\alpha$):= fun V =>
-$\quad$Abs (fun x => Abs (fun y => Var x)).
-\end{coq}
-
-\pause
-
-\item An \alert{intrinsic approach} (strongly typed syntax vs. syntax + typing judgement)
-\end{itemize}
-\end{frame}
 % \begin{frame}[fragile]
 %   \frametitle{A PHOAS primer}
 %   \framesubtitle{Face-off with Dependent de Bruijn indices}
@@ -300,7 +282,7 @@ $\quad$Abs (fun x => Abs (fun y => Var x)).
   \begin{itemize}
   \item update a set of \alert{memory elements} $\Phi$;
     \\
-    \parenthesis{registers, register files, fifos, \dots}
+    \parenthesis{registers, register files, inputs, \dots}
   \item are based on \alert{guarded atomic actions} 
     \\
     \begin{center}
@@ -460,12 +442,42 @@ Definition Eval $\Phi$ t (a: forall V, action V t): $\denote\Phi$ -> option ($\d
 % \end{columns}
 % \end{frame}
 
+\begin{frame}
+  \frametitle{A glimpse of the first-pass}
+  
+  \begin{itemize}
+  \item Transform control-flow into data-flow.
+  \end{itemize}
+
+  \only<1>{
+  \begin{center}
+    \includegraphics[width=5cm]{figs/compil-0.pdf}  
+  \end{center}
+}
+
+\only<2-3>{
+  \begin{itemize}
+  \item Compiling \coqe{e orElse f}
+  \end{itemize}
+  \begin{center}
+    \includegraphics[width=7cm]{figs/compil-1.pdf}  
+  \end{center}
+}
+
+\only<3>{
+  \begin{itemize}
+  \item  The $\Phi$ blocks are trees of effects on memory elements,
+    that must be flattened.
+  \end{itemize}
+}
+\end{frame}
+
 \begin{frame}[fragile]
   \frametitle{Compiling \fesi{} to RTL}
   
   \begin{enumerate}
   \item Transform control-flow into data-flow programs (in A-normal form);
-  \item Compute the next-state and update function for each memory
+  \item Compute the update and commit values for each memory
     element;
   \item Perform syntactic common-sub-expression elimination;
   \item Perform Boolean expressions reduction using BDDs;
@@ -488,29 +500,42 @@ Definition Eval $\Phi$ t (a: forall V, action V t): $\denote\Phi$ -> option ($\d
   \tableofcontents [currentsection] 
 \end{frame}
 
+\begin{frame}
+  \frametitle{Circuit generators}
+  \begin{center}
+    \includegraphics[width=5cm]{figs/examples.pdf}
+  \end{center}
+  \begin{enumerate}
+  \item Coq's reduction (internal)
+  \item Fe-Si to RTL (proved)
+  \item RTL to Verilog (OCaml backend, trusted)
+  \end{enumerate}
+\end{frame}
+
 \begin{frame}[fragile]
-\frametitle{Recursive circuits: A divide and conquer adder (without pain)}
+\frametitle{Recursive circuits: A von Neumann adder}
+\begin{center}
+  \only<1>{\includegraphics[height=3cm]{figs/adder-1.pdf}}
+  \only<2>{\includegraphics[height=6cm]{figs/adder-2.pdf}}
+\end{center}
+\begin{displaymath}
+  s =  a + b \quad  t =  a + b + 1
+\end{displaymath}
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Recursive circuits: A von Neumann adder}
 \framesubtitle{Meta-programming for free}
-\begin{columns}
-  \column{0.5\linewidth}
-  \begin{center}
-    \includegraphics[height= 3cm ]{figs/DC1.pdf}
-  \end{center}
-  \column{0.5\linewidth}
-  \begin{center}
-    \includegraphics[height= 3cm ]{figs/DC.pdf}
-  \end{center}
-\end{columns}
 \begin{columns}
 \column{0.1\linewidth}
 \column{0.5\linewidth}
 \begin{scoq}
 Variable V : T -> Type. 
 
-Fixpoint add $\Phi$ n (x : V (Tint [2^ n])) (y : V (Tint [2^ n])) := 
+Fixpoint add $\Phi$ n (a : V (Tint [2^ n])) (b : V (Tint [2^ n])) := 
 match n  with 
-| 0 => Return ( (x = 1) || (y = 1) ;
-          (x = 1) && (y = 1); x + y; x + y + 1)
+| 0 => ret ( (a = 1) || (b = 1) ;
+                (a = 1) && (b = 1); a + b; a + b + 1)
 
 
 
@@ -520,25 +545,82 @@ $$
 \column{0.5\linewidth}
 \begin{scoq}
 | S n => 
-  DO (xL,xH) <- (low x, high x);
-  DO (yL,yH) <- (low y, high y);
-  DO (pL, gL, sL, tL) <- add n xL yL; 
-  DO (pH, gH, sH, tH) <- add n xH yH; 
-  DO sH' <- (gL ? tH : sH);
-  DO tH' <- (pL ? tH : sH);
-  DO pH' <- (gH || (pH && gH));
-  DO gH' <- (gH || (pH && gL));
-  Return (pH'; gH'; sL $\otimes$ sH' ; tL $\otimes$ tH' )
+  do (aL,aH) <- (low a, high a);
+  do (bL,bH) <- (low b, high b);
+  do (pL, gL, sL, tL) <- add n aL bL; 
+  do (pH, gH, sH, tH) <- add n aH bH; 
+  do sH' <- (gL ? tH : sH);
+  do tH' <- (pL ? tH : sH);
+  do pH' <- (gH || (pH && gH));
+  do gH' <- (gH || (pH && gL));
+  ret (pH'; gH'; sL $\otimes$ sH' ; tL $\otimes$ tH' )
 end.  
 \end{scoq}
 \end{columns}
-\parenthesis{builds a 4-uple: carry-propagate, carry-generate, sum w/ carry, sum w/o carry}
+\parenthesis{builds a 4-uple: carry-propagate, carry-generate, sum w/
+  carry, sum w/o carry}
+\pause
+\begin{itemize}
+\item Proof by induction on $n$
+\end{itemize}
 \end{frame}
 
 \begin{frame}
-  \frametitle{A (family) of bitonic sorter core}
-  
+  \frametitle{A bitonic sorter core}
+  \begin{center}
+    \includegraphics[width=\textwidth]{figs/bitonic1.png}
+    \begin{itemize}
+    \item Bitonic: $x_0 \le \dots \le x_k \ge \dots \ge x_{n-1}$ for
+      some $k$, or a circular shift.
+    \item Red: bitonic $\to$ $l_1$ bitonic, $l_2$ bitonic (and $l_1
+      \le l_2$)
+    \item Blue (resp. green): bitonic $\to$ sorted (resp. sorted in
+      reverse order)
+    \end{itemize}
+  \end{center}
 \end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{A bitonic sorter code}
+\newcommand\rebind{\leftsquigarrow}
+  \begin{columns}
+\column{0.5\linewidth}
+  \begin{coq}
+Fixpoint merge {n}: T n -> C n := 
+match n with 
+| 0 => fun t => ret (leaf t)
+| S k => fun t => 
+  do a,b  $\rebind$  min_max_swap (left t) (right t);
+  do a <- merge a;
+  do b <- merge b;
+  ret (mk_N  a b)
+end.
+$ $\end{coq}
+\column{0.5\linewidth}
+\begin{coq}
+Fixpoint sort {n} : T n -> C n :=
+match n with 
+| 0 => fun t => ret (leaf t)
+| S n => fun t => 
+  do l <- sort (left t); 
+  do r $\rebind$ sort (right t);
+  do r <- reverse r;                 
+  do x $\rebind$ ret (mk_N l r);
+  merge x
+end\end{coq}
+  \end{columns}
+  \begin{itemize}
+  \item \coqe{merge} builds the blue/green boxes
+  \item \coqe{min_max_swap} builds the red boxes
+  \end{itemize}
+
+\pause
+\begin{theorem}
+Let $I$ be a sequence of length $2^n$ of integers of size $m$. The
+circuit always produces an output sequence that is a sorted permutation of $I$.
+\end{theorem}
+\end{frame}
+
 
 \begin{frame}
   \frametitle{A (family) of stack machines}
@@ -580,14 +662,41 @@ $\vdash pc,n_2::n_1::\sigma,s \to pc+1, \sigma,s$ & \text{if  $\neg (c~n_1~n_2)$
 \end{itemize}
 \end{frame}
 
+\begin{frame}[fragile]
+  \frametitle{Stack machine excerpt}
+  \begin{columns}
+\column{0.4\linewidth}
+\begin{coq}
+Definition pop :=
+do sp <- ! SP;       
+do v <- read STACK [: sp - 1];
+do _ <- SP ::= sp - 1;
+ret v.    
+\end{coq}
+\column{0.4\linewidth}
+\begin{coq}
+Definition Isetvar pc x := 
+do v <- pop; 
+do _ <- write REGS [: x <- v];
+PC ::= pc + 1.
+$ $
+\end{coq}
+  \end{columns}
+  \begin{displaymath}
+\vdash pc,v::\sigma,s \to pc+1, \sigma,s[x \leftarrow v]
+  \end{displaymath}
+  \begin{itemize}
+  \item Combine these pieces of code using a \coqe{case} construct
+  \item Prove the Fe-Si implementation correct w.r.t. the previous semantics
+  \end{itemize}
+\end{frame}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 \begin{frame}[fragile]
   \frametitle{Meta-programming at work}
 
   \begin{itemize}
   \item Recursive circuits. 
-  \item \alert{Combinators and schedulers} of atomic actions (more
-    control-oriented).
+  \item \alert{Combinators and schedulers} of atomic actions.
   \item In these cases, using Coq as a meta-language makes it possible
     to prove things. 
   \end{itemize}
@@ -614,9 +723,9 @@ $\vdash pc,n_2::n_1::\sigma,s \to pc+1, \sigma,s$ & \text{if  $\neg (c~n_1~n_2)$
       \pause
       \begin{itemize}
       \item semantics (i.e., interpreter), compiler and programs are \alert{integrated seamlessly}
-      \item use of computation \alert{inside} Coq to dump compiled programs
       \item dependent types capture some interesting properties in
         hardware
+      \item use of extraction to dump compiled programs
       \end{itemize}
     \end{itemize}
 
@@ -625,7 +734,9 @@ $\vdash pc,n_2::n_1::\sigma,s \to pc+1, \sigma,s$ & \text{if  $\neg (c~n_1~n_2)$
   \item Future work
     \begin{itemize}
     \item Improve on the language (FIFOs, references).
-    \item Make the compiler more realistic (automatic scheduling).
+    \item Make the compiler more realistic (automatic scheduling of
+      atomic actions).
+    \item Embed a DSL for floating-point cores? 
     \end{itemize}
     
     \pause
@@ -651,3 +762,33 @@ $\vdash pc,n_2::n_1::\sigma,s \to pc+1, \sigma,s$ & \text{if  $\neg (c~n_1~n_2)$
   
 \end{frame}
 \end{document}
+
+
+\defverbatim[colored]\phoasprimer{
+}
+\begin{frame}[fragile]
+  \frametitle{A PHOAS primer}
+  \begin{itemize}
+  \item Use Coq bindings to represent the bindings of the object language.
+    \newcommand\arrow{\ulcorner \to \urcorner}
+\begin{coq}
+Section t. 
+  Variable var: T -> Type.
+  
+  Inductive term : T -> Type :=
+  | Var: forall t, var t -> term t
+  | Abs: forall $\alpha$ $\beta$, (var $\alpha$ -> term $\beta$) -> term ($\alpha$ $\arrow$ $\beta$)
+  | App: ...
+End t. 
+
+Definition Term := forall (var: T -> Type), term var. 
+
+Example K $\alpha$ $\beta$ : Term ($\alpha~\arrow{}~\beta{}~\arrow{}~\alpha$):= fun V =>
+$\quad$Abs (fun x => Abs (fun y => Var x)).
+\end{coq}
+
+\pause
+
+\item An \alert{intrinsic approach} (strongly typed syntax vs. syntax + typing judgement)
+\end{itemize}
+\end{frame}

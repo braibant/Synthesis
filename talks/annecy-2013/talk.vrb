@@ -9,9 +9,9 @@
       \pause
       \begin{itemize}
       \item semantics (i.e., interpreter), compiler and programs are \alert{integrated seamlessly}
-      \item use of computation \alert{inside} Coq to dump compiled programs
       \item dependent types capture some interesting properties in
         hardware
+      \item use of extraction to dump compiled programs
       \end{itemize}
     \end{itemize}
 
@@ -20,7 +20,9 @@
   \item Future work
     \begin{itemize}
     \item Improve on the language (FIFOs, references).
-    \item Make the compiler more realistic (automatic scheduling).
+    \item Make the compiler more realistic (automatic scheduling of
+      atomic actions).
+    \item Embed a DSL for floating-point cores?
     \end{itemize}
 
     \pause
