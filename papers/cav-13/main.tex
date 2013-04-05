@@ -104,7 +104,7 @@ Fe-Si can be seen as a stripped-down and idealized version of
 Bluespec: hardware designs are described in terms of \emph{guarded
   atomic actions} on state elements.  
 %
-Guarded atomic actions have a of \emph{transactional memory}, where
+Guarded atomic actions have a flavour of \emph{transactional memory}, where
 updates to state elements are not visible before the end of the
 transaction (a time-step).
 %
@@ -215,7 +215,7 @@ embed Fe-Si yields two kind of issues. First, Coq lacks any kind of
 I/O; and second, a Fe-Si program may have been built using arbitrary
 Coq code, including, e.g., higher-order functions or fixpoints.
 
-Note that every Coq function terminates: therefore, a closed Fe-Si
+Note that every Coq function terminates. Therefore, a closed Fe-Si
 program of type \coqe{action} evaluates to a term that is
 syntactically built using the inductive constructors of the type
 \coqe{action} (i.e., all intermediate definitions in Coq have been expanded).
@@ -313,7 +313,7 @@ explicitly via a dedicated term constructor.
 The definition of Fe-Si syntax is split in two syntactic classes:
 expressions and actions. 
 %
-Expressions are side-effect free, and are built from variables,
+Expressions are side-effect free and are built from variables,
 constants, and operations.
 %
 Actions are made of control-flow structures (assertions and
@@ -418,7 +418,7 @@ the state, committing this update.
     \\
     % register
     \inferrule{\Gamma(r) = v} {\Gamma, \Delta \vdash
-      \mathtt{RegRead}~r \to \mathtt{Some} (r,\Delta)} \and
+      \mathtt{RegRead}~r \to \mathtt{Some} (v,\Delta)} \and
     \inferrule{\Gamma \vdash e \leadsto v} {\Gamma, \Delta \vdash
       \mathtt{RegWrite}~r~e \to \mathtt{Some}
       (\mathtt{()},\Delta\oplus(r,v))}
@@ -533,7 +533,7 @@ Section t.
   Definition effects := DList.T (option $\circ$ write) $\Phi$. 
   Definition block t := scope (V B * V t *  effects).         
 End t.
-Definition Block $\Phi$ t := forall V, block $\Phi$ V t.
+Definition Block $\Phi$ t := forall V, block V $\Phi$ t.
 \end{coq}
   \caption{RTL programs with three-adress code expressions}
   \label{fig:rtl}
@@ -564,7 +564,7 @@ Fixpoint eval_scope {A B} (F : A -> B) (T : scope $\denotety{.}$ A) : B := ...
 %
 The final piece that we need is the denotation that corresponds to the
 \coqe{write} type. This function takes as argument a single effect,
-the initial state of this memory location  and either returns a new
+the initial state of this memory location,  and either returns a new
 state for this memory location, or returns \coqe{None}, meaning that
 location is left in its previous state.
 \begin{mcoq}
@@ -705,7 +705,7 @@ Our compilation process introduces a lot of extra Boolean
 variables. We use BDDs to implement semantic common-subexpression
 elimination. We implemented a BDD library in Coq; and we use it to
 annotate each Boolean expression of a program with an approximation of
-its runtime value, i.e, a pointer to a node in a BDD.
+its runtime value, i.e., a pointer to a node in a BDD.
 %
 Our use of BDDs boils down to hash-consing: it enforces that Boolean
 expressions that are deemed equivalent are shared.
@@ -856,7 +856,7 @@ Fixpoint domain n := match n with
 | S n => (domain n) $\otimes$ (domain n)
 end. 
 
-Notation T n := (tree (expr Var A) n). 
+Notation T n := tree (expr Var A) n. 
 Notation C n := action nil Var (domain n). 
 
 Fixpoint reverse n (t : T n) : C n  :=
@@ -868,7 +868,7 @@ match t with
   ret [tuple r, l]
 end.
 
-Notation mk_N x y := ([tuple x,y]).
+Notation mk_N x y := [tuple x,y].
 
 Variable cmp : Var A -> Var A 
 $\qquad\qquad\qquad$ -> action nil Var (A $\otimes$ A).
@@ -893,10 +893,10 @@ Fixpoint sort n : T n -> C n := ...
   \label{fig:reverse}
 \end{figure}
 We are now ready to state (and prove) the correctness of our sorter
-core. We chose to settle in a context where the type of data that we
+core. We chose to fix a context where the type of data that we
 sort are integers of a given size, but we could generalize this proof
 to other data types, e.g., to sort tuples in a lexicographic order.
-We side-step the presentation of some of our Coq, to present the final
+We side-step the presentation of some of our Coq encoding, to present the final
 theorem in a stylized fashion.
 \begin{theorem}
 Let $I$ be a sequence of length $2^n$ of integers of size $m$. The
@@ -970,7 +970,7 @@ machine words and register files.
 %
 For simplicity reasons, we resolve this tension by adding some dynamic
 checks (that do not appear explicitly on Fig.~\ref{fig:stack}) to the
-transition relation to rule out such ill-defined behaviors. (Remark
+transition relation to rule out such ill-defined behaviors. (Note
 that this is an alternative to the use of finite-size machine words in
 the model; it would catch assembly programs with bugs related to
 overflows.)
@@ -1011,7 +1011,7 @@ $C \vdash pc,n_2::n_1::\sigma,s \to pc+1, \sigma,s$ & \text{if $C(pc)$
 
 The actual Fe-Si implementation is straightforward. The definition of
 the internal state is depicted below: the stack is implemented using a
-register file, and a stack pointer; the store is a simple register
+register file and a stack pointer; the store is a simple register
 file; the code is implemented as another register file that is
 addressed by the program counter. 
 
@@ -1054,9 +1054,9 @@ ret x.
 \end{coq}
 &
 \begin{coq}
-Definition Isetvar pc x := 
+Definition Isetvar pc i := 
 do v <- pop; 
-do _ <- write REGS [: x <- v];
+do _ <- write REGS [: snd i <- v];
 PC ::= pc + 1.
 $ $
 \end{coq}
@@ -1114,7 +1114,7 @@ as a subset of Fe-Si, with two key differences.
 First, Lava features a number of layout primitives, which makes it
 possible to describe more precisely what should be the hardware
 layout, yielding more efficient FPGA implementation. We argue that
-these operators are irrelevant from the point of view of verification,
+these operators are irrelevant from the point of view of verification
 and could be added to Fe-Si if needed.
 %
 Second, while Lava features ``non-standard'' interpretations of
@@ -1128,7 +1128,7 @@ parametric circuit generators.
 Bluespec SystemVerilog~\cite{bsv-by-example} (BSV) is an industrial
 strength hardware description language based on non-deterministic
 guarded atomic actions. BSV features a module system, support for
-polymorphic function and modules, support for scheduling directives
+polymorphic function and modules, support for scheduling directives,
 and support for static elaboration of programs (e.g., loops to express
 repetitive code).
 %
@@ -1159,13 +1159,13 @@ express (and verify) static elaboration of Fe-Si programs, similarly
 to what BSV provides for the core of Bluespec. 
 %
 We still have to determine to what extent some parts of BSV module and
-type systems could be either added in Fe-Si or either encoded in
+type systems could be either added in Fe-Si or encoded in
 Coq-as-a-meta-language.
 
 \medskip
 
 The synchronous programming language Quartz~\cite{quartz} is part of
-the Averest project that aims at developing tools for the development
+the Averest project that aims at building tools for the development
 and verification of reactive systems.
 %
 Quartz is a variant of Esterel that can be compiled to
@@ -1181,15 +1181,15 @@ closer to our RTL effects than to our guarded atomic actions.
 The main difference between our approaches is the place at which
 verification occurs: in Fe-Si, verification occurs at the level of
 circuit generators, written in the source language and where
-high-level constructs are still present; in Averest, verification
-occurs at the level of the intermediate representation, in which
-high-level constructs have already been transformed.
+high-level constructs are still present; in Averest, it
+occurs at the intermediate representation level, in which
+high-level constructs have been transformed.
 
 \medskip
 
 Richards and Lester~\cite{DBLP:journals/isse/RichardsL11} developed a
-shallow-embedding of a subset of Bluespec in PVS. While they do not
-address circuit generators nor the generation of RTL code, they proved
+shallow embedding of a subset of Bluespec in PVS. While they do not
+address circuit generators or the generation of RTL code, they proved
 the correctness of a three-input fair arbiter and a two-process
 implementation of Peterson's algorithm that complements our case
 studies (we have not attempted to translate these examples into Fe-Si).
@@ -1218,8 +1218,8 @@ a certified compiler from Fe-Si, a simple hardware description
 language, to RTL code;
 %
 and machine checked proofs of correctness for some infinite families
-of hardware designs expressed in Fe-Si (parameterized by sizes), that
-are compiled to correct hardware designs thanks the above compiler.
+of hardware designs expressed in Fe-Si (parameterized by sizes), which
+are compiled to correct hardware designs using the above compiler.
 
 This work is intended to be a proof of concept: much remains to be
 done to scale our examples to more realistic designs and to make our
@@ -1228,8 +1228,12 @@ optimizations). Yet, we argue that it provides an economical path to
 certification of parameterized hardware designs.
 
 \subsubsection{Acknowledgements.} We thank MIT's CSG group for
-invaluable discussions and comments. This material is based on
-research sponsored by DARPA under agreement number FA8750-12-2-0110. 
+invaluable discussions and comments. 
+%
+Part of this research was done while the first author was visiting MIT
+from University of Grenoble. This material is based on research
+sponsored by DARPA under agreement number FA8750-12-2-0110.
+
 % The U.S. Government is authorized to reproduce and distribute reprints
 % for Governmental purposes notwithstanding any copyright notation
 % thereon.  The views and conclusions contained herein are those of the
