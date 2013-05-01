@@ -137,7 +137,7 @@ $\quad$do carry <- ret (andb a b);
 $\quad$do sum   $\,$<- ret (xorb a b);
 $\quad$ret (carry, sum).  
 \end{mcoq}
-This circuit has two Boolean inputs (\coqe{Var B}) and return a tuple
+This circuit has two Boolean inputs (\coqe{Var B}) and returns a tuple
 of Boolean values (\coqe{B $\otimes$ B}).
 %
 Here, we use Coq notations to implement some syntactic sugar: we
@@ -211,7 +211,7 @@ memory.
 \subsubsection{From programs to circuits.} At this point, the reader
 may wonder how it is possible to generate circuits in a palatable
 format out of Fe-Si programs. Indeed, using Coq as a meta-language to
-embed Fe-Si yields two kind of issues. First, Coq lacks any kind of
+embed Fe-Si yields two kinds of issues. First, Coq lacks any kind of
 I/O; and second, a Fe-Si program may have been built using arbitrary
 Coq code, including, e.g., higher-order functions or fixpoints.
 
@@ -1119,7 +1119,7 @@ and could be added to Fe-Si if needed.
 %
 Second, while Lava features ``non-standard'' interpretations of
 circuits that make it possible to prove the correctness of fixed-size
-tangible representation of circuits, our embedding of Fe-Si in Coq
+tangible representations of circuits, our embedding of Fe-Si in Coq
 goes further: it makes it possible to prove the correctness of
 parametric circuit generators.
 
@@ -1128,7 +1128,7 @@ parametric circuit generators.
 Bluespec SystemVerilog~\cite{bsv-by-example} (BSV) is an industrial
 strength hardware description language based on non-deterministic
 guarded atomic actions. BSV features a module system, support for
-polymorphic function and modules, support for scheduling directives,
+polymorphic functions and modules, support for scheduling directives,
 and support for static elaboration of programs (e.g., loops to express
 repetitive code).
 %
