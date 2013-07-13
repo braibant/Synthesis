@@ -1,0 +1,21 @@
+[file]
+talk.pdf
+[end_user_slide]
+1
+[notes]
+### 1
+### 2
+Metaprogramming: the act of writing programs that manipulate programs
+
+e.g., macros in Lisp or templates in C++
+### 5
+This is an adder, defined by recursion
+
+The idea is that if you know how to build an adder of size n, you can build an adder of size 2n by performing addition in parallel over the LL bits of the inputs a and b and the HL bits of a and b
+
+
+
+### 9
+this is a circuit generator
+
+the properties that we prove on the circuit generators are transported on the generated RTL

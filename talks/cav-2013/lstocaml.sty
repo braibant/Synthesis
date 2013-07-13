@@ -1,0 +1,70 @@
+\lstdefinelanguage{OCaml}{
+% Anything betweeen $ becomes LaTeX math mode
+mathescape=true,
+%
+% Comments may or not include Latex commands
+texcl=false, 
+%
+% Vernacular commands
+morekeywords=[1]{and, as, assert,  begin, class, constraint, do, done, downto, else, end, exception, external, false, for, fun, function, functor, if, in, include, inherit, initializer, lazy, let, match, method, module, mutable, new, object, of, open, or, private, rec, sig, struct, then, to, true, try, type, val, virtual, when, while, with},
+%
+%
+% Comments delimiters, we do turn this off for the manual
+comment=[s]{(*}{*)},
+%
+%keepspaces
+keepspaces=true,
+% Spaces are not displayed as a special character
+showstringspaces=false,
+%
+% String delimiters
+morestring=[b]",
+morestring=[d],
+%
+% Size of tabulations
+tabsize=3,
+%
+% Enables ASCII chars 128 to 255
+extendedchars=false,
+%
+% Case sensitivity
+sensitive=true,
+%
+% Automatic breaking of long lines
+breaklines=true,
+%
+% Default style fors listings
+basicstyle={\normalsize},
+%
+% Position of captions is bottom
+captionpos=b,
+%
+% Full flexible columns
+columns=[l]fullflexible,
+%
+% Style for (listings') identifiers
+identifierstyle={\ttfamily\color{black}},
+% Note : highlighting of Coq identifiers is done through a new
+% delimiter definition through an lstset at the begining of the
+% document. Don't know how to do better.
+%
+keywordstyle=[1]{\ttfamily\color{dkviolet}},
+% Style for strings
+stringstyle=\ttfamily,
+% Style for comments
+commentstyle={\ttfamily\color{dkgreen}},
+%
+%litterate
+literate=
+    {->}{{$\to$\,}}2 
+    {<-}{{$\leftarrow$\,}}2 
+    {<>}{{$\neq$\,}}2 
+%
+}[keywords,comments,strings]
+
+
+\lstnewenvironment{ocaml}{\lstset{language=OCaml}}{}
+% pour inliner dans le texte
+\def\ocamle{\lstinline[language=OCaml]}
+% pour inliner dans les tableaux / displaymath...
+\def\ocamlinlines{\lstinline[language=OCaml]}
