@@ -1,4 +1,4 @@
-Require Import Common Core Front ZArith Structures. 
+Add Rec LoadPath "../src/" as Synthesis. Require Import Common Core Front ZArith Structures. 
 
 
 Section t. 
@@ -1240,19 +1240,11 @@ Module Circuit.
         ret [tuple r, l]
     end%action.
 
-  Definition leaf (l : T 0) : expr Var A := match l with
-                                     | L x => x
-                                   end.
+  Definition leaf (l : T 0) : expr Var A := match l with| L x => x   end.
   
-  Definition left {n} (l : T (S n)) : T n :=
-    match l with 
-      | N _ l _ => l
-    end.
+  Definition left {n} (l : T (S n)) : T n := match l with| N _ l _ => l end.
  
-  Definition right {n} (l : T (S n)) : T n := 
-    match l with 
-      | N _ _ r => r
-    end. 
+  Definition right {n} (l : T (S n)) : T n := match l with | N _ _ r => r  end. 
   
   (** The [cmp] parameter corresponds to the primitive compare and
   swap operation that is the basic block of our sorting network. *)
@@ -1421,40 +1413,28 @@ Section proof.
     dependent destruction t. compute.  reflexivity.
   Qed. 
   
-  Ltac destruct_a_match H :=
+  Ltac destruct_a_match :=
     let  rec tac G :=
          match G with 
-           | context [ match ?x with | _ => _ end] => tac x || destruct x eqn:H
+           | context [ match ?x with | _ => _ end] => tac x || destruct x eqn:?
          end
     in
-    match goal with 
-        |- ?G => tac G; try tauto
-    end. 
+    repeat match goal with 
+        |- ?G => tac G; simpl
+      | H: Diff.T nil, H' : context [?H''] |- _ => constr_eq H H''; rewrite (diff_nil H) in H' 
+    end; try congruence. 
 
-  Ltac destruct_a_match' := let H := fresh in destruct_a_match H.
-  
-  Lemma output_bind t a : forall u b, Circuit.output u (do x <- a; b x)%action = 
+   Lemma output_bind t a : forall u b, Circuit.output u (do x <- a; b x)%action = 
                                  do x <- (Circuit.output t a);
                                  Circuit.output _ (b (Evar x)).
   Proof.
-    induction a; intros. 
+    induction a; intros; unfold Circuit.output; simpl. 
     - reflexivity.
-    - unfold Circuit.output. simpl. unfold Sem.Dyn.Bind in *.  
-      destruct_a_match'.
-      destruct p. simpl. rewrite (diff_nil t0). simpl in *. 
-      destruct_a_match'. simpl. destruct p. simpl in *. rewrite (diff_nil t1). 
-      reflexivity. 
-    - unfold Circuit.output.  simpl. destruct (eval_expr B e); simpl;  reflexivity. 
-    - unfold Circuit.output.  simpl.
-      symmetry; destruct_a_match'.  
-      simpl. unfold Sem.Dyn.Bind. rewrite H.  destruct p0. simpl. 
-      rewrite (diff_nil t). 
-      reflexivity. 
-      simpl. unfold Sem.Dyn.Bind. rewrite H. reflexivity. 
-    - unfold Circuit.output. 
-      simpl. unfold Sem.Dyn.OrElse, Sem.Dyn.Bind. 
-      destruct_a_match'. simpl. destruct p. rewrite (diff_nil t0). simpl. reflexivity.
-      destruct_a_match'. destruct p; simpl. rewrite (diff_nil t0). reflexivity.  
+    - unfold Sem.Dyn.Bind in *.  
+      destruct_a_match. 
+    - destruct (eval_expr B e); simpl;  reflexivity. 
+    - unfold Sem.Dyn.Bind; symmetry; destruct_a_match;  simpl in *; congruence. 
+    - unfold Sem.Dyn.Bind; symmetry; destruct_a_match;  simpl in *; congruence. 
   Qed.
 
   Lemma output_rebind n e e': 
@@ -1465,224 +1445,118 @@ Section proof.
     intros H. 
     induction H. 
     - trivial.  
-    - intros. simpl. 
+    - intros; simpl.  
+      rewrite output_bind;  simpl. 
       rewrite output_bind. simpl. 
       rewrite output_bind. simpl. 
-      rewrite output_bind. simpl. 
-      rewrite IHR1. rewrite IHR2. 
-      reflexivity. 
+      now rewrite IHR1, IHR2.  
   Qed. 
 
-  Lemma output_reverse  n l :       
-    match Circuit.output _ (Circuit.reverse A Var n (map Evar l)) with 
-      | None => False
-      | Some e => e == Spec.reverse _ n l
+  Definition wbo {alpha} (o: option alpha) (P : alpha -> Prop) :=
+    match o with 
+      | None => False 
+      | Some r => P r  
     end.  
+
+  Lemma output_reverse  n l :       
+    wbo ( Circuit.output _ (Circuit.reverse A Var n (map Evar l))) (fun e =>  e == Spec.reverse _ n l). 
   Proof. 
     induction l. 
     simpl; constructor. 
-    simpl in *. rewrite output_bind.
-    intro_do x2 H2. rewrite output_bind.  intro_do x1 H1. 
-    constructor; auto. 
-    auto. 
-    auto. 
+    simpl in *. rewrite output_bind by auto. 
+    intro_do x2 H2; auto.  rewrite output_bind by auto. intro_do x1 H1 ; try constructor; auto. 
   Qed.
-
+  Hint Resolve output_reverse.
   Lemma output_bind' t a : forall u b, Circuit.output u (do x <~ a; b x)%action = 
                                   do x <- (Circuit.output t (ret a)%action);
                                   Circuit.output _ (b (Evar x)).
-  Proof. 
-    intros. unfold Bind'. rewrite <- output_bind. reflexivity.  
-  Qed. 
+  Proof. intros. unfold Bind'. rewrite <- output_bind. reflexivity.  Qed. 
 
   Ltac destruct_a_let := 
     match goal with 
-        |- context [(let (_,_) := ?a in _)] => destruct a as [? ?] eqn:? 
-    end.
-      
+      | H : context [let (_,_) := ?x in _] |- _ => let h  := fresh in destruct x eqn:h; rewrite h in H      
+       | |- context [(let (_,_) := ?a in _)] => destruct a as [? ?] eqn:? 
+     end.
+  Hint Constructors R. 
+
+  Ltac crunch :=
+    repeat  first 
+            [
+              rewrite output_bind ; let x := fresh in let H := fresh in intro_do x H; trivial
+            | rewrite output_bind'; let x := fresh in let H := fresh in intro_do x H; trivial
+            ];
+    repeat match goal with 
+               H : context [?x] |- context [let (_,_) := ?x in _] => destruct x eqn:?; trivial
+                   | H : context [Return _]  |- _ => compute in H; inject H
+           end; try easy
+     .
+
   Lemma output_min_max_swap n : forall l1 l2,
-    match Circuit.output _ (Circuit.min_max_swap A Var xchg 
-                                                 n (map Evar l1) (map Evar l2)) with 
-      | None => False
-      | Some e => let (a,b) := Spec.min_max_swap _ _ n l1 l2 in e ==  N _ a b
-    end.  
-  Proof. 
+    wbo (Circuit.output _ (Circuit.min_max_swap A Var xchg 
+                                                 n (map Evar l1) (map Evar l2))) 
+      (fun e => let (a,b) := Spec.min_max_swap _ _ n l1 l2 in e ==  N _ a b). 
+     Proof. 
     induction n; dependent destruction l1; dependent destruction l2;simpl.
     -  unfold min, max. unfold le, word_order. 
-       destruct (Word.le x x0) eqn:H. 
-       repeat constructor. 
-       repeat constructor. 
-    - repeat 
-        first 
-        [
-          rewrite output_bind ; let x := fresh in let H := fresh in intro_do x H; trivial
-        | rewrite output_bind'; let x := fresh in let H := fresh in intro_do x H; trivial
-        ];
+       destruct (Word.le x x0) eqn:H; auto.  
+    - crunch; 
       repeat match goal with 
                | H : context [Circuit.min_max_swap A Var xchg n (map Evar ?l1) (map Evar ?l2)] |- _
                  => 
                  let H1 := fresh in 
                  let H2 := fresh in 
-                 assert(H1 := IHn l1 l2);
-                   simpl in H1;
-                   simpl in H; rewrite H in H1; clear H
-             end; clear IHn. 
-      repeat match goal with 
-                 H : context [?x] |- context [let (_,_) := ?x in _] => destruct x eqn:?; trivial
-             end;
-      repeat match goal with 
-          | H : context [Return _]  |- _ => compute in H; inject H
-        end. 
-      R_resolve. 
-      trivial. 
-      compute in H4. discriminate. 
-      compute in H2; discriminate. 
-      trivial.
-  Qed.
-  
+                 assert(H1 := IHn l1 l2); simpl in H1; simpl in H; rewrite H in H1; clear H
+             end; clear IHn; try easy.  
+      crunch; simpl in *;  auto.  
+     Qed.
+     Hint Resolve output_min_max_swap.
+
   Lemma output_merge n l:         
-    match Circuit.output _ (Circuit.merge A Var xchg n (map Evar l)) with 
-      | None => False
-      | Some e => e == Spec.merge _ _ _ (l)
-    end.  
+    wbo ( Circuit.output _ (Circuit.merge A Var xchg n (map Evar l))) (fun e => e == Spec.merge _ _ _ (l)). 
   Proof. 
     revert l. 
     induction n. 
     - dependent destruction l; constructor.  
     - dependent destruction l. 
-      simpl. 
-      repeat 
-        (first 
-        [
-          rewrite output_bind ; let x := fresh in let H := fresh in intro_do x H; trivial
-        | rewrite output_bind'; let x := fresh in let H := fresh in intro_do x H; trivial
-        ]);  
-        repeat match goal with 
-                 | H : context [Return _]  |- _ => compute in H; try discriminate; inject H
-               end. 
-      Focus 2. 
-      
-      Ltac use_a_match_theorem_2 thm e l1 l2 :=
-        match type of thm with 
-          | (forall x y, match @?X x y with _ => _ end) =>
-            let Y :=  eval simpl in  (X l1 l2) in
-            let H := fresh in 
-            assert (H := thm l1 l2);
-            simpl in H; simpl in e;
-            rewrite e in H
-        end.
-
-      Ltac use_a_match_theorem_1 thm e l1  :=
-        match type of thm with 
-          | (forall x , match @?X x  with _ => _ end) =>
-            let Y :=  eval simpl in  (X l1) in
-            let H := fresh in 
-            assert (H := thm l1);
-            simpl in H; simpl in e;
-            rewrite e in H
-        end.                   
-      use_a_match_theorem_2 ( output_min_max_swap n) H0 l1 l2.  
-      auto. 
-      use_a_match_theorem_2 (output_min_max_swap n) H0 l1 l2. clear H0. 
-      revert H1. destruct_a_let. intros. 
-      erewrite output_rebind by eauto. 
-      erewrite output_rebind by eauto.  
-      rewrite output_bind. intro_do x1 Hx1.  
-      rewrite output_bind. intro_do x2 Hx2.  
-      simpl in *. 
-      use_a_match_theorem_1 (IHn ) Hx1 t.  clear Hx1. 
-      use_a_match_theorem_1 (IHn ) Hx2 t0.  clear Hx2. 
-      R_resolve. 
-      use_a_match_theorem_1 (IHn ) Hx2 t0.   auto. 
-      use_a_match_theorem_1 (IHn ) Hx1 t.   auto. 
+      simpl. rewrite output_bind. 
+      Lemma wbo_bind{A B} (P: A -> Prop) (Q: B -> Prop) : forall e f, wbo e P ->
+                                  (forall x, P x -> wbo (f x) Q) -> 
+                                  wbo (do x <- e; f x) Q. 
+      Proof. compute. intros [e|] f; firstorder.  Qed. 
+        Ltac t := repeat (first [
+                     eapply wbo_bind; [eapply output_min_max_swap| intros]
+                | rewrite output_bind 
+                | rewrite output_bind'; simpl
+                | (erewrite output_rebind by eauto)
+                | instantiate; eapply wbo_bind ; [now eauto | intros]]; simpl). 
+   repeat (t; instantiate; simpl in *). destruct_a_let.
+   repeat (t; instantiate; simpl in *); auto.  
   Qed. 
 
-      
+  Hint Resolve output_merge. 
 
   Lemma equiv_sort n  
         (I : tree (Var A) n) :
-    match Circuit.output _ (csort n I) with 
-      | None => False
-      | Some e => e == (sort n I)
-    end. 
+    wbo (Circuit.output _ (csort n I)) (fun e => e == (sort n I)). 
+
   Proof.
     induction n.
     - dependent destruction I. constructor.   
-    - simpl. 
-      Ltac t IHn := 
-        match goal with 
-            |- context [Circuit.output ?t (Bind' _ _ )] => rewrite output_bind
-          | |- context [Circuit.output ?t (Bind _ _ )] => rewrite output_bind' 
-          | |- context [Circuit.output ?t (csort ?n ?I)] => 
-            let H1 := fresh "H" in 
-            let H2 := fresh "H" in 
-            assert (H1 := IHn I);
-            destruct (Circuit.output _ (csort n I)) as [?|] eqn:H2; 
-              [simpl in H2; simpl; rewrite H2; simpl|tauto]
-          | |- context [Circuit.output ?t (Circuit.reverse _ _  ?n (map Evar ?I))] => 
-          let H1 := fresh "H" in 
-          let H2 := fresh "H" in 
-          assert (H1 := output_reverse n I);
-            revert H1; destruct_a_match H2; intros H1; simpl
-          | |- context [Circuit.output ?t (Circuit.merge _ _ _  ?n (map Evar ?I))] => 
-          let H1 := fresh "H" in 
-          let H2 := fresh "H" in 
-          assert (H1 := output_merge n I);
-            revert H1; destruct_a_match H2; intros H1; simpl; simpl in H2; rewrite H2; simpl
-        end. 
-      repeat (t IHn). 
-      erewrite output_rebind by eauto. 
-      repeat (t IHn).
-      repeat (simpl; t IHn).
-      simpl. 
-      erewrite output_rebind by eauto. 
-      simpl. 
-      erewrite output_rebind by eauto. 
-      simpl.
-      
-      t IHn.
-      match goal with 
-        |- context [Circuit.output ?t (Circuit.min_max_swap _ _ _ n 
-                                                           (map Evar ?l1)
-                                                           (map Evar ?l2)
-                                     )] =>
-        let H1 := fresh "H" in 
-        let H2 := fresh "H" in 
-        assert (H1 := output_min_max_swap n l1 l2);
-          revert H1; destruct_a_match H2; intros H1; simpl; simpl in H2; rewrite H2; simpl
-      end.
-      t IHn. 
-      simpl. 
-      t IHn. 
-      simpl. 
-      
-      destruct (       Spec.min_max_swap (Word.T size) word_order n 
-             (sort n (left I))
-             (Spec.reverse (Word.T size) n (sort n (right I)))) as [ a b] eqn : Hab.
-      
-      rewrite output_rebind with (e' := a). 
-      rewrite output_rebind with (e' := b). 
-      rewrite output_bind.
-      simpl. 
-      t IHn. t IHn. t IHn. simpl. 
-      destruct_a_let. 
-      simpl in *. 
-      rewrite Hab in Heqp.  inject Heqp. eauto. 
-      
-      simpl in *. rewrite Hab in H5. eapply R_N_snd. R_resolve. 
-      simpl in *. rewrite Hab in H5. eapply R_N_fst. R_resolve. 
+    - simpl.
+      repeat (t; instantiate; simpl in *). destruct_a_let.
+      repeat (t; instantiate; simpl in *); auto.  
   Qed. 
-
+  
+  Lemma wbo_bind_weaken{A} (P: A -> Prop) (Q:A -> Prop) : forall e, wbo e P ->
+                                                           (forall x, P x -> Q x) -> 
+                                                           wbo e Q. 
+  Proof. compute. intros [e|] f; firstorder.  Qed. 
+  
   Theorem circuit_sort_correct' n (I : tree (Var A) n) : 
-    match Circuit.output _ (csort n I) with 
-      | None => False
-      | Some out => out == (sort n I) /\ Spec.tsorted n (sort n I)
-    end. 
+    wbo ( Circuit.output _ (csort n I)) (fun out => out == (sort n I) /\ Spec.tsorted n (sort n I)).
   Proof. 
-    destruct_a_match H;
-    use_a_match_theorem_1 (equiv_sort n) H (I). 
-    split; auto. apply Spec.sort_correct. apply word_order. 
-    trivial. 
+    eapply wbo_bind_weaken. apply equiv_sort. 
+    intros.     split; auto. apply Spec.sort_correct. apply word_order. 
   Qed. 
 
   (** * Final theorem : correction of the sorter core 
@@ -1694,15 +1568,11 @@ Section proof.
   
   Notation same_elements x y := (Spec.SameElements.equiv _ x y). 
   Theorem circuit_sort_correct n (I : tree (Var A) n) :
-    match Circuit.output _ (csort n I) with 
-      | None => False
-      | Some out => exists out', (out == out' /\ Spec.tsorted n out' /\ same_elements out' I)
-    end.
-  Proof. 
-    pose proof (circuit_sort_correct' n I).
-    destruct (Circuit.output (Circuit.domain A n) (csort n I)) eqn:? . 
-    + exists (sort n I). intuition.  apply Spec.SameElements.sort_equiv. 
-    + auto. 
+    wbo (Circuit.output _ (csort n I)) (fun  out => exists out', (out == out' /\ Spec.tsorted n out' /\ same_elements out' I)).
+  Proof.
+    eapply wbo_bind_weaken.  
+    apply (circuit_sort_correct' n I).
+    simpl; intros. exists (sort n I). intuition.  apply Spec.SameElements.sort_equiv. 
   Qed.
              
   (* Print Assumptions circuit_sort_correct.  *)
