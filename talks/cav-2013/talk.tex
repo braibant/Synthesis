@@ -58,7 +58,7 @@
 \usepackage{lstcoq}
 \usepackage{lstocaml}
 \usepackage{tikz}
-\usetikzlibrary{shapes, positioning,fit}
+\usetikzlibrary{shapes,fit}
 
 \begin{document}
 % \newcommand \blue[1]{{\color{red!80!black}{#1}}}
@@ -236,7 +236,7 @@ Our Fe-Si to RTL compiler is a \alert{verified compiler}
         the bounds of a register file}
     \end{itemize}
 
-    \item Implements mainly a control-flow to data-flow transformation
+    \item Implements mainly a transformation from guarded atomic actions to data-flow
     \item With some optimizations
       \begin{itemize}
       \item Syntactic common sub-expression elimination 
@@ -447,8 +447,7 @@ $\vdash pc,n_2::n_1::\sigma,s \to pc+1, \sigma,s$ & \text{if  $\neg (c~n_1~n_2)$
       \pause
       \begin{itemize}
       \item semantics (i.e., interpreter), compiler and programs are \alert{integrated seamlessly}
-      \item dependent types capture some interesting properties in
-        hardware
+      \item use Coq's rich type system to capture interesting properties (e.g., sizes)
       \end{itemize}
     \end{itemize}
 

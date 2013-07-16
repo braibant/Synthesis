@@ -393,12 +393,12 @@ $\quad$ret x.
   \item are based on \alert{guarded atomic actions} 
     \\
     \begin{center}
-    \coqe{do n <- !x + 1; (y := 1; assert (n = 0)) orElse (y := 2)}      
+    \coqe{do n <- !x + 1; (y ::= 1; assert (n = 0)) orElse (y ::= 2)}      
     \end{center}
   \item are endowed with a (simple) \alert{synchronous semantics}
     \\
     \begin{center}
-    \coqe{do n <- !x; x := n + 1; do m <- !x; assert (n = m)}
+    \coqe{do n <- !x; x ::= n + 1; do m <- !x; assert (n = m)}
     \end{center}
   \end{itemize}
 \end{frame}
@@ -562,7 +562,7 @@ end
 Running example:
 \begin{coq}
 do x <- ! r1;
-if (x <> 0) then {do y <- !r2; r1 ::= x - 1; r2 ::= y + 1} else { y <- !r2; r1 := y}
+if (x <> 0) then {do y <- !r2; r1 ::= x - 1; r2 ::= y + 1} else { y <- !r2; r1 ::= y}
 \end{coq}
  
 \pause
@@ -711,7 +711,7 @@ end.
   \begin{center}
     \includegraphics[width=\textwidth]{figs/bitonic1.png}
     \begin{itemize}
-    \item Bitonic: $x_0 \le \dots \le x_k \ge \dots \ge x_{n-1}$ for
+    \item Bitonic sequence: $x_0 \le \dots \le x_k \ge \dots \ge x_{n-1}$ for
       some $k$, or a circular shift.
     \item Red: bitonic $\to$ $l_1$ bitonic, $l_2$ bitonic (and $l_1
       \le l_2$)
