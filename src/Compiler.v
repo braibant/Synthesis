@@ -1,4 +1,3 @@
-Add Rec LoadPath "./" as Synthesis. 
 Require Core Front IR RTL CSE CP FirstOrder.
 
 (** Putting it all together: the final compiler  *)

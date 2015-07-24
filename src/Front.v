@@ -1,6 +1,5 @@
 (** * Synthesis.Front : Definition of the source language of our compiler  *)
 
-Add Rec LoadPath "./" as Synthesis. 
 Require Import Common.
 Require Import DList.
 Require Import Core. 

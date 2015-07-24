@@ -278,7 +278,6 @@ Proof.
   rewrite zify_le, zify_lt, zify_eqb. omega. 
 Qed. 
 
-Add Rec LoadPath "./" as Synthesis.
 Require Import Consider. 
 
 Instance reflect_le_Z {n} (x y : T n): Reflect (le x y) (val x <= val y) (val y < val x).

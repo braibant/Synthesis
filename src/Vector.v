@@ -2,7 +2,6 @@ Require Import FMapPositive.
 Require Import NArith. 
 Require Import ZArith. 
 
-Add Rec LoadPath "." as Synthesis. 
 Require Word. 
 
 (** Vectors (that is, arrays)  *)
