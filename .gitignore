@@ -3,6 +3,7 @@ src/html/
 *.vo
 *.glob
 *~
+Makefile.coq
 
 examples/Makefile.coq
 papers/coq-workshop-12/auto/

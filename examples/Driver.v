@@ -1,4 +1,4 @@
-Require Add Stack Sorter.
+Require SynthExamples.Add SynthExamples.Stack SynthExamples.Sorter.
 
 (** Produces an adder for numbers of size [2^n]  *)
 Definition adder n := (Compiler.Fesic _ _  (Add.generator n)).
