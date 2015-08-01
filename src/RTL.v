@@ -319,7 +319,7 @@ Section correctness.
   Proof. 
     induction Phi. simpl. auto. 
     simpl; intros. unfold IR.effects in e. repeat DList.inversion. 
-    case_eq c; intros; simpl; subst;
+    case_eq x; intros; simpl; subst;
     destruct x1.
     dependent destruction e0. simpl. 
     rewrite IHPhi; reflexivity.

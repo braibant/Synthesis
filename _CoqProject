@@ -1,0 +1,24 @@
+-R ./src Synthesis
+-R ./examples SynthExamples
+./src/Common.v
+./src/BDD.v
+./src/CP.v
+./src/Seq.v
+./src/Compare.v
+./src/Word.v
+./src/Structures.v
+./src/FirstOrder.v
+./src/Core.v
+./src/RTL.v
+./src/Compiler.v
+./src/Vector.v
+./src/Front.v
+./src/DList.v
+./src/CSE.v
+./src/IR.v
+./src/Consider.v
+./examples/Sorter.v
+./examples/Driver.v
+./examples/Extraction.v
+./examples/Add.v
+./examples/Stack.v

@@ -1,6 +1,5 @@
 (** * Synthesis.FirstOrder : First-order representation of RTL *)
 
-Add Rec LoadPath "." as Synthesis. 
 Require Import Common DList. 
 Require Core Equality. 
 
